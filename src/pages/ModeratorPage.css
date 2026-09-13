@@ -1788,7 +1788,8 @@ input.mp-text-input:disabled {
   }
 }
 
-.mp-viol-table input {
+.mp-viol-table input,
+.mp-viol-table select {
   width: 100%;
   border: 1.5px solid #dde3ef;
   border-radius: 8px;
@@ -1796,6 +1797,15 @@ input.mp-text-input:disabled {
   font-size: 0.82rem;
   color: #0b2447;
   font-weight: 600;
+  background: #fff;
+}
+
+.mp-viol-type-label {
+  display: block;
+  padding: 7px 9px;
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: #0b2447;
 }
 
 .mp-viol-table input::placeholder {
@@ -1804,7 +1814,8 @@ input.mp-text-input:disabled {
   font-size: 0.72rem;
 }
 
-.mp-viol-table input:focus {
+.mp-viol-table input:focus,
+.mp-viol-table select:focus {
   outline: none;
   border-color: #6d8fe0;
 }

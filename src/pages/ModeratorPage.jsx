@@ -631,8 +631,22 @@ function FormatPickerModal({ current, onChoose, onClose, match, suggestedId }) {
 /* ═══════════════════════════════════════════
    VIOLATIONS MODAL
 ═══════════════════════════════════════════ */
-function ViolationsModal({ sideLabel, teamLabel, teamLogo, initialRows, onClose, onSubmit }) {
-  const [rows, setRows] = useState(initialRows.length ? initialRows : []);
+function ViolationsModal({ sideLabel, teamLabel, teamLogo, initialRows, violationOptions, onClose, onSubmit }) {
+  /* Once the sport has predefined violation types (set by the admin under
+     Sports & Teams), every one of them is loaded as a row up front — the
+     moderator's only job is filling in counts, not deciding which
+     violations exist. Sports with no predefined list fall back to the old
+     free-text/add-slot flow so scoring isn't blocked while an admin
+     hasn't set any up yet. */
+  const hasOptions = (violationOptions || []).length > 0;
+
+  const [rows, setRows] = useState(() => {
+    if (hasOptions) {
+      const byType = new Map((initialRows || []).map((r) => [norm(r.type), r.count]));
+      return violationOptions.map((opt) => ({ id: uid(), type: opt.name, count: byType.get(norm(opt.name)) ?? '' }));
+    }
+    return initialRows.length ? initialRows : [];
+  });
   const [bump, setBump] = useState(false);
 
   const total = rows.reduce((sum, r) => sum + (parseInt(r.count, 10) || 0), 0);
@@ -665,27 +679,33 @@ function ViolationsModal({ sideLabel, teamLabel, teamLogo, initialRows, onClose,
             </div>
           </div>
 
-          <button type="button" className="mp-viol-add" onClick={addSlot}><FaPlus /> Add slot</button>
+          {!hasOptions && (
+            <button type="button" className="mp-viol-add" onClick={addSlot}><FaPlus /> Add slot</button>
+          )}
 
           <table className="mp-viol-table">
             <thead>
               <tr>
                 <th>Type of violation</th>
                 <th style={{ width: 110 }}>No. of violation</th>
-                <th style={{ width: 36 }}></th>
+                {!hasOptions && <th style={{ width: 36 }}></th>}
               </tr>
             </thead>
             <tbody>
               {rows.length === 0 && (
-                <tr><td colSpan={3} style={{ color: '#8593ad', fontWeight: 500 }}>No violations logged yet.</td></tr>
+                <tr><td colSpan={hasOptions ? 2 : 3} style={{ color: '#8593ad', fontWeight: 500 }}>No violations logged yet.</td></tr>
               )}
               {rows.map((row) => (
                 <tr key={row.id}>
                   <td>
-                    <input
-                      type="text" placeholder="*Input type of violation" value={row.type}
-                      onChange={(e) => updateRow(row.id, { type: e.target.value })}
-                    />
+                    {hasOptions ? (
+                      <span className="mp-viol-type-label">{row.type}</span>
+                    ) : (
+                      <input
+                        type="text" placeholder="*Input type of violation" value={row.type}
+                        onChange={(e) => updateRow(row.id, { type: e.target.value })}
+                      />
+                    )}
                   </td>
                   <td>
                     <input
@@ -693,9 +713,11 @@ function ViolationsModal({ sideLabel, teamLabel, teamLogo, initialRows, onClose,
                       onChange={(e) => updateRow(row.id, { count: e.target.value })}
                     />
                   </td>
-                  <td>
-                    <button className="mp-viol-remove" onClick={() => removeRow(row.id)} aria-label="Remove"><FaTimes /></button>
-                  </td>
+                  {!hasOptions && (
+                    <td>
+                      <button className="mp-viol-remove" onClick={() => removeRow(row.id)} aria-label="Remove"><FaTimes /></button>
+                    </td>
+                  )}
                 </tr>
               ))}
             </tbody>
@@ -705,7 +727,7 @@ function ViolationsModal({ sideLabel, teamLabel, teamLogo, initialRows, onClose,
             <button className="mp-btn mp-btn--gray" onClick={onClose}>Cancel</button>
             <button
               className="mp-btn mp-btn--submit"
-              onClick={() => onSubmit(rows.filter((r) => r.type.trim() || r.count !== ''))}
+              onClick={() => onSubmit(rows.filter((r) => (hasOptions ? r.count !== '' : (r.type.trim() || r.count !== ''))))}
             >
               Submit
             </button>
@@ -1769,6 +1791,20 @@ export default function ModeratorPage() {
       setYearLevel('');
       setLockedMatch(null);
       setLockedRecord(null);
+      // A format chosen on the previous level tab (e.g. College) was left
+      // standing after switching tabs, since only the schedule-scoped state
+      // above was cleared. With no lockedMatch to re-derive activeSport from,
+      // the "Update match record" form still rendered on a level with zero
+      // finished matches — empty "Select team" dropdowns and all — because
+      // the render check below only gates on formatChoice, not on this
+      // level's recordableMatches. Clearing it here keeps the two in sync.
+      setFormatId('');
+      setFormatPickerOpen(false);
+      setFormatPickerFor(null);
+      setEditingRecord(null);
+      setEntries([mkEntry(), mkEntry()]);
+      setWinnerId(null);
+      setWinnerManual(false);
       setLoading(false);
     })();
     return () => { cancelled = true; };
@@ -2497,8 +2533,12 @@ export default function ModeratorPage() {
         {/* Nothing renders below the level band until a match is chosen —
             the schedule list above is the whole interface at this point.
             The only exception is a level with no schedules at all, where a
-            blank page would just look broken. */}
-        {!formatChoice ? (
+            blank page would just look broken. Gating on recordableMatches
+            here too (not just formatChoice) means a format left over from a
+            previous level tab can never show this form on a level that has
+            no finished matches of its own — the moderator records what the
+            admin scheduled and finished, nothing more. */}
+        {!(formatChoice && recordableMatches.length > 0) ? (
           recordableMatches.length === 0 && (
             <div className="mp-card mp-card--empty">
               <h3 className="mp-card__title">
@@ -2766,6 +2806,7 @@ export default function ModeratorPage() {
           teamLabel={violTeam?.name || 'Select a team'}
           teamLogo={violTeam?.logo}
           initialRows={violEntry.violations}
+          violationOptions={selectedSport?.violations || []}
           onClose={() => setViolModal(null)}
           onSubmit={(rowsIn) => { updateEntry(violEntry.id, { violations: rowsIn }); setViolModal(null); }}
         />

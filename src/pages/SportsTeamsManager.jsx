@@ -304,6 +304,76 @@ function CategoryModal({ sport, onClose, onSave }) {
 }
 
 /* ═══════════════════════════════════════════
+   VIOLATIONS MODAL (admin side)
+   Defines the violation types moderators may log
+   for this sport — exclusive to this sport only.
+═══════════════════════════════════════════ */
+function ViolationsAdminModal({ sport, onClose, onSave }) {
+  const initRows = () => (sport.violations?.length ? sport.violations.map(ensureId) : []);
+
+  const [rows, setRows] = useState(initRows);
+
+  const addRow = () => setRows(prev => [...prev, { id: uid(), name: '' }]);
+  const updateRow = (id, name) => setRows(prev => prev.map(r => r.id === id ? { ...r, name } : r));
+  const removeRow = (id) => setRows(prev => prev.filter(r => r.id !== id));
+  const handleReset = () => setRows(initRows());
+
+  const handleSubmit = () => {
+    const cleaned = rows.filter(r => r.name.trim()).map(r => ({ ...r, name: r.name.trim() }));
+    onSave(cleaned);
+  };
+
+  return (
+    <div className="stm-overlay" onClick={onClose}>
+      <div className="stm-modal stm-modal--category" onClick={e => e.stopPropagation()}>
+
+        <div className="stm-catmod-head">
+          <button className="stm-icon-btn stm-catmod-close" onClick={onClose}><FaTimes /></button>
+          <h3>VIOLATIONS</h3>
+          <p>
+            Set the violation types moderators can log for <strong>{sport.name || 'this sport'}</strong>.
+            These will only be available when scoring {sport.name || 'this sport'}.
+          </p>
+        </div>
+
+        <div className="stm-cat-groups">
+          <div className="stm-cat-group">
+            {rows.length === 0 ? (
+              <p className="stm-cat-groups__empty">
+                Use <strong>Add Violation</strong> below to define this sport's violation types (e.g. Foul, Yellow Card).
+              </p>
+            ) : rows.map(row => (
+              <div key={row.id} className="stm-div-row">
+                <input
+                  className="stm-div-input"
+                  placeholder="e.g. Foul"
+                  value={row.name}
+                  onChange={e => updateRow(row.id, e.target.value)}
+                />
+                <button type="button" className="stm-icon-btn" onClick={() => removeRow(row.id)}>
+                  <FaTimes />
+                </button>
+              </div>
+            ))}
+
+            <button type="button" className="stm-add-div-btn" onClick={addRow}>
+              <FaPlus /> Add Violation
+            </button>
+          </div>
+        </div>
+
+        <div className="stm-catmod-actions">
+          <button type="button" className="stm-btn-ghost" onClick={handleReset}>
+            <FaSync style={{ marginRight: 6, fontSize: '0.7rem' }} /> Reset
+          </button>
+          <button type="button" className="stm-btn-primary" onClick={handleSubmit}>Submit</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
    POSITION TYPES MODAL
    A sport's own list of player positions — what Registration's
    "Position" dropdown offers once this sport is selected there.
@@ -367,14 +437,16 @@ function PositionsModal({ sport, onClose, onSave }) {
 /* ═══════════════════════════════════════════
    EDIT SPORT MODAL
    Popup for editing a single saved sport's name,
-   logo, and categories/divisions.
+   logo, categories/divisions, and violations.
 ═══════════════════════════════════════════ */
 function EditSportModal({ sport, saving, onClose, onSave }) {
   const [name,           setName]           = useState(sport.name || '');
   const [logo,           setLogo]           = useState(sport.logo || null);
   const [categoryGroups, setCategoryGroups] = useState(sport.categoryGroups || []);
+  const [violations,     setViolations]     = useState(sport.violations || []);
   const [positions,      setPositions]      = useState(sport.positions || []);
   const [showCatModal,   setShowCatModal]   = useState(false);
+  const [showViolModal,  setShowViolModal]  = useState(false);
   const [showPosModal,   setShowPosModal]   = useState(false);
 
   const divisions = (categoryGroups || []).flatMap(g => {
@@ -426,6 +498,22 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
 
             <div className="stm-edit-sport-cats">
               <div className="stm-edit-sport-cats__head">
+                <span className="stm-preview-label">VIOLATIONS</span>
+                <button type="button" className="stm-link-btn" onClick={() => setShowViolModal(true)}>
+                  <FaEdit /> Edit violations
+                </button>
+              </div>
+              {violations.length === 0 ? (
+                <p className="stm-empty-note">No violations set.</p>
+              ) : (
+                <ul className="stm-preview-list">
+                  {violations.map((v, i) => <li key={v.id || i}>{v.name}</li>)}
+                </ul>
+              )}
+            </div>
+
+            <div className="stm-edit-sport-cats">
+              <div className="stm-edit-sport-cats__head">
                 <span className="stm-preview-label">POSITION TYPES</span>
                 <button type="button" className="stm-link-btn" onClick={() => setShowPosModal(true)}>
                   <FaEdit /> Edit positions
@@ -447,7 +535,7 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
               type="button"
               className="stm-btn-primary"
               disabled={saving || !name.trim()}
-              onClick={() => onSave({ ...sport, name: name.trim(), logo, categoryGroups, positions })}
+              onClick={() => onSave({ ...sport, name: name.trim(), logo, categoryGroups, violations, positions })}
             >
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
@@ -461,6 +549,14 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
           sport={{ ...sport, categoryGroups }}
           onClose={() => setShowCatModal(false)}
           onSave={(groups) => { setCategoryGroups(groups); setShowCatModal(false); }}
+        />
+      )}
+
+      {showViolModal && (
+        <ViolationsAdminModal
+          sport={{ ...sport, violations }}
+          onClose={() => setShowViolModal(false)}
+          onSave={(v) => { setViolations(v); setShowViolModal(false); }}
         />
       )}
 
@@ -766,6 +862,7 @@ export default function SportsTeamsManager({ level }) {
   const [teamsList,   setTeamsList]   = useState([]);
 
   const [catTarget,         setCatTarget]         = useState(null); // sport row id
+  const [violTarget,        setViolTarget]        = useState(null); // sport row id
   const [posTarget,         setPosTarget]         = useState(null); // sport row id
   const [pickerTarget,      setPickerTarget]      = useState(null); // team row id
   const [showSportsConfirm, setShowSportsConfirm] = useState(false);
@@ -794,6 +891,7 @@ export default function SportsTeamsManager({ level }) {
         categoryGroups: (s.categoryGroups || (s.categories
           ? [{ id: uid(), label: 'DIVISION', divisions: s.categories.map(ensureId) }]
           : [])).map(g => ({ ...ensureId(g), divisions: (g.divisions || []).map(ensureId) })),
+        violations: (s.violations || []).map(ensureId),
         positions: s.positions || [],
       }));
       const teams = (cfg.teams || []).map(t => ({
@@ -820,7 +918,7 @@ export default function SportsTeamsManager({ level }) {
   /* ── Sport row helpers ── */
   const setSportsCount = (n) => setSportsRows(prev => {
     const next = [...prev];
-    while (next.length < n) next.push({ id: uid(), name: '', logo: null, categoryGroups: [], positions: [] });
+    while (next.length < n) next.push({ id: uid(), name: '', logo: null, categoryGroups: [], violations: [], positions: [] });
     while (next.length > n) next.pop();
     return next;
   });
@@ -998,6 +1096,7 @@ export default function SportsTeamsManager({ level }) {
 
   /* ── Derived ── */
   const catSportRow  = sportsRows.find(r => r.id === catTarget)     || null;
+  const violSportRow = sportsRows.find(r => r.id === violTarget)    || null;
   const posSportRow  = sportsRows.find(r => r.id === posTarget)     || null;
   const pickerTeam   = teamsRows.find(r => r.id === pickerTarget)   || null;
 
@@ -1048,6 +1147,7 @@ export default function SportsTeamsManager({ level }) {
                   <th>Logo</th>
                   <th>Categories</th>
                   <th>Division</th>
+                  <th>Violations</th>
                   <th>Positions</th>
                   <th />
                 </tr>
@@ -1083,6 +1183,19 @@ export default function SportsTeamsManager({ level }) {
                           className="stm-plus-btn"
                           title="Set categories & divisions"
                           onClick={() => setCatTarget(row.id)}
+                        >
+                          <FaPlus />
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="stm-cat-count-cell">
+                        <span className="stm-cat-badge">{row.violations.length || '—'}</span>
+                        <button
+                          type="button"
+                          className="stm-plus-btn"
+                          title="Set violation types"
+                          onClick={() => setViolTarget(row.id)}
                         >
                           <FaPlus />
                         </button>
@@ -1457,6 +1570,17 @@ export default function SportsTeamsManager({ level }) {
           onSave={(groups) => {
             updateSportRow(catSportRow.id, { categoryGroups: groups });
             setCatTarget(null);
+          }}
+        />
+      )}
+
+      {violSportRow && (
+        <ViolationsAdminModal
+          sport={violSportRow}
+          onClose={() => setViolTarget(null)}
+          onSave={(violations) => {
+            updateSportRow(violSportRow.id, { violations });
+            setViolTarget(null);
           }}
         />
       )}
