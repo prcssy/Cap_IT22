@@ -67,9 +67,10 @@ service cloud.firestore {
     // from the schedule (AdminSchedulePage) can clean up every user's
     // stale savedMatches doc for that match, not just the admin's own.
     match /savedMatches/{docId} {
-      allow read:          if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
-      allow create, update: if signedIn() && request.resource.data.uid == request.auth.uid;
-      allow delete:         if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
+      allow read:   if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
+      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow update: if signedIn() && resource.data.uid == request.auth.uid && request.resource.data.uid == request.auth.uid;
+      allow delete: if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
     }
   }
 }
