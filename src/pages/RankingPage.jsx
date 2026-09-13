@@ -219,7 +219,7 @@ function MedalTable({ data }) {
         <div className="rk-cell rk-cell-rank" role="columnheader">RANK</div>
         <div className="rk-cell rk-cell-logo" role="columnheader">LOGO</div>
         <div className="rk-cell rk-cell-team" role="columnheader">TEAMS</div>
-        <div className="rk-cell rk-cell-num">GOLD &darr;</div>
+        <div className="rk-cell rk-cell-num">GOLD</div>
         <div className="rk-cell rk-cell-num">SILVER</div>
         <div className="rk-cell rk-cell-num">BRONZE</div>
         <div className="rk-cell rk-cell-num">TOTAL</div>
@@ -400,12 +400,12 @@ export default function RankingPage() {
 
     return searched.map((t) => {
       /* A rating is an Elo value, not a score you can bank. Ratings from
-         several sports/divisions are therefore AVERAGED, never summed.
-         Summing was the bug behind "why is Basa on top?" — a team merely
-         registered in five sports collected 5 × 1200 = 6000 and outranked
-         every team that had actually won matches. Averaging keeps the whole
-         table on one 1200-centred scale: an unplayed team sits at exactly
-         1200, winners rise above it, and losers fall below it. */
+         several sports/divisions are therefore AVERAGED (within one sport)
+         or reduced to their CHANGE from the 1200 baseline (across sports),
+         never summed outright. Summing raw ratings was the bug behind "why
+         is Basa on top?" — a team merely registered in five sports collected
+         5 × 1200 = 6000 and outranked every team that had actually won
+         matches. */
       /* Each scope contributes its own rating; scopes of the same sport are
          averaged into one sport rating first, and only then are the sports
          averaged together. That two-step roll-up is what keeps the tabs
@@ -424,27 +424,40 @@ export default function RankingPage() {
         .map((points) => points.reduce((sum, p) => sum + p, 0) / points.length);
 
       /* Nothing recorded in THIS scope yet. Rather than dropping the team
-         to a flat 1200, carry over the standing it already holds elsewhere
-         — that is exactly the rating Moderator will use as its "previous
-         points" when this team finally plays here, so the two pages never
-         disagree about where a team starts. Only a team with no rating
-         anywhere shows the new-team baseline. */
+         to a flat 1200, carry over the standing it already holds in another
+         DIVISION OF THE SAME SPORT — that is exactly the rating Moderator
+         will use as its "previous points" when this team finally plays
+         here, so the two pages never disagree about where a team starts.
+         Must stay scoped to championSport: without that filter, picking the
+         Tennis tab for a team that has only ever played Badminton pulled in
+         its Badminton rating instead of showing the untouched 1200 baseline.
+         Only a team with no rating anywhere (or none in this sport, when a
+         specific sport tab is active) shows the new-team baseline. */
       const carried = [];
       if (!sportAverages.length) {
         const bySportAll = new Map();
         Object.entries(rankingPoints).forEach(([scopeKey, teamMap]) => {
+          const [scopeSport] = String(scopeKey).split('::');
+          if (championSport !== 'All Sports' && norm(scopeSport) !== norm(championSport)) return;
           const savedPoints = savedPointsForTeam(teamMap, t);
           if (savedPoints == null) return;
-          const [scopeSport] = String(scopeKey).split('::');
           if (!bySportAll.has(scopeSport)) bySportAll.set(scopeSport, []);
           bySportAll.get(scopeSport).push(savedPoints);
         });
         bySportAll.forEach((list) => carried.push(list.reduce((sum, p) => sum + p, 0) / list.length));
       }
 
+      /* Each individual sport keeps its own 1200 baseline (Men's Badminton
+         1200 -> 1230 stays 1230 on that tab). "All Sports" must NOT average
+         those absolute values together — a team strong in one sport and
+         untouched (1200) in another would get dragged toward 1200 forever.
+         Instead it accumulates each sport's CHANGE from 1200, so Badminton
+         +30 and Chess +0 combine into 1200 + 30 = 1230 overall. */
       const source = sportAverages.length ? sportAverages : carried;
       const rating = source.length
-        ? Math.round(source.reduce((sum, avg) => sum + avg, 0) / source.length)
+        ? (championSport === 'All Sports'
+          ? Math.round(DEFAULT_POINTS + source.reduce((sum, avg) => sum + (avg - DEFAULT_POINTS), 0))
+          : Math.round(source.reduce((sum, avg) => sum + avg, 0) / source.length))
         : DEFAULT_POINTS;
       const played = [...bySportRatings.values()].reduce((n, points) => n + points.length, 0);
       /* True when the number above was inherited from another sport or
@@ -526,8 +539,12 @@ export default function RankingPage() {
       });
     }
 
+    const searchedTeams = search.trim()
+      ? teams.filter(t => norm(t.name).includes(norm(search)))
+      : teams;
+
     // Keep registered teams visible even before they have a recorded win.
-    teams.forEach((team) => {
+    searchedTeams.forEach((team) => {
       if (medalSport !== 'All Sports' && !(team.sportIds || []).some((s) => norm(s) === norm(medalSport))) return;
       if (divisionPicked && !namesInDivision.has(norm(team.name))) return;
       ensureTeam({ id: team.id, name: team.name, logo: team.logo });
@@ -540,6 +557,7 @@ export default function RankingPage() {
       const participants = record.participants || [];
       if (participants.length > 2) {
         participants.forEach((participant) => {
+          if (search.trim() && !norm(participant?.name || '').includes(norm(search))) return;
           const row = ensureTeam(participant);
           if (!row) return;
           if (participant.place === 1) row.gold += 1;
@@ -549,21 +567,23 @@ export default function RankingPage() {
         return;
       }
 
-      const teamA = ensureTeam(record.teamA);
-      const teamB = ensureTeam(record.teamB);
-      if (!teamA || !teamB) return;
+      const teamAMatches = !search.trim() || norm(record.teamA?.name || '').includes(norm(search));
+      const teamBMatches = !search.trim() || norm(record.teamB?.name || '').includes(norm(search));
+      const teamA = teamAMatches ? ensureTeam(record.teamA) : null;
+      const teamB = teamBMatches ? ensureTeam(record.teamB) : null;
+      if (!teamA && !teamB) return;
       if (record.draw || record.winner === 'DRAW') return;
       if (record.winner === 'A') {
-        teamA.gold += 1;
-        teamB.silver += 1;
+        if (teamA) teamA.gold += 1;
+        if (teamB) teamB.silver += 1;
       } else if (record.winner === 'B') {
-        teamB.gold += 1;
-        teamA.silver += 1;
+        if (teamB) teamB.gold += 1;
+        if (teamA) teamA.silver += 1;
       }
     });
 
     return [...byTeam.values()];
-  }, [teams, records, medalSport, medalDivision]);
+  }, [teams, records, medalSport, medalDivision, search]);
 
   return (
     <div className="rk-page">

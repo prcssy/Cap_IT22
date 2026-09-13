@@ -50,6 +50,26 @@ const POSITIONS = [
   'Outfield', 'Midfielder', 'Goalkeeper', 'Sprinter', 'Other',
 ];
 
+const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB — keep in sync with storage.rules
+
+const PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+const WAIVER_MIME_TYPES = [
+  'application/pdf',
+  'application/msword',
+  'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+];
+
+function validateUpload(file, allowedTypes) {
+  if (file.size > MAX_FILE_SIZE_BYTES) {
+    return 'File is too large — max 5 MB.';
+  }
+  if (!allowedTypes.includes(file.type)) {
+    return 'Unsupported file type.';
+  }
+  return null;
+}
+
 const INITIAL = {
   event: '',
   fullName: '', dob: '', age: '',
@@ -272,19 +292,38 @@ export default function RegistrationPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolLevel]);
 
-  const handleFile = (setter, key) => (e) => {
+  const handleFile = (setter, key, allowedTypes) => (e) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setter(file);
-      if (key) {
-        setErrors(prev => {
-          if (!prev[key]) return prev;
-          const next = { ...prev };
-          delete next[key];
-          return next;
-        });
-      }
+    if (!file) return;
+
+    const validationError = validateUpload(file, allowedTypes);
+    if (validationError) {
+      setter(null);
+      e.target.value = ''; // let the user re-pick the same filename after fixing it
+      setErrors(prev => ({ ...prev, [key]: validationError }));
+      return;
     }
+
+    setter(file);
+    setErrors(prev => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
+  const removeFile = (e, setter, key, ref) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setter(null);
+    setErrors(prev => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+    if (ref.current) ref.current.value = '';
   };
 
   const handleReset = () => {
@@ -650,26 +689,44 @@ export default function RegistrationPage() {
 
             {/* Row 6: Uploads + Message */}
             <div className="reg-uploads-row">
-              <Field label="Upload Photo">
-                <label className="reg-upload-box">
-                  <input type="file" accept="image/*" ref={photoRef} onChange={handleFile(setPhoto)} />
+              <Field label="Upload Photo" error={errors.photo}>
+                <label className={`reg-upload-box${photo ? ' reg-upload-box--filled' : ''}`}>
+                  <input type="file" accept="image/*" ref={photoRef} onChange={handleFile(setPhoto, 'photo', PHOTO_MIME_TYPES)} disabled={!!photo} />
                   <div className="reg-upload-icon">👤</div>
-                  <span className="reg-upload-caption">Click to upload photo</span>
                   {photo
-                    ? <span className="reg-upload-preview">{photo.name}</span>
-                    : <span className="reg-upload-sub">JPG, PNG, max 5 MB</span>
+                    ? (
+                      <span className="reg-upload-preview">
+                        {photo.name}
+                        <button type="button" className="reg-upload-remove" onClick={(e) => removeFile(e, setPhoto, 'photo', photoRef)} aria-label="Remove photo" />
+                      </span>
+                    )
+                    : (
+                      <>
+                        <span className="reg-upload-caption">Click to upload photo</span>
+                        <span className="reg-upload-sub">JPG, PNG, max 5 MB</span>
+                      </>
+                    )
                   }
                 </label>
               </Field>
 
               <Field label="Upload Waiver / Consent Form" error={errors.waiver}>
-                <label className="reg-upload-box">
-                  <input type="file" accept=".pdf,.doc,.docx,image/*" ref={waiverRef} onChange={handleFile(setWaiver, 'waiver')} />
+                <label className={`reg-upload-box${waiver ? ' reg-upload-box--filled' : ''}`}>
+                  <input type="file" accept=".pdf,.doc,.docx" ref={waiverRef} onChange={handleFile(setWaiver, 'waiver', WAIVER_MIME_TYPES)} disabled={!!waiver} />
                   <div className="reg-upload-icon">📄</div>
-                  <span className="reg-upload-caption">Click to upload waiver</span>
                   {waiver
-                    ? <span className="reg-upload-preview">{waiver.name}</span>
-                    : <span className="reg-upload-sub">PDF, DOC, max 5 MB (optional for now)</span>
+                    ? (
+                      <span className="reg-upload-preview">
+                        {waiver.name}
+                        <button type="button" className="reg-upload-remove" onClick={(e) => removeFile(e, setWaiver, 'waiver', waiverRef)} aria-label="Remove waiver" />
+                      </span>
+                    )
+                    : (
+                      <>
+                        <span className="reg-upload-caption">Click to upload waiver</span>
+                        <span className="reg-upload-sub">PDF, DOC, max 5 MB (optional for now)</span>
+                      </>
+                    )
                   }
                 </label>
               </Field>

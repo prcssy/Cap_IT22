@@ -1,12 +1,32 @@
 rules_version = '2';
-
 service firebase.storage {
   match /b/{bucket}/o {
+
     // Registration photo/waiver uploads: registrations/{uid}/{timestamp}_photo|waiver
+    // Path has no file extension, so type is enforced via contentType, not path suffix.
     match /registrations/{uid}/{fileName} {
-      allow read: if request.auth != null;
-      allow write: if request.auth != null && request.auth.uid == uid
-                   && request.resource.size < 5 * 1024 * 1024;
+      allow read: if request.auth != null && request.auth.uid == uid; // scoped to the uploading owner —
+                             // needed so getDownloadURL() succeeds right after upload in uploadFile()
+                             // (src/services/firestoreService.js). Admin "View photo/waiver" links
+                             // still work via the stored URL's embedded download token, which
+                             // Firebase honors independently of a fresh rules evaluation.
+      allow create: if request.auth != null
+                    && request.auth.uid == uid
+                    && request.resource.size <= 5 * 1024 * 1024
+                    && (
+                         (fileName.matches('.*_photo') && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'])
+                         || (fileName.matches('.*_waiver') && (
+                              request.resource.contentType == 'application/pdf'
+                              || request.resource.contentType == 'application/msword'
+                              || request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                            ))
+                       );
+      allow update, delete: if false; // registrations are create-once from the client
+    }
+
+    // Deny everything else by default.
+    match /{allPaths=**} {
+      allow read, write: if false;
     }
   }
 }
