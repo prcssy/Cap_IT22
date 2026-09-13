@@ -148,21 +148,33 @@ function SportTabs({ active, onChange, sports }) {
 
 
 /* ── Potential Champion table ── */
-function ChampionTable({ data }) {
+function ChampionTable({ data, search }) {
   /* Sorted highest rating first, then by win differential, then by name.
      The name tie-break is what makes the table static: teams sitting on
      the identical 1200 baseline keep the same order on every render
-     instead of shuffling with whatever order Firestore returned. */
+     instead of shuffling with whatever order Firestore returned.
+
+     Rank is assigned here, over the FULL unfiltered data, before the search
+     box ever narrows what's shown — so filtering the list for a search term
+     can never renumber a team's actual position (e.g. BASA sitting at rank 4
+     must still read "4" when you search "BASA", not jump to "1"). */
   const ranked = useMemo(
-    () => [...data].sort((a, b) =>
-      b.rating - a.rating
-      || (b.wins - b.losses) - (a.wins - a.losses)
-      || b.wins - a.wins
-      || a.team.localeCompare(b.team)),
+    () => [...data]
+      .sort((a, b) =>
+        b.rating - a.rating
+        || (b.wins - b.losses) - (a.wins - a.losses)
+        || b.wins - a.wins
+        || a.team.localeCompare(b.team))
+      .map((t, i) => ({ ...t, rank: i + 1 })),
     [data]
   );
 
-  if (ranked.length === 0) {
+  const visible = useMemo(() => {
+    const q = norm(search);
+    return q ? ranked.filter(t => norm(t.team).includes(q)) : ranked;
+  }, [ranked, search]);
+
+  if (visible.length === 0) {
     return <div className="rk-table-empty">No teams found for this sport/level yet.</div>;
   }
 
@@ -175,8 +187,8 @@ function ChampionTable({ data }) {
         <div className="rk-cell rk-cell-num" role="columnheader">RATING</div>
         <div className="rk-cell rk-cell-num" role="columnheader">WIN-LOSS</div>
       </div>
-      {ranked.map((t, i) => {
-        const rank = i + 1;
+      {visible.map((t) => {
+        const rank = t.rank;
         const rankClass = rank <= 3 ? `rk-row--rank-${rank}` : '';
         return (
           <div className={`rk-row ${rankClass}`} role="row" key={t.id}>
@@ -205,13 +217,22 @@ function ChampionTable({ data }) {
 }
 
 /* ── Medal Tally table ── */
-function MedalTable({ data }) {
+function MedalTable({ data, search }) {
+  /* Same rule as ChampionTable: rank is fixed over the full data before the
+     search box filters what's displayed, so a filtered team keeps its real
+     rank instead of being renumbered starting from 1. */
   const ranked = useMemo(
     () => [...data]
       .map(t => ({ ...t, total: t.gold + t.silver + t.bronze }))
-      .sort((a, b) => b.gold - a.gold || b.total - a.total || b.silver - a.silver || a.team.localeCompare(b.team)),
+      .sort((a, b) => b.gold - a.gold || b.total - a.total || b.silver - a.silver || a.team.localeCompare(b.team))
+      .map((t, i) => ({ ...t, rank: i + 1 })),
     [data]
   );
+
+  const visible = useMemo(() => {
+    const q = norm(search);
+    return q ? ranked.filter(t => norm(t.team).includes(q)) : ranked;
+  }, [ranked, search]);
 
   return (
     <div className="rk-table-wrap" role="table">
@@ -224,8 +245,8 @@ function MedalTable({ data }) {
         <div className="rk-cell rk-cell-num">BRONZE</div>
         <div className="rk-cell rk-cell-num">TOTAL</div>
       </div>
-      {ranked.map((t, i) => {
-        const rank = i + 1;
+      {visible.map((t) => {
+        const rank = t.rank;
         const rankClass = rank <= 3 ? `rk-row--rank-${rank}` : '';
         return (
           <div className={`rk-row rk-row--medal ${rankClass}`} role="row" key={t.id}>
@@ -394,11 +415,10 @@ export default function RankingPage() {
       ? bySport.filter(t => namesInDivision.has(norm(t.name)))
       : bySport;
 
-    const searched = search.trim()
-      ? inDivision.filter(t => norm(t.name).includes(norm(search)))
-      : inDivision;
-
-    return searched.map((t) => {
+    /* Search is applied later, inside ChampionTable, AFTER rank is computed —
+       narrowing the roster here would shrink the field a team is ranked
+       against and shift its rank whenever a search term is typed. */
+    return inDivision.map((t) => {
       /* A rating is an Elo value, not a score you can bank. Ratings from
          several sports/divisions are therefore AVERAGED (within one sport)
          or reduced to their CHANGE from the 1200 baseline (across sports),
@@ -495,7 +515,7 @@ export default function RankingPage() {
         color: colorForTeam(t.name), rating, wins, losses, played, carriedOver,
       };
     });
-  }, [teams, rankingPoints, records, championSport, championDivision, search]);
+  }, [teams, rankingPoints, records, championSport, championDivision]);
 
   /* Medal tally is driven only by finalized records saved by Moderator.
      For a 1-vs-1 record, the selected winner receives gold and the other
@@ -539,12 +559,11 @@ export default function RankingPage() {
       });
     }
 
-    const searchedTeams = search.trim()
-      ? teams.filter(t => norm(t.name).includes(norm(search)))
-      : teams;
-
+    /* Search is applied later, inside MedalTable, AFTER rank is computed —
+       narrowing the roster here would shrink the field a team is ranked
+       against and shift its rank whenever a search term is typed. */
     // Keep registered teams visible even before they have a recorded win.
-    searchedTeams.forEach((team) => {
+    teams.forEach((team) => {
       if (medalSport !== 'All Sports' && !(team.sportIds || []).some((s) => norm(s) === norm(medalSport))) return;
       if (divisionPicked && !namesInDivision.has(norm(team.name))) return;
       ensureTeam({ id: team.id, name: team.name, logo: team.logo });
@@ -557,7 +576,6 @@ export default function RankingPage() {
       const participants = record.participants || [];
       if (participants.length > 2) {
         participants.forEach((participant) => {
-          if (search.trim() && !norm(participant?.name || '').includes(norm(search))) return;
           const row = ensureTeam(participant);
           if (!row) return;
           if (participant.place === 1) row.gold += 1;
@@ -567,10 +585,8 @@ export default function RankingPage() {
         return;
       }
 
-      const teamAMatches = !search.trim() || norm(record.teamA?.name || '').includes(norm(search));
-      const teamBMatches = !search.trim() || norm(record.teamB?.name || '').includes(norm(search));
-      const teamA = teamAMatches ? ensureTeam(record.teamA) : null;
-      const teamB = teamBMatches ? ensureTeam(record.teamB) : null;
+      const teamA = ensureTeam(record.teamA);
+      const teamB = ensureTeam(record.teamB);
       if (!teamA && !teamB) return;
       if (record.draw || record.winner === 'DRAW') return;
       if (record.winner === 'A') {
@@ -583,7 +599,7 @@ export default function RankingPage() {
     });
 
     return [...byTeam.values()];
-  }, [teams, records, medalSport, medalDivision, search]);
+  }, [teams, records, medalSport, medalDivision]);
 
   return (
     <div className="rk-page">
@@ -651,7 +667,7 @@ export default function RankingPage() {
             {loading ? (
               <div className="rk-table-empty">Loading…</div>
             ) : (
-              <ChampionTable data={championData} />
+              <ChampionTable data={championData} search={search} />
             )}
           </div>
         </section>
@@ -677,7 +693,7 @@ export default function RankingPage() {
             </select>
           </div>
           <div className="rk-card rk-card--light">
-            <MedalTable data={medalData} />
+            <MedalTable data={medalData} search={search} />
           </div>
         </section>
 

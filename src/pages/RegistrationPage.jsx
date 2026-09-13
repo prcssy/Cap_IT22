@@ -1,4 +1,10 @@
 import React, { useState, useRef, useContext, useEffect, useCallback, useMemo } from 'react';
+import {
+  parsePhoneNumberFromString,
+  getCountries,
+  getCountryCallingCode,
+  validatePhoneNumberLength,
+} from 'libphonenumber-js';
 import { AuthContext } from '../components/AuthContext';
 import {
   createRegistration,
@@ -45,10 +51,52 @@ function getSchoolLevel(gradeLevel) {
   return null;
 }
 
-const POSITIONS = [
-  'Forward', 'Guard', 'Center', 'Pitcher', 'Catcher', 'Shortstop',
-  'Outfield', 'Midfielder', 'Goalkeeper', 'Sprinter', 'Other',
-];
+// Region code ("PH", "US") -> display name ("Philippines", "United
+// States"), via the browser's own locale data — no separate country-name
+// dependency needed. Falls back to the bare code on older browsers.
+const regionNamer = typeof Intl !== 'undefined' && Intl.DisplayNames
+  ? new Intl.DisplayNames(['en'], { type: 'region' })
+  : null;
+function regionName(code) {
+  if (!code) return '';
+  try { return regionNamer ? regionNamer.of(code) : code; } catch { return code; }
+}
+
+// Country list for the phone-number Country dropdown below. There is no
+// separate "countries API" anywhere in this project — this reuses
+// libphonenumber-js (already installed for phone validation/formatting,
+// see the numvalidate.com note further down), which ships every country's
+// ISO code and calling code it supports (245 total), entirely offline —
+// no network fetch, so no loading/error state actually applies here the
+// way it would for a real remote API. Kept defensive anyway (empty-list
+// fallback below) in case that ever changes.
+const COUNTRY_OPTIONS = getCountries()
+  .map((code) => ({ code, name: regionName(code), callingCode: getCountryCallingCode(code) }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+const DEFAULT_PHONE_COUNTRY = 'PH';
+
+// Per-country phone number rules (length, validity) come from
+// libphonenumber-js's own metadata via validatePhoneNumberLength — the
+// same Google libphonenumber data numvalidate.com's now-retired free API
+// used to wrap — instead of one fixed digit count for every country.
+// Returns undefined when the length is fine, or 'TOO_SHORT' / 'TOO_LONG' /
+// etc. otherwise (see libphonenumber-js docs for the full reason list).
+function usePhoneFieldCheck(nationalNumber, country) {
+  return useMemo(() => {
+    if (!nationalNumber) return { lengthIssue: null, valid: null };
+
+    const lengthIssue = validatePhoneNumberLength(nationalNumber, country);
+    if (lengthIssue) return { lengthIssue, valid: false };
+
+    const parsed = parsePhoneNumberFromString(nationalNumber, country);
+    return {
+      lengthIssue: null,
+      valid: !!parsed && parsed.isValid(),
+      internationalFormat: parsed?.formatInternational(),
+    };
+  }, [nationalNumber, country]);
+}
 
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB — keep in sync with storage.rules
 
@@ -74,8 +122,16 @@ const INITIAL = {
   event: '',
   fullName: '', dob: '', age: '',
   gender: '',
-  contactNumber: '', email: '',
+  // `phoneCountry` is shared by Contact Number and Emergency Contact — one
+  // Country dropdown drives both, since the two are almost always in the
+  // same country and a second selector would just be more UI to keep in
+  // sync. `contactNumber`/`emergencyContactPhone` are the derived E.164
+  // strings (see composedContactNumber/composedEmergencyPhone) built from
+  // phoneCountry + the national-number digits actually typed.
+  phoneCountry: DEFAULT_PHONE_COUNTRY,
+  contactNumberNational: '', contactNumber: '',
   address: '', emergencyContact: '',
+  emergencyContactName: '', emergencyContactNational: '', emergencyContactPhone: '',
   gradeLevel: '', section: '',
   teamName: '', sport: '', position: '',
   message: '',
@@ -115,8 +171,12 @@ export default function RegistrationPage() {
 
   // Sport / Team options, sourced live from the admin's Sports & Teams
   // config for whichever school level the selected Grade/Year falls in.
-  const [sportOptions, setSportOptions] = useState([]);
-  const [teamOptions, setTeamOptions]   = useState([]);
+  // Full objects are kept (not just names) so Team Name, Sport/Event, and
+  // Position can be cross-filtered: a team only offers the sports in its
+  // own sportIds, a sport only offers the teams that list it, and the
+  // Position choices come from that sport's own configured position list.
+  const [sportsConfig, setSportsConfig] = useState([]);
+  const [teamsConfig, setTeamsConfig]   = useState([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   // How many players have registered per event so far. Read from the
@@ -161,6 +221,66 @@ export default function RegistrationPage() {
       return next;
     });
   };
+
+  // One Country dropdown drives both phone fields below it — changing it
+  // re-validates whichever national numbers are already typed against the
+  // newly selected country's rules (via contactNumberCheck/
+  // emergencyPhoneCheck, which take phoneCountry as a dependency).
+  const onPhoneCountryChange = (e) => {
+    const phoneCountry = e.target.value;
+    setForm(prev => ({ ...prev, phoneCountry }));
+    setErrors(prev => {
+      if (!prev.contactNumber && !prev.emergencyContact) return prev;
+      const next = { ...prev };
+      delete next.contactNumber;
+      delete next.emergencyContact;
+      return next;
+    });
+  };
+
+  // Digits-only national number, capped at the selected country's own max
+  // length (validatePhoneNumberLength) — typing a digit that would push
+  // the number past what that country allows is simply rejected, rather
+  // than silently accepted and only flagged as an error later. Backspacing
+  // (or pasting something shorter) always goes through, so users can
+  // always fix a number rather than getting stuck.
+  const onNationalNumberChange = (nationalKey, errorKey) => (e) => {
+    const digits = e.target.value.replace(/\D/g, '');
+    setForm(prev => {
+      if (digits.length > prev[nationalKey].length
+          && validatePhoneNumberLength(digits, prev.phoneCountry) === 'TOO_LONG') {
+        return prev;
+      }
+      return { ...prev, [nationalKey]: digits };
+    });
+    setErrors(prev => {
+      if (!prev[errorKey]) return prev;
+      const next = { ...prev };
+      delete next[errorKey];
+      return next;
+    });
+  };
+
+  const onContactNationalChange = onNationalNumberChange('contactNumberNational', 'contactNumber');
+  const onEmergencyNationalChange = onNationalNumberChange('emergencyContactNational', 'emergencyContact');
+
+  // Emergency Contact is a name plus a phone number, entered as two
+  // separate inputs but saved as the single "Name - +<number>" string
+  // AdminSchedulePage/Firestore already expect (see composedEmergencyContact
+  // below) — same split-inputs-compose-into-one-string approach as address.
+  const onEmergencyNameChange = (e) => {
+    const emergencyContactName = e.target.value;
+    setForm(prev => ({ ...prev, emergencyContactName }));
+    setErrors(prev => {
+      if (!prev.emergencyContact) return prev;
+      const next = { ...prev };
+      delete next.emergencyContact;
+      return next;
+    });
+  };
+
+  const contactNumberCheck  = usePhoneFieldCheck(form.contactNumberNational, form.phoneCountry);
+  const emergencyPhoneCheck = usePhoneFieldCheck(form.emergencyContactNational, form.phoneCountry);
 
   // Age is derived from Date of Birth rather than typed in directly —
   // keeps the two fields from disagreeing with each other.
@@ -235,6 +355,48 @@ export default function RegistrationPage() {
     setForm(prev => (prev.address === composedAddress ? prev : { ...prev, address: composedAddress }));
   }, [composedAddress]);
 
+  // Contact Number saved as a full E.164 string — phoneCountry's calling
+  // code plus whatever national digits were typed. Empty until the user
+  // actually types a national number, same as every other derived field
+  // here (address, emergencyContact).
+  const composedContactNumber = useMemo(() => (
+    form.contactNumberNational
+      ? `+${getCountryCallingCode(form.phoneCountry)}${form.contactNumberNational}`
+      : ''
+  ), [form.phoneCountry, form.contactNumberNational]);
+
+  useEffect(() => {
+    setForm(prev => (prev.contactNumber === composedContactNumber
+      ? prev
+      : { ...prev, contactNumber: composedContactNumber }));
+  }, [composedContactNumber]);
+
+  const composedEmergencyPhone = useMemo(() => (
+    form.emergencyContactNational
+      ? `+${getCountryCallingCode(form.phoneCountry)}${form.emergencyContactNational}`
+      : ''
+  ), [form.phoneCountry, form.emergencyContactNational]);
+
+  useEffect(() => {
+    setForm(prev => (prev.emergencyContactPhone === composedEmergencyPhone
+      ? prev
+      : { ...prev, emergencyContactPhone: composedEmergencyPhone }));
+  }, [composedEmergencyPhone]);
+
+  const composedEmergencyContact = useMemo(() => {
+    const name  = form.emergencyContactName.trim();
+    const phone = form.emergencyContactPhone;
+    return [name, phone].filter(Boolean).join(' - ');
+  }, [form.emergencyContactName, form.emergencyContactPhone]);
+
+  // Same single-string requirement as address: createRegistration/
+  // AdminSchedulePage only know about one `emergencyContact` field.
+  useEffect(() => {
+    setForm(prev => (prev.emergencyContact === composedEmergencyContact
+      ? prev
+      : { ...prev, emergencyContact: composedEmergencyContact }));
+  }, [composedEmergencyContact]);
+
   const clearAddrError = (key) => setErrors(prev => {
     if (!prev[key]) return prev;
     const next = { ...prev };
@@ -262,8 +424,8 @@ export default function RegistrationPage() {
     let cancelled = false;
 
     if (!schoolLevel) {
-      setSportOptions([]);
-      setTeamOptions([]);
+      setSportsConfig([]);
+      setTeamsConfig([]);
       return;
     }
 
@@ -271,26 +433,93 @@ export default function RegistrationPage() {
     getSportsTeamsConfig(schoolLevel)
       .then(({ sports, teams }) => {
         if (cancelled) return;
-        const sportNames = [...new Set((sports || []).map(s => s.name).filter(Boolean))].sort();
-        const teamNames  = [...new Set((teams  || []).map(t => t.name).filter(Boolean))].sort();
-        setSportOptions(sportNames);
-        setTeamOptions(teamNames);
+        setSportsConfig((sports || []).filter(s => s.name).slice().sort((a, b) => a.name.localeCompare(b.name)));
+        setTeamsConfig((teams || []).filter(t => t.name).slice().sort((a, b) => a.name.localeCompare(b.name)));
       })
       .catch((error) => {
         console.error('Failed to load sports/teams config:', error);
-        if (!cancelled) { setSportOptions([]); setTeamOptions([]); }
+        if (!cancelled) { setSportsConfig([]); setTeamsConfig([]); }
       })
       .finally(() => { if (!cancelled) setLoadingOptions(false); });
 
     return () => { cancelled = true; };
   }, [schoolLevel]);
 
-  // Selected grade level changed school levels — clear any team/sport
-  // pick that no longer belongs to the newly loaded options.
+  // Selected grade level changed school levels — clear any team/sport/
+  // position pick that no longer belongs to the newly loaded options.
   useEffect(() => {
-    setForm(prev => ({ ...prev, teamName: '', sport: '' }));
+    setForm(prev => ({ ...prev, teamName: '', sport: '', position: '' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolLevel]);
+
+  const selectedTeamConfig = useMemo(
+    () => teamsConfig.find(t => t.name === form.teamName) || null,
+    [teamsConfig, form.teamName]
+  );
+  const selectedSportConfig = useMemo(
+    () => sportsConfig.find(s => s.name === form.sport) || null,
+    [sportsConfig, form.sport]
+  );
+
+  // Team Name and Sport / Event cross-filter each other via each team's
+  // sportIds (the sports that team actually plays, set by the admin in
+  // Sports & Teams): picking one narrows the other down to a compatible
+  // pick instead of letting the two disagree.
+  const sportOptions = useMemo(() => {
+    const names = sportsConfig.map(s => s.name);
+    if (!selectedTeamConfig || !(selectedTeamConfig.sportIds || []).length) return names;
+    const allowed = new Set(selectedTeamConfig.sportIds);
+    return names.filter(n => allowed.has(n));
+  }, [sportsConfig, selectedTeamConfig]);
+
+  const teamOptions = useMemo(() => {
+    const names = teamsConfig.map(t => t.name);
+    if (!selectedSportConfig) return names;
+    return names.filter(n => {
+      const team = teamsConfig.find(t => t.name === n);
+      return !(team?.sportIds || []).length || team.sportIds.includes(selectedSportConfig.name);
+    });
+  }, [teamsConfig, selectedSportConfig]);
+
+  // Positions come entirely from the selected sport's own admin-configured
+  // list (Sports & Teams -> edit sport -> Positions, or the Positions
+  // column when adding a new sport) — no generic fallback, so a sport the
+  // admin hasn't set positions for correctly offers none instead of an
+  // unrelated hardcoded list.
+  const positionOptions = useMemo(
+    () => selectedSportConfig?.positions || [],
+    [selectedSportConfig]
+  );
+
+  const handleTeamChange = (e) => {
+    const teamName = e.target.value;
+    const team = teamsConfig.find(t => t.name === teamName);
+    setForm(prev => {
+      const sportStillValid = !team || !(team.sportIds || []).length || !prev.sport || team.sportIds.includes(prev.sport);
+      return { ...prev, teamName, sport: sportStillValid ? prev.sport : '' };
+    });
+    setErrors(prev => {
+      if (!prev.teamName) return prev;
+      const next = { ...prev };
+      delete next.teamName;
+      return next;
+    });
+  };
+
+  const handleSportChange = (e) => {
+    const sportName = e.target.value;
+    setForm(prev => {
+      const team = teamsConfig.find(t => t.name === prev.teamName);
+      const teamStillValid = !team || !(team.sportIds || []).length || !sportName || team.sportIds.includes(sportName);
+      return { ...prev, sport: sportName, teamName: teamStillValid ? prev.teamName : '', position: '' };
+    });
+    setErrors(prev => {
+      if (!prev.sport) return prev;
+      const next = { ...prev };
+      delete next.sport;
+      return next;
+    });
+  };
 
   const handleFile = (setter, key, allowedTypes) => (e) => {
     const file = e.target.files?.[0];
@@ -346,12 +575,33 @@ export default function RegistrationPage() {
     if (!form.age)                    errs.age              = 'Age is required';
     else if (Number(form.age) <= 0)   errs.age              = 'Enter a valid age';
     if (!form.gender)                 errs.gender           = 'Please select a gender';
-    if (!form.contactNumber.trim())   errs.contactNumber    = 'Contact number is required';
+
+    const phoneCountryName = COUNTRY_OPTIONS.find(c => c.code === form.phoneCountry)?.name || form.phoneCountry;
+    const phoneFieldError = (check) => {
+      if (check.lengthIssue === 'TOO_SHORT') return `Too short for ${phoneCountryName} — check the number`;
+      if (check.lengthIssue === 'TOO_LONG')  return `Too long for ${phoneCountryName} — check the number`;
+      if (check.lengthIssue)                 return 'Enter a valid phone number';
+      if (!check.valid)                      return `Not a valid ${phoneCountryName} phone number`;
+      return null;
+    };
+
+    if (!form.contactNumberNational)  errs.contactNumber    = 'Contact number is required';
+    else {
+      const err = phoneFieldError(contactNumberCheck);
+      if (err) errs.contactNumber = err;
+    }
     if (!addr.provinceCode)           errs.province         = 'Please select a province';
     if (!addr.municipalityCode)       errs.municipality     = 'Please select a city / municipality';
     if (!noBarangaysForMunicipality && !addr.barangayCode)
                                        errs.barangay         = 'Please select a barangay';
-    if (!form.emergencyContact.trim())errs.emergencyContact = 'Emergency contact is required';
+    if (!form.emergencyContactName.trim())
+                                       errs.emergencyContact = 'Emergency contact name is required';
+    else if (!form.emergencyContactNational)
+                                       errs.emergencyContact = 'Emergency contact number is required';
+    else {
+      const err = phoneFieldError(emergencyPhoneCheck);
+      if (err) errs.emergencyContact = err;
+    }
     if (!form.gradeLevel)             errs.gradeLevel       = 'Please select a grade / year level';
     if (!form.section)                errs.section          = 'Please select a section';
     if (!form.teamName)               errs.teamName         = 'Please select a team';
@@ -384,6 +634,10 @@ export default function RegistrationPage() {
             return;
         }
 
+        // form.contactNumber and form.emergencyContact are already kept in
+        // sync by the compose effects above (phoneCountry + national
+        // digits -> full E.164 / "Name - +<number>"), so `form` itself is
+        // already submission-ready — no extra normalization needed here.
         await createRegistration(
             currentUser.uid,
             currentUser.email,
@@ -540,9 +794,9 @@ export default function RegistrationPage() {
               </Field>
             </div>
 
-            {/* Row 2: Gender / Contact Number / Emergency Contact / Email —
+            {/* Row 2: Gender / Contact Number / Emergency Contact —
                 every "how to reach the student or family" field in one row. */}
-            <div className="reg-row reg-row--4">
+            <div className="reg-row reg-row--3eq">
               <Field label="Gender" required error={errors.gender}>
                 <div className="reg-radio-group">
                   {['Male', 'Female', 'Others'].map(g => (
@@ -555,16 +809,32 @@ export default function RegistrationPage() {
                 </div>
               </Field>
               <Field label="Contact Number" required error={errors.contactNumber}>
-                <input className="reg-input" placeholder="63+**********"
-                  value={form.contactNumber} onChange={set('contactNumber')} required />
+                <select className="reg-select" value={form.phoneCountry} onChange={onPhoneCountryChange} required>
+                  {COUNTRY_OPTIONS.length === 0 ? (
+                    <option value="">No countries available</option>
+                  ) : (
+                    COUNTRY_OPTIONS.map(c => (
+                      <option key={c.code} value={c.code}>{c.name} (+{c.callingCode})</option>
+                    ))
+                  )}
+                </select>
+                <span className="reg-phone-hint">Country also applies to Emergency Contact below</span>
+                <div className="reg-phone-row">
+                  <span className="reg-phone-prefix">+{getCountryCallingCode(form.phoneCountry)}</span>
+                  <input className="reg-input" type="tel" inputMode="numeric" placeholder="National number"
+                    value={form.contactNumberNational} onChange={onContactNationalChange} required />
+                </div>
+                <PhoneHint value={form.contactNumberNational} check={contactNumberCheck} />
               </Field>
               <Field label="Emergency Contact" required error={errors.emergencyContact}>
-                <input className="reg-input" placeholder="Name-63+**********"
-                  value={form.emergencyContact} onChange={set('emergencyContact')} required />
-              </Field>
-              <Field label="Email Address">
-                <input className="reg-input" type="email" placeholder="@src.edu.ph"
-                  value={form.email} onChange={set('email')} />
+                <input className="reg-input" placeholder="Contact person's name"
+                  value={form.emergencyContactName} onChange={onEmergencyNameChange} required />
+                <div className="reg-phone-row">
+                  <span className="reg-phone-prefix">+{getCountryCallingCode(form.phoneCountry)}</span>
+                  <input className="reg-input" type="tel" inputMode="numeric" placeholder="National number"
+                    value={form.emergencyContactNational} onChange={onEmergencyNationalChange} required />
+                </div>
+                <PhoneHint value={form.emergencyContactNational} check={emergencyPhoneCheck} />
               </Field>
             </div>
 
@@ -643,7 +913,7 @@ export default function RegistrationPage() {
                 <select
                   className="reg-select"
                   value={form.teamName}
-                  onChange={set('teamName')}
+                  onChange={handleTeamChange}
                   disabled={!schoolLevel || loadingOptions}
                   required
                 >
@@ -663,7 +933,7 @@ export default function RegistrationPage() {
                 <select
                   className="reg-select"
                   value={form.sport}
-                  onChange={set('sport')}
+                  onChange={handleSportChange}
                   disabled={!schoolLevel || loadingOptions}
                   required
                 >
@@ -680,9 +950,21 @@ export default function RegistrationPage() {
                 </select>
               </Field>
               <Field label="Position" required error={errors.position}>
-                <select className="reg-select" value={form.position} onChange={set('position')} required>
-                  <option value="">Select Position</option>
-                  {POSITIONS.map(p => <option key={p}>{p}</option>)}
+                <select
+                  className="reg-select"
+                  value={form.position}
+                  onChange={set('position')}
+                  disabled={!form.sport || positionOptions.length === 0}
+                  required
+                >
+                  <option value="">
+                    {!form.sport
+                      ? 'Select Sport / Event first'
+                      : positionOptions.length === 0
+                        ? 'No positions configured for this sport yet'
+                        : 'Select Position'}
+                  </option>
+                  {positionOptions.map(p => <option key={p}>{p}</option>)}
                 </select>
               </Field>
             </div>
@@ -779,4 +1061,21 @@ function Field({ label, required, error, children }) {
       {error && <span className="reg-field__error">{error}</span>}
     </div>
   );
+}
+
+// Live feedback from usePhoneFieldCheck — shows either why the number
+// doesn't fit the selected country's rules yet, or its formatted
+// international form once it does.
+function PhoneHint({ value, check }) {
+  if (!value) return null;
+  if (check.lengthIssue === 'TOO_SHORT') return <span className="reg-phone-hint reg-phone-hint--bad">Too short for this country</span>;
+  if (check.lengthIssue === 'TOO_LONG')  return <span className="reg-phone-hint reg-phone-hint--bad">Too long for this country</span>;
+  if (check.lengthIssue)                 return <span className="reg-phone-hint reg-phone-hint--bad">✗ Not a valid number</span>;
+  if (check.valid) {
+    return <span className="reg-phone-hint reg-phone-hint--ok">✓ {check.internationalFormat}</span>;
+  }
+  if (check.valid === false) {
+    return <span className="reg-phone-hint reg-phone-hint--bad">✗ Not a valid number for this country</span>;
+  }
+  return null;
 }

@@ -373,6 +373,67 @@ function ViolationsAdminModal({ sport, onClose, onSave }) {
 }
 
 /* ═══════════════════════════════════════════
+   POSITION TYPES MODAL
+   A sport's own list of player positions — what Registration's
+   "Position" dropdown offers once this sport is selected there.
+   Flat list, no groups/format needed (unlike categories/divisions).
+═══════════════════════════════════════════ */
+function PositionsModal({ sport, onClose, onSave }) {
+  const [positions, setPositions] = useState(sport.positions?.length ? [...sport.positions] : ['']);
+
+  const updateAt = (i, value) => setPositions(prev => prev.map((p, idx) => idx === i ? value : p));
+  const addRow = () => setPositions(prev => [...prev, '']);
+  const removeAt = (i) => setPositions(prev => prev.filter((_, idx) => idx !== i));
+
+  const handleSubmit = () => {
+    const cleaned = [...new Set(positions.map(p => p.trim()).filter(Boolean))];
+    onSave(cleaned);
+  };
+
+  return (
+    <div className="stm-overlay" onClick={onClose}>
+      <div className="stm-modal stm-modal--category" onClick={e => e.stopPropagation()}>
+
+        <div className="stm-catmod-head">
+          <button className="stm-icon-btn stm-catmod-close" onClick={onClose}><FaTimes /></button>
+          <h3>POSITION TYPES</h3>
+          <p>Set the player positions available for {sport.name || 'this sport'}. These are what students pick from on the registration form.</p>
+        </div>
+
+        <div className="stm-cat-groups">
+          {positions.length === 0 && (
+            <p className="stm-cat-groups__empty">
+              Use <strong>Add Position</strong> below to add the first one.
+            </p>
+          )}
+          {positions.map((p, i) => (
+            <div key={i} className="stm-div-row">
+              <input
+                className="stm-div-input"
+                placeholder="e.g. Forward, Goalkeeper, Pitcher"
+                value={p}
+                onChange={e => updateAt(i, e.target.value)}
+              />
+              <button type="button" className="stm-icon-btn" onClick={() => removeAt(i)}>
+                <FaTimes />
+              </button>
+            </div>
+          ))}
+          <button type="button" className="stm-add-div-btn" onClick={addRow}>
+            <FaPlus /> Add Position
+          </button>
+        </div>
+
+        <div className="stm-catmod-actions">
+          <button type="button" className="stm-btn-ghost" onClick={onClose}>Cancel</button>
+          <button type="button" className="stm-btn-primary" onClick={handleSubmit}>Submit</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
    EDIT SPORT MODAL
    Popup for editing a single saved sport's name,
    logo, categories/divisions, and violations.
@@ -382,8 +443,10 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
   const [logo,           setLogo]           = useState(sport.logo || null);
   const [categoryGroups, setCategoryGroups] = useState(sport.categoryGroups || []);
   const [violations,     setViolations]     = useState(sport.violations || []);
+  const [positions,      setPositions]      = useState(sport.positions || []);
   const [showCatModal,   setShowCatModal]   = useState(false);
   const [showViolModal,  setShowViolModal]  = useState(false);
+  const [showPosModal,   setShowPosModal]   = useState(false);
 
   const divisions = (categoryGroups || []).flatMap(g => {
     const divs = g.divisions || [];
@@ -447,6 +510,22 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
                 </ul>
               )}
             </div>
+
+            <div className="stm-edit-sport-cats">
+              <div className="stm-edit-sport-cats__head">
+                <span className="stm-preview-label">POSITION TYPES</span>
+                <button type="button" className="stm-link-btn" onClick={() => setShowPosModal(true)}>
+                  <FaEdit /> Edit positions
+                </button>
+              </div>
+              {positions.length === 0 ? (
+                <p className="stm-empty-note">No positions set — Registration falls back to a default list for this sport.</p>
+              ) : (
+                <ul className="stm-preview-list">
+                  {positions.map((p, i) => <li key={i}>{p}</li>)}
+                </ul>
+              )}
+            </div>
           </div>
 
           <div className="stm-catmod-actions">
@@ -455,7 +534,7 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
               type="button"
               className="stm-btn-primary"
               disabled={saving || !name.trim()}
-              onClick={() => onSave({ ...sport, name: name.trim(), logo, categoryGroups, violations })}
+              onClick={() => onSave({ ...sport, name: name.trim(), logo, categoryGroups, violations, positions })}
             >
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
@@ -477,6 +556,14 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
           sport={{ ...sport, violations }}
           onClose={() => setShowViolModal(false)}
           onSave={(v) => { setViolations(v); setShowViolModal(false); }}
+        />
+      )}
+
+      {showPosModal && (
+        <PositionsModal
+          sport={{ ...sport, positions }}
+          onClose={() => setShowPosModal(false)}
+          onSave={(list) => { setPositions(list); setShowPosModal(false); }}
         />
       )}
     </>
@@ -773,6 +860,7 @@ export default function SportsTeamsManager({ level }) {
 
   const [catTarget,         setCatTarget]         = useState(null); // sport row id
   const [violTarget,        setViolTarget]        = useState(null); // sport row id
+  const [posTarget,         setPosTarget]         = useState(null); // sport row id
   const [pickerTarget,      setPickerTarget]      = useState(null); // team row id
   const [showSportsConfirm, setShowSportsConfirm] = useState(false);
   const [showTeamsConfirm,  setShowTeamsConfirm]  = useState(false);
@@ -801,6 +889,7 @@ export default function SportsTeamsManager({ level }) {
           ? [{ id: uid(), label: 'DIVISION', divisions: s.categories.map(ensureId) }]
           : [])).map(g => ({ ...ensureId(g), divisions: (g.divisions || []).map(ensureId) })),
         violations: (s.violations || []).map(ensureId),
+        positions: s.positions || [],
       }));
       const teams = (cfg.teams || []).map(t => ({
         ...ensureId(t),
@@ -826,7 +915,7 @@ export default function SportsTeamsManager({ level }) {
   /* ── Sport row helpers ── */
   const setSportsCount = (n) => setSportsRows(prev => {
     const next = [...prev];
-    while (next.length < n) next.push({ id: uid(), name: '', logo: null, categoryGroups: [], violations: [] });
+    while (next.length < n) next.push({ id: uid(), name: '', logo: null, categoryGroups: [], violations: [], positions: [] });
     while (next.length > n) next.pop();
     return next;
   });
@@ -1005,6 +1094,7 @@ export default function SportsTeamsManager({ level }) {
   /* ── Derived ── */
   const catSportRow  = sportsRows.find(r => r.id === catTarget)     || null;
   const violSportRow = sportsRows.find(r => r.id === violTarget)    || null;
+  const posSportRow  = sportsRows.find(r => r.id === posTarget)     || null;
   const pickerTeam   = teamsRows.find(r => r.id === pickerTarget)   || null;
 
   const flatDivisions = (sport) =>
@@ -1055,6 +1145,7 @@ export default function SportsTeamsManager({ level }) {
                   <th>Categories</th>
                   <th>Division</th>
                   <th>Violations</th>
+                  <th>Positions</th>
                   <th />
                 </tr>
               </thead>
@@ -1102,6 +1193,19 @@ export default function SportsTeamsManager({ level }) {
                           className="stm-plus-btn"
                           title="Set violation types"
                           onClick={() => setViolTarget(row.id)}
+                        >
+                          <FaPlus />
+                        </button>
+                      </div>
+                    </td>
+                    <td>
+                      <div className="stm-cat-count-cell">
+                        <span className="stm-cat-badge">{(row.positions || []).length || '—'}</span>
+                        <button
+                          type="button"
+                          className="stm-plus-btn"
+                          title="Set player positions"
+                          onClick={() => setPosTarget(row.id)}
                         >
                           <FaPlus />
                         </button>
@@ -1474,6 +1578,17 @@ export default function SportsTeamsManager({ level }) {
           onSave={(violations) => {
             updateSportRow(violSportRow.id, { violations });
             setViolTarget(null);
+          }}
+        />
+      )}
+
+      {posSportRow && (
+        <PositionsModal
+          sport={posSportRow}
+          onClose={() => setPosTarget(null)}
+          onSave={(list) => {
+            updateSportRow(posSportRow.id, { positions: list });
+            setPosTarget(null);
           }}
         />
       )}
