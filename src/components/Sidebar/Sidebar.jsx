@@ -1,8 +1,9 @@
-import React, { useContext } from "react";
+import React, { useContext, useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { FaBars, FaTimes, FaUserCircle, FaHome, FaFlag, FaEdit, FaCalendarAlt, FaMedal, FaShieldAlt, FaUserShield, FaChartPie } from "react-icons/fa";
 import { SidebarContext } from "../Sidebar/SidebarContext";
 import { AuthContext } from "../AuthContext";
+import { subscribeScheduleRequests } from "../../services/firestoreService";
 import "./Sidebar.css";
 
 function Sidebar() {
@@ -10,6 +11,20 @@ function Sidebar() {
   const location = useLocation();
   const { panelOpen, toggleSidebar, openSidebar } = useContext(SidebarContext);
   const { openAuthModal = () => {}, currentUser, userProfile, logout } = useContext(AuthContext);
+
+  // Live pending-request count so an admin sees a schedule request was
+  // filed even before opening the Admin Panel itself.
+  const [pendingRequestCount, setPendingRequestCount] = useState(0);
+  useEffect(() => {
+    // Not rendered at all when the viewer isn't an admin (see the Admin
+    // Panel button/link below), so a stale count sitting unused in state
+    // is harmless — no need to reset it back to 0 here.
+    if (!userProfile?.isAdmin) return;
+    const unsubscribe = subscribeScheduleRequests((requests) => {
+      setPendingRequestCount(requests.filter((r) => r.status === 'pending').length);
+    });
+    return unsubscribe;
+  }, [userProfile?.isAdmin]);
 
   return (
     <>
@@ -86,8 +101,15 @@ function Sidebar() {
                 aria-label="Admin Panel"
                 data-label="Admin"
                 onClick={() => navigate('/schedule-admin')}
+                style={{ position: 'relative' }}
               >
                 <FaShieldAlt />
+                {pendingRequestCount > 0 && (
+                  <span style={{
+                    position: 'absolute', top: 2, right: 2, width: 9, height: 9, borderRadius: '50%',
+                    background: '#c0392b', border: '1.5px solid #fff',
+                  }} />
+                )}
               </button>
             )}
 
@@ -167,6 +189,15 @@ function Sidebar() {
             <Link to="/schedule-admin" className={`panel-nav-item ${location.pathname === "/schedule-admin" ? "active" : ""}`}>
               <FaShieldAlt className="panel-nav-icon" />
               <span>Admin Panel</span>
+              {pendingRequestCount > 0 && (
+                <span style={{
+                  marginLeft: 'auto', minWidth: 18, height: 18, padding: '0 4px', borderRadius: 999,
+                  background: '#c0392b', color: '#fff', fontSize: '0.65rem', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                }}>
+                  {pendingRequestCount}
+                </span>
+              )}
             </Link>
           )}
 

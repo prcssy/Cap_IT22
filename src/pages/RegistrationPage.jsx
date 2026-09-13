@@ -142,6 +142,31 @@ export default function RegistrationPage() {
     });
   };
 
+  // Age is derived from Date of Birth rather than typed in directly —
+  // keeps the two fields from disagreeing with each other.
+  const calculateAge = (dobStr) => {
+    if (!dobStr) return '';
+    const dob = new Date(dobStr);
+    if (Number.isNaN(dob.getTime())) return '';
+    const today = new Date();
+    let age = today.getFullYear() - dob.getFullYear();
+    const monthDiff = today.getMonth() - dob.getMonth();
+    if (monthDiff < 0 || (monthDiff === 0 && today.getDate() < dob.getDate())) age--;
+    return age >= 0 ? String(age) : '';
+  };
+
+  const onDobChange = (e) => {
+    const dob = e.target.value;
+    setForm(prev => ({ ...prev, dob, age: calculateAge(dob) }));
+    setErrors(prev => {
+      if (!prev.dob && !prev.age) return prev;
+      const next = { ...prev };
+      delete next.dob;
+      delete next.age;
+      return next;
+    });
+  };
+
   // ── Address: cascading PSGC province -> city/municipality -> barangay,
   // plus a free-text street line. All lookups are synchronous and in-memory
   // (no network/loading state needed, unlike the sport/team config fetch
@@ -468,11 +493,11 @@ export default function RegistrationPage() {
               </Field>
               <Field label="Date of Birth" required error={errors.dob}>
                 <input className="reg-input" type="date"
-                  value={form.dob} onChange={set('dob')} required />
+                  value={form.dob} onChange={onDobChange} required />
               </Field>
               <Field label="Age" required error={errors.age}>
                 <input className="reg-input" type="number" placeholder="Enter Age" min={5} max={40}
-                  value={form.age} onChange={set('age')} required />
+                  value={form.age} readOnly required />
               </Field>
             </div>
 

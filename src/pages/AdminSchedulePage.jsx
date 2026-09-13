@@ -2,12 +2,12 @@ import React, { useState, useContext, useEffect, useCallback, useRef } from 'rea
 import { AuthContext } from '../components/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import './AdminSchedulePage.css';
-import { FaTimes, FaSync, FaSearch, FaUsers, FaUserGraduate, FaChevronDown, FaCheck, FaEdit, FaPlus, FaMapMarkerAlt, FaTrophy, FaTrash, FaExclamationTriangle, FaDownload } from 'react-icons/fa';
+import { FaTimes, FaSync, FaSearch, FaUsers, FaUserGraduate, FaChevronDown, FaCheck, FaEdit, FaPlus, FaMapMarkerAlt, FaTrophy, FaTrash, FaExclamationTriangle, FaDownload, FaBell, FaArrowRight } from 'react-icons/fa';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, getEventLabel, EVENT_TYPES, getVenues, getAllMatchSchedules } from '../services/firestoreService';
+import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, getEventLabel, EVENT_TYPES, getVenues, getAllMatchSchedules, subscribeScheduleRequests, updateScheduleRequest } from '../services/firestoreService';
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../components/LevelTabs';
@@ -95,11 +95,12 @@ const TEAM_COLORS = {
   'Red Rhinos':      '#dc2626',
 };
 
-const TABS = ['Registration', 'Venues', 'Sports & Teams', 'Match Schedules Format'];
+const TABS = ['Registration', 'Venues', 'Sports & Teams', 'Match Schedules Format', 'Schedule Requests'];
 const VENUES_TAB_INDEX = TABS.indexOf('Venues');
 const REGISTRATION_TAB_INDEX = TABS.indexOf('Registration');
 const SPORTS_TEAMS_TAB_INDEX = TABS.indexOf('Sports & Teams');
 const MATCH_SCHEDULES_TAB_INDEX = TABS.indexOf('Match Schedules Format');
+const SCHEDULE_REQUESTS_TAB_INDEX = TABS.indexOf('Schedule Requests');
 
 /* ═══════════════════════════════════════════════════════════════════════
    MATCH SCHEDULES FORMAT — everything below (through MatchScheduleFormatSection)
@@ -121,6 +122,17 @@ const FORMATS = [
 
 const uid = () => Math.random().toString(36).slice(2, 10);
 const LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
+
+/* Firestore denies a write/read with `permission-denied` for anything a
+   security rule doesn't explicitly allow — that reads identically to an
+   actual offline/network failure unless it's checked for by name, so a
+   generic "check your connection" message would misdiagnose a rules gap. */
+function friendlyFirestoreError(err, fallback) {
+  const isPermission = err?.code === 'permission-denied' || /permission/i.test(err?.message || '');
+  return isPermission
+    ? `${fallback} — your account doesn't have permission for this yet (check Firestore rules).`
+    : `${fallback} — check your connection and try again.`;
+}
 
 /* ═══════════════════════════════════════════
    AUTO-SCHEDULING — date/time assignment for a freshly generated schedule.
@@ -669,7 +681,7 @@ function LabelBracketTree({ roundNames, roundsMatches, leafLabels }) {
   );
 }
 
-function MatchScheduleFormatSection({ level }) {
+function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }) {
   const [sportsList, setSportsList] = useState([]);
   const [teamsList,  setTeamsList]  = useState([]);
   const [loading,    setLoading]    = useState(false);
@@ -695,7 +707,41 @@ function MatchScheduleFormatSection({ level }) {
   const listRef = useRef(null);
 
   const [addModalOpen, setAddModalOpen] = useState(false);
-  const [addForm, setAddForm] = useState({ sport: '', date: '', time: '', location: '', pairs: [{ teamA: '', teamB: '' }] });
+  const [addForm, setAddForm] = useState({ sport: '', category: '', date: '', time: '', location: '', matchLabel: '', pairs: [{ teamA: '', teamB: '' }] });
+  // Set only while the currently-open Add Schedule modal is fulfilling a
+  // moderator's schedule request — cleared as soon as it's saved or the
+  // modal is closed, so it can never wrongly mark a later, unrelated
+  // "Add Schedule" as resolving an old request.
+  const [fulfillingRequestId, setFulfillingRequestId] = useState(null);
+
+  // Prefills the Add Schedule form (sport/division/both teams) from a
+  // schedule request the admin chose to open here — see
+  // AdminSchedulePage's "Open Match Schedules" action on the Schedule
+  // Requests tab. `pendingRequest` is a one-shot "command" prop, so this
+  // is the "adjust state when a prop changes" pattern React's own docs
+  // call out as safe to run directly during render (guarded by the id
+  // comparison below) rather than in an effect — it's a pure, synchronous
+  // derivation of this component's own state, not a side effect.
+  const [lastHandledRequestId, setLastHandledRequestId] = useState(null);
+  if (pendingRequest && pendingRequest.id !== lastHandledRequestId) {
+    setLastHandledRequestId(pendingRequest.id);
+    setAddForm({
+      sport: pendingRequest.sport || '',
+      category: pendingRequest.category || '',
+      date: '', time: '', location: '',
+      matchLabel: pendingRequest.reason || '',
+      pairs: [{ teamA: pendingRequest.teamA || '', teamB: pendingRequest.teamB || '' }],
+    });
+    setFulfillingRequestId(pendingRequest.id);
+    setAddModalOpen(true);
+  }
+
+  // Telling the parent the request has been consumed DOES belong in an
+  // effect — that's notifying an external system (the parent's own
+  // state), not deriving this component's.
+  useEffect(() => {
+    if (pendingRequest && pendingRequest.id === lastHandledRequestId) onConsumedPrefill?.();
+  }, [pendingRequest, lastHandledRequestId, onConsumedPrefill]);
 
   /* ── Manual "Edit Schedule" ── */
   const [editModalOpen, setEditModalOpen] = useState(false);
@@ -746,23 +792,28 @@ function MatchScheduleFormatSection({ level }) {
     return () => clearTimeout(t);
   }, [toast]);
 
-  /* ── Category options come from the selected sport's own divisions.
+  /* ── Category options come from a sport's own divisions.
      If the admin never set up divisions for this sport, fall back to a
      single "General" category so the flow isn't blocked.
      The group label is the schedule division (for example, Men/Women).
      Do not save the child division name here because it is also used for
-     the match format (for example, 5v5) and must not appear in SPORTS. ── */
-  const rawCategoryOptions = (selSport?.categoryGroups || []).flatMap(g =>
-    (g.divisions || []).map(d => {
-      const division = (g.label || d.name || '').trim();
-      return { value: d.id, label: division, format: d.format };
-    })
-  );
-  const categoryOptions = rawCategoryOptions.length > 0
-    ? rawCategoryOptions
-    : selSport
-      ? [{ value: 'general', label: 'General', format: null }]
-      : [];
+     the match format (for example, 5v5) and must not appear in SPORTS.
+     Shared by the generator's own Sport pick and the manual "Add Schedule"
+     modal's Sport pick, so both always resolve categories the same way. ── */
+  const categoryOptionsFor = (sportObj) => {
+    const raw = (sportObj?.categoryGroups || []).flatMap(g =>
+      (g.divisions || []).map(d => {
+        const division = (g.label || d.name || '').trim();
+        return { value: d.id, label: division, format: d.format };
+      })
+    );
+    return raw.length > 0
+      ? raw
+      : sportObj
+        ? [{ value: 'general', label: 'General', format: null }]
+        : [];
+  };
+  const categoryOptions = categoryOptionsFor(selSport);
 
   /* ── Teams eligible for a given sport ──
      NOTE: despite the field name, SportsTeamsManager's TeamSportsPickerModal
@@ -996,20 +1047,23 @@ function MatchScheduleFormatSection({ level }) {
 
   const handleConfirmAdd = async () => {
     const validPairs = addForm.pairs.filter(p => p.teamA && p.teamB);
-    if (!addForm.sport || !addForm.date || !addForm.time || validPairs.length === 0) return;
+    if (!addForm.sport || !addForm.category || !addForm.date || !addForm.time || validPairs.length === 0) return;
     if (venueOccupied(addForm.location, addForm.date, addForm.time, null)) {
       setToast({ text: 'That venue is already booked at this date & time — pick another.' });
       return;
     }
     const pool = teamsList.filter(t => (t.sportIds || []).includes(addForm.sport));
+    const addSportObj = sportsList.find(s => s.name === addForm.sport) || null;
+    const matchedDivision = categoryOptionsFor(addSportObj).find(o => o.label === addForm.category);
+    const presetFormat = FORMATS.find(f => f.id === matchedDivision?.format);
 
     let merged = savedSchedules;
     for (const pair of validPairs) {
       const match = {
         id: uid(),
         sport: addForm.sport,
-        category: selCategory?.label || '',
-        format: selFormat?.label || '',
+        category: addForm.category,
+        format: presetFormat?.label || '',
         round: null,
         teamA: pair.teamA,
         teamB: pair.teamB,
@@ -1018,6 +1072,7 @@ function MatchScheduleFormatSection({ level }) {
         date: addForm.date,
         time: addForm.time,
         location: addForm.location,
+        matchLabel: addForm.matchLabel.trim() || null,
         status: 'scheduled',
         source: 'manual',
       };
@@ -1026,6 +1081,14 @@ function MatchScheduleFormatSection({ level }) {
     setSavedSchedules(merged);
     syncAllSchedulesForLevel(merged);
     setAddModalOpen(false);
+
+    if (fulfillingRequestId) {
+      const requestId = fulfillingRequestId;
+      setFulfillingRequestId(null);
+      updateScheduleRequest(requestId, { status: 'scheduled' }).catch((err) => {
+        console.error('Failed to auto-mark schedule request as scheduled:', err);
+      });
+    }
   };
 
   /* ── Manual "Edit Schedule" ── */
@@ -1036,9 +1099,10 @@ function MatchScheduleFormatSection({ level }) {
   };
 
   const editPool = teamsForSport(editForm?.sport);
+  const editCategoryOptions = categoryOptionsFor(sportsList.find(s => s.name === editForm?.sport) || null);
 
   const handleConfirmEdit = async () => {
-    if (!editForm || !editForm.date || !editForm.time || !editForm.teamA || !editForm.teamB) return;
+    if (!editForm || !editForm.category || !editForm.date || !editForm.time || !editForm.teamA || !editForm.teamB) return;
     if (venueOccupied(editForm.location, editForm.date, editForm.time, editForm.id)) {
       setToast({ text: 'That venue is already booked at this date & time — pick another.' });
       return;
@@ -1047,6 +1111,7 @@ function MatchScheduleFormatSection({ level }) {
       ...editForm,
       teamALogo: editPool.find(t => t.name === editForm.teamA)?.logo ?? editForm.teamALogo ?? null,
       teamBLogo: editPool.find(t => t.name === editForm.teamB)?.logo ?? editForm.teamBLogo ?? null,
+      matchLabel: (editForm.matchLabel || '').trim() || null,
     };
     const merged = await upsertMatchSchedule(level, updated);
     setSavedSchedules(merged);
@@ -1173,6 +1238,7 @@ function MatchScheduleFormatSection({ level }) {
 
   const sportOptions = sportsList.map(s => s.name);
   const addPool = teamsForSport(addForm.sport);
+  const addCategoryOptions = categoryOptionsFor(sportsList.find(s => s.name === addForm.sport) || null);
 
   return (
     <div className="msf-wrap">
@@ -1621,13 +1687,25 @@ function MatchScheduleFormatSection({ level }) {
             <h2>Match schedules</h2>
             <p className="msf-muted">Upcoming matches across every team and sport</p>
           </div>
-          <button
-            className="msf-btn-primary"
-            onClick={handleDownloadPdf}
-            disabled={sportSections.length === 0}
-          >
-            <FaDownload /> Download PDF
-          </button>
+          <div className="msf-list-head__actions">
+            <button
+              className="msf-btn-ghost"
+              onClick={() => {
+                setAddForm({ sport: '', category: '', date: '', time: '', location: '', matchLabel: '', pairs: [{ teamA: '', teamB: '' }] });
+                setFulfillingRequestId(null);
+                setAddModalOpen(true);
+              }}
+            >
+              <FaPlus /> Add Schedule
+            </button>
+            <button
+              className="msf-btn-primary"
+              onClick={handleDownloadPdf}
+              disabled={sportSections.length === 0}
+            >
+              <FaDownload /> Download PDF
+            </button>
+          </div>
         </div>
 
         {sportSections.length === 0 ? (
@@ -1683,6 +1761,7 @@ function MatchScheduleFormatSection({ level }) {
                           <div key={m.id} className="msf-matchrow">
                             <div className="msf-matchrow__time">{m.time}</div>
                             <div className="msf-matchrow__mid">
+                              {m.matchLabel && <div className="msf-matchrow__label">{m.matchLabel}</div>}
                               <div className="msf-matchrow__teams">{m.teamA} vs {m.teamB}</div>
                               {m.location && <div className="msf-matchrow__loc"><FaMapMarkerAlt /> {m.location}</div>}
                               {record && (
@@ -1781,21 +1860,40 @@ function MatchScheduleFormatSection({ level }) {
 
       {/* ── Add Schedule modal (a real overlay, not a page swap) ── */}
       {addModalOpen && (
-        <div className="msf-overlay" onClick={() => setAddModalOpen(false)}>
+        <div className="msf-overlay" onClick={() => { setAddModalOpen(false); setFulfillingRequestId(null); }}>
           <div className="msf-addwrap" onClick={e => e.stopPropagation()}>
             <p className="msf-add-eyebrow">Match Schedule (Time, Date and Venue)</p>
             <div className="msf-add-card">
               <h2 className="msf-add-card__title">Match Schedule</h2>
               <div className="msf-add-card__divider" />
 
+              {fulfillingRequestId && (
+                <p className="msf-form-note" style={{ marginTop: -8, marginBottom: 14 }}>
+                  Fulfilling a moderator's schedule request — sport, division, and both teams are already filled
+                  in below. Just add the time, date, and venue.
+                </p>
+              )}
+
               <div className="msf-form-group">
                 <label>Sport</label>
                 <select
                   value={addForm.sport}
-                  onChange={e => setAddForm(f => ({ ...f, sport: e.target.value, pairs: [{ teamA: '', teamB: '' }] }))}
+                  onChange={e => setAddForm(f => ({ ...f, sport: e.target.value, category: '', pairs: [{ teamA: '', teamB: '' }] }))}
                 >
                   <option value="">Select a sport</option>
                   {sportOptions.map(s => <option key={s} value={s}>{s}</option>)}
+                </select>
+              </div>
+
+              <div className="msf-form-group">
+                <label>Category/Division</label>
+                <select
+                  value={addForm.category}
+                  onChange={e => setAddForm(f => ({ ...f, category: e.target.value }))}
+                  disabled={!addForm.sport}
+                >
+                  <option value="">Select a category</option>
+                  {addCategoryOptions.map(o => <option key={o.value} value={o.label}>{o.label}</option>)}
                 </select>
               </div>
 
@@ -1829,7 +1927,10 @@ function MatchScheduleFormatSection({ level }) {
                         {addPool.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                       </select>
                     </div>
-                    {isLast && (
+                    {/* Fulfilling a moderator's schedule request is always exactly
+                        one match between the two teams they asked for — offering
+                        to bulk-add more pairs here doesn't make sense for that flow. */}
+                    {isLast && !fulfillingRequestId && (
                       <button type="button" className="msf-addteam-btn" onClick={handleAddTeamRow} disabled={!addForm.sport}>
                         <FaPlus /> Add Team
                       </button>
@@ -1837,6 +1938,18 @@ function MatchScheduleFormatSection({ level }) {
                   </div>
                 );
               })}
+
+              <div className="msf-form-group">
+                <label>Label <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></label>
+                <input
+                  type="text"
+                  placeholder="e.g. Tie breaking match"
+                  value={addForm.matchLabel}
+                  onChange={e => setAddForm(f => ({ ...f, matchLabel: e.target.value }))}
+                  maxLength={60}
+                />
+                <p className="msf-form-note" style={{ marginTop: 6 }}>Shown wherever this match appears — moderators and the public schedule both see it.</p>
+              </div>
 
               <div className="msf-form-group">
                 <label>Venue</label>
@@ -1860,7 +1973,7 @@ function MatchScheduleFormatSection({ level }) {
               </div>
 
               <div className="msf-form-actions">
-                <button className="msf-btn-ghost msf-btn-block" onClick={() => setAddModalOpen(false)}>Cancel</button>
+                <button className="msf-btn-ghost msf-btn-block" onClick={() => { setAddModalOpen(false); setFulfillingRequestId(null); }}>Cancel</button>
                 <button className="msf-btn-primary msf-btn-block" onClick={handleConfirmAdd}>Add to Schedule</button>
               </div>
             </div>
@@ -1880,6 +1993,24 @@ function MatchScheduleFormatSection({ level }) {
               <div className="msf-form-group">
                 <label>Sport</label>
                 <input type="text" value={editForm.sport || ''} disabled />
+              </div>
+
+              <div className="msf-form-group">
+                <label>Category/Division</label>
+                {isGeneratedMatch(editForm) ? (
+                  <input type="text" value={editForm.category || ''} disabled />
+                ) : (
+                  <select
+                    value={editForm.category || ''}
+                    onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
+                  >
+                    <option value="">Select a category</option>
+                    {editCategoryOptions.map(o => <option key={o.value} value={o.label}>{o.label}</option>)}
+                    {editForm.category && !editCategoryOptions.some(o => o.label === editForm.category) && (
+                      <option value={editForm.category}>{editForm.category}</option>
+                    )}
+                  </select>
+                )}
               </div>
 
               <div className="msf-form-row">
@@ -1936,6 +2067,17 @@ function MatchScheduleFormatSection({ level }) {
                 </p>
               )}
 
+              <div className="msf-form-group">
+                <label>Label <span style={{ fontWeight: 400, opacity: 0.6 }}>(optional)</span></label>
+                <input
+                  type="text"
+                  placeholder="e.g. Tie breaking match"
+                  value={editForm.matchLabel || ''}
+                  onChange={e => setEditForm(f => ({ ...f, matchLabel: e.target.value }))}
+                  maxLength={60}
+                />
+                <p className="msf-form-note" style={{ marginTop: 6 }}>Shown wherever this match appears — moderators and the public schedule both see it.</p>
+              </div>
 
               <div className="msf-form-group">
                 <label>Venue</label>
@@ -2041,6 +2183,60 @@ export default function AdminSchedulePage() {
 
   // Student detail modal
   const [selectedStudent, setSelectedStudent] = useState(null);
+
+  // Schedule requests — moderators asking for a fixture to be arranged.
+  // Subscribed live (not just fetched on tab open) so the pending badge
+  // on the tab + sidebar updates the moment one comes in.
+  const [scheduleRequests, setScheduleRequests] = useState([]);
+  const [decliningRequestId, setDecliningRequestId] = useState(null);
+  const [declineReasonDraft, setDeclineReasonDraft] = useState('');
+  const [requestActionToast, setRequestActionToast] = useState(null);
+  // The request currently being opened into Match Schedules Format for
+  // fulfillment — handed to MatchScheduleFormatSection as a one-shot
+  // "prefill the Add Schedule form" command, then cleared once it's read.
+  const [prefillFromRequest, setPrefillFromRequest] = useState(null);
+  const clearPrefillFromRequest = useCallback(() => setPrefillFromRequest(null), []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeScheduleRequests(setScheduleRequests);
+    return unsubscribe;
+  }, []);
+
+  useEffect(() => {
+    if (!requestActionToast) return;
+    const t = setTimeout(() => setRequestActionToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [requestActionToast]);
+
+  const pendingRequestCount = scheduleRequests.filter((r) => r.status === 'pending').length;
+  const sortedScheduleRequests = [...scheduleRequests].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+
+  const handleOpenRequestInSchedules = (request) => {
+    setLevel(request.level);
+    setActiveTab(MATCH_SCHEDULES_TAB_INDEX);
+    setPrefillFromRequest(request);
+    setRequestActionToast({ text: `Opened Match Schedules for ${LEVEL_LABELS[request.level] || request.level} — the sport, division and both teams are already filled in. Just add date/time/venue and confirm; the request is marked scheduled automatically.` });
+  };
+
+  const handleMarkRequestScheduled = async (requestId) => {
+    try {
+      await updateScheduleRequest(requestId, { status: 'scheduled' });
+    } catch (err) {
+      console.error('Failed to mark schedule request as scheduled:', err);
+      setRequestActionToast({ text: friendlyFirestoreError(err, 'Could not update the request') });
+    }
+  };
+
+  const handleDeclineRequest = async (requestId) => {
+    try {
+      await updateScheduleRequest(requestId, { status: 'declined', declineReason: declineReasonDraft.trim() });
+      setDecliningRequestId(null);
+      setDeclineReasonDraft('');
+    } catch (err) {
+      console.error('Failed to decline schedule request:', err);
+      setRequestActionToast({ text: friendlyFirestoreError(err, 'Could not decline the request') });
+    }
+  };
 
   useEffect(() => { if (!isAdmin) navigate('/dashboard'); }, [isAdmin, navigate]);
 
@@ -2215,8 +2411,17 @@ const fetchSummary = useCallback(async () => {
         </div>
         <div className="asp-tabs asp-tabs--header">
           {TABS.map((tab, i) => (
-            <button key={tab} className={`asp-tab${activeTab === i ? ' asp-tab--active' : ''}`} onClick={() => setActiveTab(i)}>
+            <button key={tab} className={`asp-tab${activeTab === i ? ' asp-tab--active' : ''}`} onClick={() => setActiveTab(i)} style={{ position: 'relative' }}>
               {tab}
+              {tab === 'Schedule Requests' && pendingRequestCount > 0 && (
+                <span style={{
+                  position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, padding: '0 4px',
+                  borderRadius: 999, background: '#c0392b', color: '#fff', fontSize: '0.65rem', fontWeight: 800,
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', lineHeight: 1,
+                }}>
+                  {pendingRequestCount}
+                </span>
+              )}
             </button>
           ))}
         </div>
@@ -2226,8 +2431,9 @@ const fetchSummary = useCallback(async () => {
           Format only. Venues are global (shared across every level), and
           Registration's summary/table already break Elementary/High
           School/College out as their own columns, so `level` has nothing
-          to filter on either of those tabs. */}
-      {activeTab !== VENUES_TAB_INDEX && activeTab !== REGISTRATION_TAB_INDEX && (
+          to filter on either of those tabs. Schedule Requests spans every
+          level at once, same reasoning. */}
+      {activeTab !== VENUES_TAB_INDEX && activeTab !== REGISTRATION_TAB_INDEX && activeTab !== SCHEDULE_REQUESTS_TAB_INDEX && (
         <div className="asp-level-row">
           <LevelTabs
             levels={LEVELS}
@@ -2479,12 +2685,109 @@ const fetchSummary = useCallback(async () => {
 
         {/* ══ MATCH SCHEDULES FORMAT TAB ══ */}
         {activeTab === MATCH_SCHEDULES_TAB_INDEX && (
-          <MatchScheduleFormatSection level={level} />
+          <MatchScheduleFormatSection
+            level={level}
+            pendingRequest={prefillFromRequest}
+            onConsumedPrefill={clearPrefillFromRequest}
+          />
         )}
 
         {/* ══ VENUES TAB ══ */}
         {activeTab === VENUES_TAB_INDEX && (
           <VenuesManager />
+        )}
+
+        {/* ══ SCHEDULE REQUESTS TAB ══ */}
+        {activeTab === SCHEDULE_REQUESTS_TAB_INDEX && (
+          <div className="asp-tab-content">
+            <div className="asp-card">
+              <div className="asp-card__toprow">
+                <div className="asp-card__heading">
+                  <FaBell className="asp-card__icon" />
+                  <span>SCHEDULE REQUESTS</span>
+                </div>
+              </div>
+              <p style={{ margin: '0 0 14px', fontSize: '0.85rem', opacity: 0.75 }}>
+                Fixtures moderators have asked you to arrange. Open Match Schedules to add the actual date/time/venue,
+                then mark the request scheduled — or decline it with a reason the moderator will see.
+              </p>
+
+              {sortedScheduleRequests.length === 0 ? (
+                <p style={{ opacity: 0.6, fontStyle: 'italic' }}>No schedule requests yet.</p>
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+                  {sortedScheduleRequests.map((r) => (
+                    <div key={r.id} style={{ border: '1px solid #e2e6f0', borderRadius: 12, padding: '12px 16px' }}>
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 10, flexWrap: 'wrap' }}>
+                        <div>
+                          <div style={{ fontWeight: 800, fontSize: '0.95rem' }}>
+                            {r.sport}{r.category ? ` · ${r.category}` : ''}
+                          </div>
+                          <div style={{ fontSize: '0.75rem', opacity: 0.65, marginTop: 2 }}>
+                            {LEVEL_LABELS[r.level] || r.level} • Requested by {r.requestedByName || r.requestedByEmail || 'a moderator'}
+                            {r.createdAt ? ` • ${new Date(r.createdAt).toLocaleString()}` : ''}
+                          </div>
+                        </div>
+                        <span style={{
+                          padding: '3px 10px', borderRadius: 20, fontSize: '0.7rem', fontWeight: 800, whiteSpace: 'nowrap',
+                          background: r.status === 'pending' ? '#fff3d6' : r.status === 'scheduled' ? '#e6f7ec' : '#fde8e6',
+                          color: r.status === 'pending' ? '#8a5f04' : r.status === 'scheduled' ? '#14713a' : '#a83218',
+                        }}>
+                          {r.status === 'pending' ? 'Pending' : r.status === 'scheduled' ? 'Scheduled' : 'Declined'}
+                        </span>
+                      </div>
+
+                      <p style={{ margin: '8px 0 0', fontSize: '0.85rem' }}><b>Reason:</b> {r.reason}</p>
+
+                      {r.status === 'declined' && r.declineReason && (
+                        <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#a83218' }}>
+                          <b>Decline reason:</b> {r.declineReason}
+                        </p>
+                      )}
+
+                      {r.status === 'pending' && (
+                        <div style={{ marginTop: 10 }}>
+                          {decliningRequestId === r.id ? (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                              <input
+                                type="text"
+                                placeholder="Reason for declining (optional)"
+                                value={declineReasonDraft}
+                                onChange={(e) => setDeclineReasonDraft(e.target.value)}
+                                style={{ flex: '1 1 220px', padding: '7px 10px', borderRadius: 8, border: '1px solid #d7dce6' }}
+                              />
+                              <button type="button" className="asp-btn asp-btn--danger" onClick={() => handleDeclineRequest(r.id)}>
+                                Confirm decline
+                              </button>
+                              <button type="button" className="asp-btn" onClick={() => { setDecliningRequestId(null); setDeclineReasonDraft(''); }}>
+                                Cancel
+                              </button>
+                            </div>
+                          ) : (
+                            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                              <button type="button" className="asp-btn asp-btn--primary" onClick={() => handleOpenRequestInSchedules(r)}>
+                                <FaArrowRight /> Open Match Schedules
+                              </button>
+                              <button type="button" className="asp-btn" onClick={() => handleMarkRequestScheduled(r.id)}>
+                                <FaCheck /> Mark as scheduled
+                              </button>
+                              <button type="button" className="asp-btn asp-btn--danger" onClick={() => setDecliningRequestId(r.id)}>
+                                <FaTimes /> Decline
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {requestActionToast && (
+              <div className="msf-toast"><FaCheck /> {requestActionToast.text}</div>
+            )}
+          </div>
         )}
       </div>
 

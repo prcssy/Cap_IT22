@@ -1,20 +1,24 @@
-import { Fragment, useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { Fragment, useState, useEffect, useRef, useMemo, useCallback, useContext } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
   FaChevronDown, FaTrophy, FaPlus, FaTimes, FaCheck, FaEdit,
   FaExclamationTriangle, FaUsers, FaLock, FaInfo, FaSync, FaMedal,
-  FaCalculator, FaClock, FaStar, FaExchangeAlt,
+  FaCalculator, FaClock, FaStar, FaExchangeAlt, FaPaperPlane,
 } from 'react-icons/fa';
 import './ModeratorPage.css';
 import {
   getSportsTeamsConfig,
   getMatchSchedules,
+  subscribeMatchSchedules,
   getMatchRecords,
   upsertMatchRecord,
   getTeamRankings,
   saveTeamRankings,
+  createScheduleRequest,
+  subscribeScheduleRequests,
 } from '../services/firestoreService';
 import LevelTabs from '../components/LevelTabs';
+import { AuthContext } from '../components/AuthContext';
 
 /* ═══════════════════════════════════════════
    CONSTANTS
@@ -112,6 +116,18 @@ function scoringModeForSport(sportName) {
   if (POINTS_BASED_SPORTS.includes(n)) return 'points';
   if (TIME_BASED_SPORTS.includes(n)) return 'time';
   return null;
+}
+
+/* Firestore denies a write/read with `permission-denied` for anything a
+   security rule doesn't explicitly allow — that's indistinguishable from
+   an actual offline/network failure unless it's checked for by name, and
+   "check your connection" is actively misleading when the real problem is
+   the Firestore rules file needing an entry for the collection involved. */
+function friendlyFirestoreError(err, fallback) {
+  const isPermission = err?.code === 'permission-denied' || /permission/i.test(err?.message || '');
+  return isPermission
+    ? `${fallback} — your account doesn't have permission for this yet (check Firestore rules).`
+    : `${fallback} — check your connection and try again.`;
 }
 
 /* Case/whitespace-insensitive compare — schedules & team.sportIds store
@@ -578,17 +594,10 @@ function FormatPickerModal({ current, onChoose, onClose, match, suggestedId }) {
         <button className="mp-format-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
 
         <h2 className="mp-format-title">How was this played?</h2>
-        {match ? (
-          <p className="mp-format-sub">
-            <b>{match.teamA} vs {match.teamB}</b> — {match.sport}{match.category ? ` · ${match.category}` : ''}.
-            Pick the format and the record form opens with both teams already filled in.
-          </p>
-        ) : (
-          <p className="mp-format-sub">
-            No fixture selected, so you'll pick the teams yourself. For a scheduled match, close this and
-            choose it from the list instead.
-          </p>
-        )}
+        <p className="mp-format-sub">
+          <b>{match.teamA} vs {match.teamB}</b> — {match.sport}{match.category ? ` · ${match.category}` : ''}.
+          Pick the format and the record form opens with both teams already filled in.
+        </p>
 
         <div className="mp-format-grid">
           {FORMAT_CHOICES.map((f) => (
@@ -603,7 +612,7 @@ function FormatPickerModal({ current, onChoose, onClose, match, suggestedId }) {
                 </span>
               </div>
               <p className="mp-format-card__desc">{f.description}</p>
-              {suggestedId === f.id && match && (
+              {suggestedId === f.id && (
                 <p className="mp-format-card__desc" style={{ color: '#8a5f04', fontWeight: 700, flex: 'none' }}>
                   Suggested for {match.sport}.
                 </p>
@@ -1045,6 +1054,170 @@ function ResetConfirmModal({ onCancel, onConfirm }) {
 }
 
 /* ═══════════════════════════════════════════
+   REQUEST A SCHEDULE — moderator asks the admin to set up a fixture
+   instead of adding a manual match record themselves. The admin sees
+   these live (sidebar badge + Schedule Requests tab on AdminSchedulePage)
+   and either arranges the schedule or declines with a reason.
+═══════════════════════════════════════════ */
+const REQUEST_STATUS_LABEL = { pending: 'Pending', scheduled: 'Scheduled', declined: 'Declined' };
+const REQUEST_STATUS_COLOR = {
+  pending: { bg: '#fff3d6', fg: '#8a5f04' },
+  scheduled: { bg: '#e6f7ec', fg: '#14713a' },
+  declined: { bg: '#fde8e6', fg: '#a83218' },
+};
+
+function RequestScheduleModal({
+  onClose, onSubmit, submitting,
+  sportOptions, sportId, onSportChange,
+  divisionOptions, divisionKey, onDivisionChange, divisionRequired,
+  levelOptions, requestLevel, onLevelChange,
+  teamOptions, teamAId, teamBId, onTeamAChange, onTeamBChange,
+  reason, onReasonChange,
+  myRequests,
+}) {
+  const incomplete = !sportId || (divisionRequired && !divisionKey) || !requestLevel
+    || !teamAId || !teamBId || teamAId === teamBId || !reason.trim();
+  const teamAOptions = teamOptions.map((o) => ({ ...o, disabled: o.key === teamBId }));
+  const teamBOptions = teamOptions.map((o) => ({ ...o, disabled: o.key === teamAId }));
+
+  return (
+    <div className="mp-modal-overlay" onClick={submitting ? undefined : onClose}>
+      <div className="mp-modal mp-request-modal" style={{ maxWidth: 480 }} onClick={(e) => e.stopPropagation()}>
+        <button className="mp-format-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
+        <div className="mp-request-modal__body">
+        <h2 className="mp-format-title">Request a schedule</h2>
+        <p className="mp-format-sub">
+          Ask the admin to arrange a fixture for two teams. They'll be notified right away and either
+          schedule it or let you know why not.
+        </p>
+
+        <div className="mp-format-sportpick" style={{ marginBottom: 14 }}>
+          <OptionDropdown
+            variant="pill"
+            panelLabel="Year level"
+            placeholder="Select year level"
+            value={requestLevel}
+            options={levelOptions}
+            onChange={onLevelChange}
+          />
+          <OptionDropdown
+            variant="pill"
+            panelLabel="Sports option"
+            placeholder="Select sport"
+            value={sportId}
+            options={sportOptions}
+            onChange={onSportChange}
+          />
+          <OptionDropdown
+            variant="pill"
+            panelLabel="Division"
+            placeholder={divisionOptions.length === 0 ? 'No divisions' : 'Select division'}
+            value={divisionKey}
+            options={divisionOptions}
+            disabled={!sportId || divisionOptions.length === 0}
+            onChange={onDivisionChange}
+          />
+        </div>
+
+        <div className="mp-field">
+          <div className="mp-field__label">
+            Teams<span className="mp-required">*</span>
+            <InfoTip caption="Teams">
+              Only teams already registered for this sport (Sports &amp; Teams) show up here — that's what lets
+              the admin's Add Schedule form pick them up automatically.
+            </InfoTip>
+          </div>
+          {sportId && teamOptions.length < 2 ? (
+            <p className="mp-schedule-hint" style={{ marginTop: 4 }}>
+              <FaExclamationTriangle /> Fewer than two teams are registered for this sport yet — ask the admin to
+              add them under Sports &amp; Teams first.
+            </p>
+          ) : (
+            <div className="mp-format-sportpick" style={{ gridTemplateColumns: '1fr auto 1fr', alignItems: 'center' }}>
+              <OptionDropdown
+                variant="teams"
+                panelLabel="Team A"
+                placeholder="Select team"
+                value={teamAId}
+                options={teamAOptions}
+                disabled={!sportId}
+                onChange={onTeamAChange}
+              />
+              <span style={{ fontWeight: 800, opacity: 0.6, fontSize: '0.8rem' }}>VS</span>
+              <OptionDropdown
+                variant="teams"
+                panelLabel="Team B"
+                placeholder="Select team"
+                value={teamBId}
+                options={teamBOptions}
+                disabled={!sportId}
+                onChange={onTeamBChange}
+              />
+            </div>
+          )}
+        </div>
+
+        <div className="mp-field">
+          <div className="mp-field__label">
+            Reason<span className="mp-required">*</span>
+            <InfoTip caption="Reason">Why this schedule is needed — helps the admin prioritize and pick a slot/venue.</InfoTip>
+          </div>
+          <textarea
+            className="mp-text-input"
+            style={{ minHeight: 80, resize: 'vertical', width: '100%' }}
+            placeholder="e.g. Both teams are available this Friday afternoon and want to settle the bracket tie."
+            value={reason}
+            onChange={(e) => onReasonChange(e.target.value)}
+          />
+        </div>
+
+        <div className="mp-confirm__actions" style={{ marginTop: 14 }}>
+          <button className="mp-btn mp-btn--cancel" onClick={onClose} disabled={submitting}>Cancel</button>
+          <button className="mp-btn mp-btn--confirm" onClick={onSubmit} disabled={incomplete || submitting}>
+            <FaPaperPlane /> {submitting ? 'Sending…' : 'Send request'}
+          </button>
+        </div>
+
+        {myRequests.length > 0 && (
+          <div style={{ marginTop: 18, borderTop: '1px solid #e7ebf3', paddingTop: 12 }}>
+            <div className="mp-dd-panel__label" style={{ marginBottom: 8 }}>Your requests</div>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 8, maxHeight: 220, overflowY: 'auto' }}>
+              {myRequests.map((r) => (
+                <div key={r.id} style={{ border: '1px solid #e7ebf3', borderRadius: 10, padding: '8px 10px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                    <span style={{ fontWeight: 700, fontSize: '0.8rem' }}>
+                      {r.sport}{r.category ? ` · ${r.category}` : ''}
+                    </span>
+                    <span
+                      style={{
+                        padding: '2px 8px', borderRadius: 20, fontSize: '0.68rem', fontWeight: 700,
+                        background: REQUEST_STATUS_COLOR[r.status]?.bg, color: REQUEST_STATUS_COLOR[r.status]?.fg,
+                      }}
+                    >
+                      {REQUEST_STATUS_LABEL[r.status] || r.status}
+                    </span>
+                  </div>
+                  <div style={{ fontSize: '0.72rem', opacity: 0.7, marginTop: 2 }}>
+                    {LEVELS.find((l) => l.key === r.level)?.label || r.level}
+                    {r.teamA && r.teamB ? ` • ${r.teamA} vs ${r.teamB}` : ''}
+                  </div>
+                  {r.status === 'declined' && r.declineReason && (
+                    <div style={{ fontSize: '0.74rem', color: '#a83218', marginTop: 4 }}>
+                      Admin: {r.declineReason}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
    MATCH PANEL — "Before the game" / "After the game"
 ═══════════════════════════════════════════ */
 function MatchPanel({
@@ -1298,6 +1471,7 @@ const mkEntry = () => ({ id: uid(), teamId: '', points: '', time: '', violations
 
 export default function ModeratorPage() {
   const navigate = useNavigate();
+  const { currentUser, userProfile } = useContext(AuthContext);
   const summaryRef = useRef(null);
 
   const [level, setLevel] = useState('highSchool');
@@ -1354,7 +1528,6 @@ export default function ModeratorPage() {
   }, [teams, schedules]);
   const usingScheduleFallback = sports.length === 0 && effectiveSports.length > 0;
 
-  const sportOptions = useMemo(() => buildSportOnlyOptions(effectiveSports), [effectiveSports]);
   const [sportId, setSportId] = useState('');
   const selectedSport = effectiveSports.find((s) => s.id === sportId) || null;
 
@@ -1365,6 +1538,12 @@ export default function ModeratorPage() {
   const [divisionKey, setDivisionKey] = useState('');
   const selectedDivision = divisionOptions.find((d) => d.key === divisionKey) || null;
   const divisionRequired = divisionOptions.length > 0;
+
+  /* Year Level — carried only by pre-existing manual (no-fixture) records
+     from before that entry path was removed in favor of "Request a
+     schedule"; still read/written when re-computing one of those via
+     loadRecordIntoForm below. New records are always tied to a fixture. */
+  const [yearLevel, setYearLevel] = useState('');
 
   /* Declared before activeSport because that memo reads it: a fixture
      supplies the division for sports that have none configured. */
@@ -1408,6 +1587,127 @@ export default function ModeratorPage() {
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
   const [flashId, setFlashId] = useState(null);
+
+  /* ── "Request a schedule" (ask the admin to arrange a fixture) ── */
+  const [requestModalOpen, setRequestModalOpen] = useState(false);
+  const [requestLevel, setRequestLevel] = useState('highSchool');
+  const [requestFetchedConfig, setRequestFetchedConfig] = useState(null); // { sports, teams } — only populated when requestLevel differs from the page's own `level`
+  const [requestSportId, setRequestSportId] = useState('');
+  const [requestDivisionKey, setRequestDivisionKey] = useState('');
+  const [requestTeamAId, setRequestTeamAId] = useState('');
+  const [requestTeamBId, setRequestTeamBId] = useState('');
+  const [requestReason, setRequestReason] = useState('');
+  const [requestSubmitting, setRequestSubmitting] = useState(false);
+  const [allScheduleRequests, setAllScheduleRequests] = useState([]);
+  const [requestToast, setRequestToast] = useState(null);
+
+  // Live so a newly-sent request (or the admin resolving one) shows up
+  // in "Your requests" without needing a page refresh.
+  useEffect(() => {
+    const unsubscribe = subscribeScheduleRequests(setAllScheduleRequests);
+    return unsubscribe;
+  }, []);
+
+  const myScheduleRequests = useMemo(() => {
+    const email = (currentUser?.email || '').toLowerCase();
+    if (!email) return [];
+    return allScheduleRequests
+      .filter((r) => (r.requestedByEmail || '').toLowerCase() === email)
+      .sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  }, [allScheduleRequests, currentUser]);
+
+  const openRequestModal = () => {
+    setRequestLevel(level);
+    setRequestFetchedConfig(null);
+    setRequestSportId('');
+    setRequestDivisionKey('');
+    setRequestTeamAId('');
+    setRequestTeamBId('');
+    setRequestReason('');
+    setRequestModalOpen(true);
+  };
+
+  // The sport/division/team pickers inside the request modal need the
+  // target level's own config. While requestLevel matches the page's
+  // current level tab, `effectiveSports`/`effectiveTeams` (already loaded)
+  // are used directly below — this effect only has work to do, and only
+  // ever calls setState, once the moderator picks a *different* level
+  // than the one currently shown.
+  useEffect(() => {
+    if (!requestModalOpen || requestLevel === level) return;
+    let cancelled = false;
+    getSportsTeamsConfig(requestLevel).then((cfg) => {
+      if (!cancelled) setRequestFetchedConfig({ sports: cfg.sports || [], teams: cfg.teams || [] });
+    }).catch(() => { if (!cancelled) setRequestFetchedConfig({ sports: [], teams: [] }); });
+    return () => { cancelled = true; };
+  }, [requestModalOpen, requestLevel, level]);
+
+  const requestSports = useMemo(
+    () => (requestLevel === level ? effectiveSports : (requestFetchedConfig?.sports || [])),
+    [requestLevel, level, effectiveSports, requestFetchedConfig],
+  );
+  const requestTeamsPool = useMemo(
+    () => (requestLevel === level ? effectiveTeams : (requestFetchedConfig?.teams || [])),
+    [requestLevel, level, effectiveTeams, requestFetchedConfig],
+  );
+  const requestSportOptions = useMemo(() => buildSportOnlyOptions(requestSports), [requestSports]);
+  const requestSelectedSport = requestSports.find((s) => s.id === requestSportId) || null;
+  const requestDivisionOptions = useMemo(
+    () => buildDivisionOptionsForSport(requestSelectedSport),
+    [requestSelectedSport],
+  );
+  const requestDivisionRequired = requestDivisionOptions.length > 0;
+  const requestSelectedDivision = requestDivisionOptions.find((d) => d.key === requestDivisionKey) || null;
+
+  // Same "teams registered for this sport" filter the main record form
+  // uses (teamOptionsForSport above) — the admin's Add Schedule screen
+  // matches teams by name against this same sport-scoped pool, so picking
+  // from it here guarantees the names line up once the admin opens it.
+  const requestTeamOptions = useMemo(() => {
+    if (!requestSelectedSport) return [];
+    const bySport = requestTeamsPool.filter((t) =>
+      (t.sportIds || []).some((sportName) => norm(sportName) === norm(requestSelectedSport.name)));
+    const pool = bySport.length ? bySport : requestTeamsPool;
+    return pool.map((t) => ({ key: t.id, label: t.name, logo: t.logo || null }));
+  }, [requestTeamsPool, requestSelectedSport]);
+
+  async function handleSendScheduleRequest() {
+    if (
+      !requestSportId || (requestDivisionRequired && !requestDivisionKey)
+      || !requestTeamAId || !requestTeamBId || requestTeamAId === requestTeamBId
+      || !requestReason.trim()
+    ) return;
+    const teamA = requestTeamsPool.find((t) => t.id === requestTeamAId);
+    const teamB = requestTeamsPool.find((t) => t.id === requestTeamBId);
+    setRequestSubmitting(true);
+    try {
+      await createScheduleRequest({
+        level: requestLevel,
+        sport: requestSelectedSport?.name || '',
+        category: requestSelectedDivision?.category || '',
+        teamA: teamA?.name || '',
+        teamB: teamB?.name || '',
+        teamALogo: teamA?.logo || null,
+        teamBLogo: teamB?.logo || null,
+        reason: requestReason.trim(),
+        requestedByEmail: currentUser?.email || '',
+        requestedByName: userProfile?.name || '',
+      });
+      setRequestModalOpen(false);
+      setRequestToast({ text: 'Request sent — the admin has been notified.' });
+    } catch (err) {
+      console.error('Failed to send schedule request:', err);
+      setRequestToast({ text: friendlyFirestoreError(err, 'Could not send the request') });
+    } finally {
+      setRequestSubmitting(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!requestToast) return;
+    const t = setTimeout(() => setRequestToast(null), 3500);
+    return () => clearTimeout(t);
+  }, [requestToast]);
 
   /* ── load config, schedules, records & rankings whenever the level changes ── */
   useEffect(() => {
@@ -1466,11 +1766,21 @@ export default function ModeratorPage() {
 
       setSportId('');
       setDivisionKey('');
+      setYearLevel('');
       setLockedMatch(null);
       setLockedRecord(null);
       setLoading(false);
     })();
     return () => { cancelled = true; };
+  }, [level]);
+
+  // Live on top of the one-time fetch above — an admin deleting/editing a
+  // schedule (or fulfilling a moderator's request) should disappear from
+  // this list immediately, not just after the moderator reloads the page
+  // or switches level tabs.
+  useEffect(() => {
+    const unsubscribe = subscribeMatchSchedules(level, setSchedules);
+    return unsubscribe;
   }, [level]);
 
   const resetForm = useCallback((teamCount) => {
@@ -1800,10 +2110,16 @@ export default function ModeratorPage() {
 
   /* ── validation + update ── */
   function handleUpdateClick() {
+    /* Year Level only applies to a manual (no-fixture) record — a match
+       that came from (or once came from) a real schedule entry already has
+       its own division and no notion of a single grade/year. */
+    const isManualEntry = !lockedMatch && !editingRecord?.scheduleId;
+
     const reasons = [];
     if (!formatChoice) reasons.push('Choose a sports format first.');
     if (!selectedSport) reasons.push('Select a sport.');
     if (selectedSport && divisionRequired && !selectedDivision) reasons.push('Select a division.');
+    if (isManualEntry && !yearLevel) reasons.push('Select a year level.');
 
     entries.forEach((e, i) => {
       const row = rows.find((r) => r.id === e.id);
@@ -1840,6 +2156,7 @@ export default function ModeratorPage() {
       sportName: activeSport.sportName,
       category: activeSport.category,
       format: activeSport.format,
+      yearLevel: isManualEntry ? yearLevel : (editingRecord?.yearLevel ?? null),
       teams: comp.teams,
       winnerId: comp.winnerId,
     });
@@ -1884,7 +2201,8 @@ export default function ModeratorPage() {
       sportName: pending.sportName,
       category: pending.category,
       format: pending.format,
-      label: `${pending.sportName} ${pending.category}`.trim(),
+      yearLevel: pending.yearLevel || null,
+      label: `${pending.sportName} ${pending.category}${pending.yearLevel ? ` · ${LEVELS.find((l) => l.key === pending.yearLevel)?.label || pending.yearLevel}` : ''}`.trim(),
       diff: round4(diff),
       winner: winnerSide,
       teamA,
@@ -1957,6 +2275,7 @@ export default function ModeratorPage() {
     setEditingRecord(record);
     setLockedMatch(null);
     setLockedRecord(null);
+    setYearLevel(record.yearLevel || '');
     applyRecordToForm(record);
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -2048,20 +2367,25 @@ export default function ModeratorPage() {
       </header>
 
       <div className="mp-body">
-        <div className="mp-intro">
-          <h2 className="mp-intro__title">Update match records</h2>
-          {formatChoice && (
-            <div className="mp-format-chip">
-              <span className="mp-format-chip__label">{formatHeadline(formatChoice)}</span>
-              <button
-                type="button"
-                className="mp-format-chip__btn"
-                onClick={() => { setFormatPickerFor(lockedMatch); setFormatPickerOpen(true); }}
-              >
-                <FaSync /> Change format
-              </button>
-            </div>
-          )}
+        <div className="mp-intro" style={{ alignItems: 'flex-start', justifyContent: 'space-between' }}>
+          <div>
+            <h2 className="mp-intro__title">Update match records</h2>
+            {formatChoice && (
+              <div className="mp-format-chip">
+                <span className="mp-format-chip__label">{formatHeadline(formatChoice)}</span>
+                <button
+                  type="button"
+                  className="mp-format-chip__btn"
+                  onClick={() => { setFormatPickerFor(lockedMatch); setFormatPickerOpen(true); }}
+                >
+                  <FaSync /> Change format
+                </button>
+              </div>
+            )}
+          </div>
+          <button type="button" className="mp-btn mp-btn--navy" onClick={openRequestModal} style={{ flexShrink: 0 }}>
+            <FaPaperPlane /> Request a schedule
+          </button>
         </div>
 
         {loadError && (
@@ -2082,25 +2406,13 @@ export default function ModeratorPage() {
                   Every finished matchup, in any sport or division. Pick one and its sport, division, and both teams fill in automatically.
                 </p>
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                <button
-                  type="button"
-                  className="mp-finished-panel__unlock"
-                  onClick={() => {
-                    const autoId = activeSport?.format ? choiceIdForDivisionFormat(activeSport.format) : null;
-                    if (autoId && applyFormat(autoId, null)) return;
-                    setFormatPickerFor(null);
-                    setFormatPickerOpen(true);
-                  }}
-                >
-                  <FaPlus /> No fixture
-                </button>
-                {lockedMatch && (
+              {lockedMatch && (
+                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
                   <button type="button" className="mp-finished-panel__unlock" onClick={handleUnlockMatch}>
                     Change match
                   </button>
-                )}
-              </div>
+                </div>
+              )}
             </div>
             <div className="mp-finished-panel__list">
               {recordableMatches.map((s) => {
@@ -2141,6 +2453,17 @@ export default function ModeratorPage() {
                         {s.teamBLogo ? <img src={s.teamBLogo} alt="" /> : initials(s.teamB)}
                       </span>
                     </div>
+                    {s.matchLabel && (
+                      <div
+                        style={{
+                          fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase',
+                          color: '#8a5f04', background: '#fff3d6', padding: '2px 7px', borderRadius: 20,
+                          display: 'inline-block', marginBottom: 4,
+                        }}
+                      >
+                        {s.matchLabel}
+                      </div>
+                    )}
                     <div className="mp-finished-card__names">{s.teamA} <span>vs</span> {s.teamB}</div>
                     <div className="mp-finished-card__meta">
                       {s.date || s.time
@@ -2159,25 +2482,6 @@ export default function ModeratorPage() {
           </div>
         )}
 
-        <div className="mp-sport-row">
-          <OptionDropdown
-            variant="pill"
-            panelLabel="Sports option"
-            placeholder="Select sport"
-            value={sportId}
-            options={sportOptions}
-            onChange={(k) => { setSportId(k); setDivisionKey(''); resetForm(); }}
-          />
-          <OptionDropdown
-            variant="pill"
-            panelLabel="Division"
-            placeholder={divisionOptions.length === 0 ? 'No divisions' : 'Select division'}
-            value={divisionKey}
-            options={divisionOptions}
-            disabled={!selectedSport || divisionOptions.length === 0}
-            onChange={(k) => { setDivisionKey(k); resetForm(); }}
-          />
-        </div>
         <div className="mp-header-divider" />
 
         <LevelTabs
@@ -2202,21 +2506,14 @@ export default function ModeratorPage() {
               </h3>
               <p className="mp-card__sub">
                 {scheduledMatches.length === 0
-                  ? 'Once an admin saves a schedule for this level it appears here, ready to record.'
+                  ? "Once an admin saves a schedule for this level it appears here, ready to record — or ask them to arrange one."
                   : "Matches on the schedule show up here once they're finished."}
               </p>
-              <button
-                type="button"
-                className="mp-btn mp-btn--update"
-                onClick={() => {
-                  const autoId = activeSport?.format ? choiceIdForDivisionFormat(activeSport.format) : null;
-                  if (autoId && applyFormat(autoId, null)) return;
-                  setFormatPickerFor(null);
-                  setFormatPickerOpen(true);
-                }}
-              >
-                Record without a fixture
-              </button>
+              {scheduledMatches.length === 0 && (
+                <button type="button" className="mp-btn mp-btn--update" onClick={openRequestModal}>
+                  <FaPaperPlane /> Request a schedule
+                </button>
+              )}
             </div>
           )
         ) : (
@@ -2501,6 +2798,42 @@ export default function ModeratorPage() {
           onCancel={() => setResetConfirmOpen(false)}
           onConfirm={() => { resetForm(); setResetConfirmOpen(false); }}
         />
+      )}
+
+      {requestModalOpen && (
+        <RequestScheduleModal
+          onClose={() => setRequestModalOpen(false)}
+          onSubmit={handleSendScheduleRequest}
+          submitting={requestSubmitting}
+          sportOptions={requestSportOptions}
+          sportId={requestSportId}
+          onSportChange={(id) => { setRequestSportId(id); setRequestDivisionKey(''); setRequestTeamAId(''); setRequestTeamBId(''); }}
+          divisionOptions={requestDivisionOptions}
+          divisionKey={requestDivisionKey}
+          onDivisionChange={setRequestDivisionKey}
+          divisionRequired={requestDivisionRequired}
+          levelOptions={LEVELS}
+          requestLevel={requestLevel}
+          onLevelChange={(k) => { setRequestLevel(k); setRequestSportId(''); setRequestDivisionKey(''); setRequestTeamAId(''); setRequestTeamBId(''); }}
+          teamOptions={requestTeamOptions}
+          teamAId={requestTeamAId}
+          teamBId={requestTeamBId}
+          onTeamAChange={setRequestTeamAId}
+          onTeamBChange={setRequestTeamBId}
+          reason={requestReason}
+          onReasonChange={setRequestReason}
+          myRequests={myScheduleRequests}
+        />
+      )}
+
+      {requestToast && (
+        <div className="mp-toast" style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          background: '#1c2540', color: '#fff', padding: '10px 18px', borderRadius: 10,
+          fontSize: '0.85rem', fontWeight: 600, boxShadow: '0 8px 24px rgba(0,0,0,0.2)', zIndex: 9999,
+        }}>
+          {requestToast.text}
+        </div>
       )}
     </div>
   );

@@ -9,6 +9,7 @@ import {
   orderBy,
   serverTimestamp,
   increment,
+  onSnapshot,
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -324,6 +325,29 @@ export async function getMatchSchedules(level) {
 }
 
 /**
+ * Live-subscribes to one level's match schedules. Used anywhere a
+ * schedule change made elsewhere (the admin deleting/editing a match,
+ * or fulfilling a moderator's schedule request) needs to show up
+ * immediately instead of waiting for the next manual reload or poll —
+ * the Moderator page and the public/home dashboards both read schedules
+ * this way. Returns an unsubscribe function.
+ */
+export function subscribeMatchSchedules(level, callback) {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot subscribe to match schedules.');
+    callback([]);
+    return () => {};
+  }
+  const configRef = doc(db, 'matchSchedules', level);
+  return onSnapshot(configRef, (snapshot) => {
+    callback(snapshot.exists() ? (snapshot.data().matches || []) : []);
+  }, (error) => {
+    console.warn('Match schedules listener failed:', error);
+    callback([]);
+  });
+}
+
+/**
  * Persists a freshly generated round-robin / bracket schedule.
  * Called when the admin clicks "Save Generated Schedule".
  * Merges with (rather than replaces) any existing matches for other
@@ -356,6 +380,27 @@ export async function saveGeneratedSchedule(level, matches) {
 }
 
 /**
+ * Removes any Moderator-confirmed records tied (via `scheduleId`) to the
+ * given schedule match ids, so deleting a fixture doesn't leave a stale
+ * record behind in the "Updated Match Summary" table / Dashboard rankings.
+ * Records saved without a fixture (`scheduleId: null`) are never touched.
+ */
+async function deleteMatchRecordsByScheduleIds(level, scheduleIds) {
+  if (!scheduleIds.length) return;
+  const ids = new Set(scheduleIds.map(String));
+  const existing = await getMatchRecords(level);
+  const remaining = existing.filter(r => !r.scheduleId || !ids.has(String(r.scheduleId)));
+  if (remaining.length === existing.length) return;
+
+  const configRef = doc(db, 'matchRecords', level);
+  await setDoc(
+    configRef,
+    { records: remaining, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
+}
+
+/**
  * Deletes every match belonging to one generated schedule set — same
  * sport + category, at this level, regardless of format — so the admin
  * can generate a new one (with any format) in its place. Used by the
@@ -366,6 +411,7 @@ export async function deleteScheduleSet(level, sport, category) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getMatchSchedules(level);
+  const removed = existing.filter(m => m.sport === sport && m.category === category);
   const remaining = existing.filter(
     m => !(m.sport === sport && m.category === category)
   );
@@ -376,6 +422,8 @@ export async function deleteScheduleSet(level, sport, category) {
     { matches: remaining, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  await deleteMatchRecordsByScheduleIds(level, removed.map(m => m.id));
 
   return remaining;
 }
@@ -419,7 +467,111 @@ export async function deleteMatchSchedule(level, matchId) {
     { merge: true }
   );
 
+  await deleteMatchRecordsByScheduleIds(level, [matchId]);
+
   return remaining;
+}
+
+/* ─────────────────────────────────────────────
+   Schedule requests — a moderator asking the admin to set up a fixture
+   (sport / division / level) instead of adding it to the schedule
+   themselves. Stored in ONE global doc (not per level, unlike
+   matchSchedules) so the admin's pending-request badge is a single
+   read/listener covering every level at once.
+   Stored at: scheduleRequests/all → { requests: [...] }
+
+   A request looks like:
+   {
+     id, level, sport, category, reason,
+     requestedByEmail, requestedByName,
+     status: 'pending' | 'scheduled' | 'declined',
+     declineReason,
+     createdAt, resolvedAt,
+   }
+───────────────────────────────────────────── */
+export async function getScheduleRequests() {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot load schedule requests.');
+    return [];
+  }
+  const configRef = doc(db, 'scheduleRequests', 'all');
+  const snapshot = await getDoc(configRef);
+  if (!snapshot.exists()) return [];
+  return snapshot.data().requests || [];
+}
+
+/**
+ * Live-subscribes to every schedule request. Used for the admin's
+ * pending-request notification badge (sidebar + Schedule Requests tab),
+ * which has to update the moment a moderator submits or an admin
+ * resolves one — not just whenever the page happens to reload.
+ * Returns an unsubscribe function.
+ */
+export function subscribeScheduleRequests(callback) {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot subscribe to schedule requests.');
+    callback([]);
+    return () => {};
+  }
+  const configRef = doc(db, 'scheduleRequests', 'all');
+  return onSnapshot(configRef, (snapshot) => {
+    callback(snapshot.exists() ? (snapshot.data().requests || []) : []);
+  }, (error) => {
+    console.warn('Schedule requests listener failed:', error);
+    callback([]);
+  });
+}
+
+/**
+ * Files a new schedule request — the Moderator's "Request a schedule"
+ * form. `doc(collection(...)).id` mints a fresh random id without
+ * writing anything, the same trick Firestore's own addDoc uses under
+ * the hood, so requests get real ids without ever loading a whole
+ * second collection just to auto-increment something.
+ */
+export async function createScheduleRequest(request) {
+  if (!db) throw new Error('Firestore not initialized.');
+
+  const existing = await getScheduleRequests();
+  const newRequest = {
+    id: doc(collection(db, 'scheduleRequests')).id,
+    status: 'pending',
+    createdAt: Date.now(),
+    ...request,
+  };
+
+  const configRef = doc(db, 'scheduleRequests', 'all');
+  await setDoc(
+    configRef,
+    { requests: [...existing, newRequest], updatedAt: serverTimestamp() },
+    { merge: true }
+  );
+
+  return newRequest;
+}
+
+/**
+ * Admin resolves a request — mark it fulfilled once the actual fixture
+ * has been added via the normal Add Schedule flow, or decline it with
+ * a reason. `patch` merges onto the existing request (e.g. `{ status:
+ * 'declined', declineReason }` or `{ status: 'scheduled' }`).
+ */
+export async function updateScheduleRequest(requestId, patch) {
+  if (!db) throw new Error('Firestore not initialized.');
+
+  const existing = await getScheduleRequests();
+  const merged = existing.map((r) => (
+    r.id === requestId ? { ...r, ...patch, resolvedAt: Date.now() } : r
+  ));
+
+  const configRef = doc(db, 'scheduleRequests', 'all');
+  await setDoc(
+    configRef,
+    { requests: merged, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
+
+  return merged;
 }
 
 /* ─────────────────────────────────────────────
