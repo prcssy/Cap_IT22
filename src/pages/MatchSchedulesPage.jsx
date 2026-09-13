@@ -1,9 +1,11 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useContext } from 'react';
 import './MatchSchedulesPage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import { FaSearch, FaTrophy } from 'react-icons/fa';
-import { getMatchSchedules, getMatchRecords } from '../services/firestoreService';
+import { getMatchSchedules, getMatchRecords, getSavedMatchesForUser } from '../services/firestoreService';
 import LevelTabs from '../components/LevelTabs';
+import SaveMatchButton from '../components/SaveMatchButton';
+import { AuthContext } from '../components/AuthContext';
 
 /* ═══════════════════════════════════════════════════════════
    This page is fully data-driven: every match shown here comes
@@ -193,7 +195,7 @@ function RoundsView({ matches, resultFor, champion }) {
 }
 
 /* ── Schedule table for a single day ── */
-function ScheduleDayTable({ day, matches, resultFor }) {
+function ScheduleDayTable({ day, matches, resultFor, currentUser, savedMap, onToggleSave }) {
   return (
     <div className="ms-day-card">
       <div className="ms-day-header">{day}</div>
@@ -233,6 +235,12 @@ function ScheduleDayTable({ day, matches, resultFor }) {
                 );
               })()}
             </div>
+            <SaveMatchButton
+              match={m}
+              currentUser={currentUser}
+              savedInfo={savedMap.get(m.id) || null}
+              onChange={onToggleSave}
+            />
           </div>
         ))}
       </div>
@@ -241,6 +249,7 @@ function ScheduleDayTable({ day, matches, resultFor }) {
 }
 
 export default function MatchSchedulesPage() {
+  const { currentUser } = useContext(AuthContext);
   const [levelKey, setLevelKey] = useState(LEVELS[0].key);
   const level = LEVELS.find(l => l.key === levelKey) || LEVELS[0];
   const [category, setCategory] = useState(null);
@@ -248,6 +257,7 @@ export default function MatchSchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [matchesByLevel, setMatchesByLevel] = useState({ elementary: [], highSchool: [], college: [] });
   const [records, setRecords] = useState([]); // Moderator results, all levels
+  const [savedMap, setSavedMap] = useState(new Map()); // matchId -> { calendarEventId }
   const contactRef = React.useRef(null);
 
   /* ── Load real data from Firestore for every level ── */
@@ -297,6 +307,39 @@ export default function MatchSchedulesPage() {
     load();
     return () => { cancelled = true; };
   }, []);
+
+  /* ── Load which matches the signed-in user already saved, once per
+     sign-in, so SaveMatchButton can check membership in memory ── */
+  useEffect(() => {
+    let cancelled = false;
+
+    async function load() {
+      if (!currentUser) {
+        setSavedMap(new Map());
+        return;
+      }
+      try {
+        const docs = await getSavedMatchesForUser(currentUser.uid);
+        if (cancelled) return;
+        setSavedMap(new Map(docs.map((d) => [d.matchId, { calendarEventId: d.calendarEventId }])));
+      } catch (err) {
+        console.warn('Failed to load saved matches:', err);
+        if (!cancelled) setSavedMap(new Map());
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [currentUser]);
+
+  const handleToggleSave = (matchId, savedInfo) => {
+    setSavedMap((prev) => {
+      const next = new Map(prev);
+      if (savedInfo) next.set(matchId, savedInfo);
+      else next.delete(matchId);
+      return next;
+    });
+  };
 
   /* ── Matches visible for the selected level filter ── */
   const levelMatches = useMemo(() => {
@@ -487,7 +530,15 @@ export default function MatchSchedulesPage() {
             <div className="ms-schedule-list">
               {filteredSchedule.length > 0 ? (
                 filteredSchedule.map(day => (
-                  <ScheduleDayTable key={day.day} day={day.day} matches={day.matches} resultFor={resultFor} />
+                  <ScheduleDayTable
+                    key={day.day}
+                    day={day.day}
+                    matches={day.matches}
+                    resultFor={resultFor}
+                    currentUser={currentUser}
+                    savedMap={savedMap}
+                    onToggleSave={handleToggleSave}
+                  />
                 ))
               ) : search.trim() ? (
                 <p className="ms-schedule-empty">No matches found for "{search}".</p>
