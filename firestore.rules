@@ -60,5 +60,16 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isStaff();
     }
+
+    // ── Saved matches (Save Match → Calendar reminder) ──────────
+    // Doc id is `${uid}_${matchId}`. Owners manage their own saves.
+    // Staff can also read/delete any doc — needed so deleting a match
+    // from the schedule (AdminSchedulePage) can clean up every user's
+    // stale savedMatches doc for that match, not just the admin's own.
+    match /savedMatches/{docId} {
+      allow read:          if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
+      allow create, update: if signedIn() && request.resource.data.uid == request.auth.uid;
+      allow delete:         if signedIn() && (resource.data.uid == request.auth.uid || isStaff());
+    }
   }
 }
