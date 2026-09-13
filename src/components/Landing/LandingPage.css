@@ -146,20 +146,21 @@
   align-items: center;
   gap: 1rem;
   padding: 0.405rem 0.99rem;
-  background: #001a3a;
+  background: rgba(255, 255, 255, 0.08);
   color: #fff;
   margin-right: 1rem;
-  border: none;
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 999px;
   font-size: 0.81rem;
   font-weight: 600;
+  white-space: nowrap;
   cursor: pointer;
   transition: background 0.2s;
 }
 
 @media (hover: hover) and (pointer: fine) {
 .level-btn:hover {
-  background: #1a3a6e;
+  background: rgba(255, 255, 255, 0.2);
 }
 }
 
@@ -177,7 +178,9 @@
   top: calc(100% + 7.2px);
   right: 0;
   min-width: 144px;
-  background: #001a3a;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
   border-radius: 9px;
   list-style: none;
   box-shadow: 0 7.2px 21.6px rgba(0, 0, 0, 0.3);
@@ -213,7 +216,7 @@
 }
 
 .level-item.active {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.22);
   color: #fff;
   font-weight: 700;
 }

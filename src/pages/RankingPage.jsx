@@ -1,6 +1,6 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import './RankingPage.css';
-import { FaSearch, FaCrown, FaMedal } from 'react-icons/fa';
+import { FaSearch, FaCrown, FaMedal, FaChevronDown } from 'react-icons/fa';
 import Contact from '../components/Landing/Contact/Contact';
 import LevelTabs from '../components/LevelTabs';
 import { getSportsTeamsConfig, getTeamRankings, getMatchRecords } from '../services/firestoreService';
@@ -146,6 +146,53 @@ function SportTabs({ active, onChange, sports }) {
   );
 }
 
+
+/* ── Division dropdown, reused by both tables ──
+   A native <select>'s closed pill can be themed, but its open option
+   list is rendered by the OS/browser and ignores almost all CSS — it
+   showed up as a plain white/gray box no matter what was set on
+   `option`. Built as a custom button + list instead (same pattern as
+   the landing page's Levels dropdown), so the open menu can actually
+   match the site's dark navy / gold theme. */
+function DivisionSelect({ value, onChange, options }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onClickOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [open]);
+
+  const allLabels = ['All Divisions', ...options.map(d => d.label)];
+
+  return (
+    <div className="rk-division-dropdown" ref={wrapRef}>
+      <button
+        type="button"
+        className="rk-division-btn"
+        onClick={() => setOpen(prev => !prev)}
+      >
+        {value}
+        <FaChevronDown className={`rk-division-chevron ${open ? 'rk-division-chevron--open' : ''}`} />
+      </button>
+      <ul className={`rk-division-menu ${open ? 'rk-division-menu--open' : ''}`}>
+        {allLabels.map(label => (
+          <li
+            key={label}
+            className={`rk-division-item ${value === label ? 'rk-division-item--active' : ''}`}
+            onClick={() => { onChange(label); setOpen(false); }}
+          >
+            {label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
 
 /* ── Potential Champion table ── */
 function ChampionTable({ data, search }) {
@@ -652,16 +699,11 @@ export default function RankingPage() {
           <SportTabs sports={availableSports} active={championSport} onChange={setChampionSport} />
           <div className="rk-division-row">
             <label className="rk-division-label">Division</label>
-            <select
-              className="rk-division-select"
+            <DivisionSelect
               value={championDivision}
-              onChange={(e) => setChampionDivision(e.target.value)}
-            >
-              <option value="All Divisions">All Divisions</option>
-              {championDivisionOptions.map(d => (
-                <option key={d.key} value={d.label}>{d.label}</option>
-              ))}
-            </select>
+              onChange={setChampionDivision}
+              options={championDivisionOptions}
+            />
           </div>
           <div className="rk-card">
             {loading ? (
@@ -681,16 +723,11 @@ export default function RankingPage() {
           <SportTabs sports={availableSports} active={medalSport} onChange={setMedalSport} />
           <div className="rk-division-row">
             <label className="rk-division-label">Division</label>
-            <select
-              className="rk-division-select"
+            <DivisionSelect
               value={medalDivision}
-              onChange={(e) => setMedalDivision(e.target.value)}
-            >
-              <option value="All Divisions">All Divisions</option>
-              {medalDivisionOptions.map(d => (
-                <option key={d.key} value={d.label}>{d.label}</option>
-              ))}
-            </select>
+              onChange={setMedalDivision}
+              options={medalDivisionOptions}
+            />
           </div>
           <div className="rk-card rk-card--light">
             <MedalTable data={medalData} search={search} />

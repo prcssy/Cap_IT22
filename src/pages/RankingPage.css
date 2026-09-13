@@ -235,7 +235,19 @@
   color: rgba(255, 255, 255, 0.55);
 }
 
-.rk-division-select {
+/* ── Division dropdown (custom — see DivisionSelect in RankingPage.jsx) ──
+   A native <select>'s open option list is drawn by the OS/browser and
+   ignores nearly all CSS, so it never matched this page's dark navy /
+   gold theme. Rebuilt as a button + absolutely-positioned menu instead,
+   styled entirely by hand like every other control on this page. */
+.rk-division-dropdown {
+  position: relative;
+}
+
+.rk-division-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   font-family: "Inter", sans-serif;
   background: rgba(255, 255, 255, 0.08);
   color: #fff;
@@ -244,17 +256,74 @@
   padding: 6px 14px;
   font-size: 12px;
   font-weight: 700;
+  white-space: nowrap;
   cursor: pointer;
+  transition: background 0.2s;
 }
 
 @media (hover: hover) and (pointer: fine) {
-.rk-division-select:hover {
+.rk-division-btn:hover {
   background: rgba(255, 255, 255, 0.14);
 }
 }
 
-.rk-division-select option {
-  color: #0b2447;
+.rk-division-chevron {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.rk-division-chevron--open {
+  transform: rotate(180deg);
+}
+
+.rk-division-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 140px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #001529;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  z-index: 50;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px) scaleY(0.96);
+  transform-origin: top;
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+}
+
+.rk-division-menu--open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scaleY(1);
+}
+
+.rk-division-item {
+  font-family: "Inter", sans-serif;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.rk-division-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+}
+
+.rk-division-item--active {
+  background: #FCBF19;
+  color: #001529;
 }
 
 .rk-sport-tab {
