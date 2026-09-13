@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useContext } from 'react';
 import './MatchSchedulesPage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import { FaSearch, FaTrophy } from 'react-icons/fa';
-import { getMatchSchedules, getMatchRecords, getSavedMatchesForUser } from '../services/firestoreService';
+import { getMatchRecords, getSavedMatchesForUser, subscribeToMatchSchedules } from '../services/firestoreService';
 import LevelTabs from '../components/LevelTabs';
 import SaveMatchButton from '../components/SaveMatchButton';
 import { AuthContext } from '../components/AuthContext';
@@ -260,52 +260,58 @@ export default function MatchSchedulesPage() {
   const [savedMap, setSavedMap] = useState(new Map()); // matchId -> { calendarEventId }
   const contactRef = React.useRef(null);
 
-  /* ── Load real data from Firestore for every level ── */
+  /* ── Load Moderator results once per visit. Optional: if this can't
+     be read, the schedule still renders, just without WIN/LOSE badges. ── */
   useEffect(() => {
     let cancelled = false;
 
-    async function load() {
-      setLoading(true);
+    async function loadRecords() {
       try {
-        const [elementary, highSchool, college] = await Promise.all([
-          getMatchSchedules('elementary'),
-          getMatchSchedules('highSchool'),
-          getMatchSchedules('college'),
-        ]);
-        if (cancelled) return;
-
-        /* Results are optional: if the moderator's records can't be read,
-           the schedule still renders, just without WIN/LOSE badges. */
         const recordLists = await Promise.all(
-          ['elementary', 'highSchool', 'college'].map(levelKey =>
-            getMatchRecords(levelKey).catch(() => [])),
+          ['elementary', 'highSchool', 'college'].map(lvl => getMatchRecords(lvl).catch(() => [])),
         );
-        if (cancelled) return;
-        setRecords(recordLists.flat().filter(Boolean));
-
-        const tag = (levelKey, matches) =>
-          (matches || [])
-            .filter(m => m && m.teamA && m.teamB)
-            .map(m => ({ ...m, level: levelKey }));
-
-        setMatchesByLevel({
-          elementary: tag('elementary', elementary),
-          highSchool: tag('highSchool', highSchool),
-          college: tag('college', college),
-        });
+        if (!cancelled) setRecords(recordLists.flat().filter(Boolean));
       } catch (e) {
-        console.error('Failed to load match schedules:', e);
-        if (!cancelled) {
-          setMatchesByLevel({ elementary: [], highSchool: [], college: [] });
-          setRecords([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
+        console.error('Failed to load match records:', e);
+        if (!cancelled) setRecords([]);
       }
     }
 
-    load();
+    loadRecords();
     return () => { cancelled = true; };
+  }, []);
+
+  /* ── Subscribe to schedules for every level so admin edits/additions
+     appear live, without a reload. Replaces the old one-time
+     getMatchSchedules() fetch with onSnapshot listeners. ── */
+  useEffect(() => {
+    // `loading` already starts true (useState(true) above) and this effect
+    // only ever runs once on mount, so no need to set it again here.
+    const levels = ['elementary', 'highSchool', 'college'];
+    const loadedLevels = new Set();
+
+    const tag = (levelKey, matches) =>
+      (matches || [])
+        .filter(m => m && m.teamA && m.teamB)
+        .map(m => ({ ...m, level: levelKey }));
+
+    const markLoaded = (lvl) => {
+      loadedLevels.add(lvl);
+      if (loadedLevels.size === levels.length) setLoading(false);
+    };
+
+    const unsubscribers = levels.map((lvl) =>
+      subscribeToMatchSchedules(
+        lvl,
+        (matches) => {
+          setMatchesByLevel((prev) => ({ ...prev, [lvl]: tag(lvl, matches) }));
+          markLoaded(lvl);
+        },
+        () => markLoaded(lvl), // keep last-known state in memory; just stop spinning
+      )
+    );
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, []);
 
   /* ── Load which matches the signed-in user already saved, once per
