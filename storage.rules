@@ -12,7 +12,7 @@ service firebase.storage {
                              // Firebase honors independently of a fresh rules evaluation.
       allow create: if request.auth != null
                     && request.auth.uid == uid
-                    && request.resource.size < 5 * 1024 * 1024
+                    && request.resource.size <= 5 * 1024 * 1024
                     && (
                          request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp']
                          || request.resource.contentType == 'application/pdf'
