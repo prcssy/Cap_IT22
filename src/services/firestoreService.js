@@ -5,8 +5,11 @@ import {
   setDoc,
   getDoc,
   addDoc,
+  deleteDoc,
   query,
+  where,
   orderBy,
+  onSnapshot,
   serverTimestamp,
   increment,
 } from 'firebase/firestore';
@@ -324,6 +327,35 @@ export async function getMatchSchedules(level) {
 }
 
 /**
+ * Live version of getMatchSchedules: subscribes to matchSchedules/{level}
+ * and calls onChange with the current matches array every time it changes
+ * (including once immediately with the current value). Returns an
+ * unsubscribe function — callers must invoke it on unmount.
+ *
+ * On a listener error (e.g. offline, permission issue), onError is called
+ * if provided, but onChange is NOT called again — the page keeps whatever
+ * matches it already has in memory, matching this repo's existing pattern
+ * of degrading gracefully rather than crashing when Firestore is
+ * unreachable.
+ */
+export function subscribeToMatchSchedules(level, onChange, onError) {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot subscribe to match schedules.');
+    onChange([]);
+    return () => {};
+  }
+  const configRef = doc(db, 'matchSchedules', level);
+  return onSnapshot(
+    configRef,
+    (snapshot) => onChange(snapshot.exists() ? (snapshot.data().matches || []) : []),
+    (error) => {
+      console.warn(`matchSchedules/${level} listener error:`, error);
+      if (onError) onError(error);
+    }
+  );
+}
+
+/**
  * Persists a freshly generated round-robin / bracket schedule.
  * Called when the admin clicks "Save Generated Schedule".
  * Merges with (rather than replaces) any existing matches for other
@@ -418,6 +450,15 @@ export async function deleteMatchSchedule(level, matchId) {
     { matches: remaining, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  // Best-effort: any user who had this match saved gets their Firestore
+  // savedMatches doc cleaned up too, so the app's own "saved" state stays
+  // correct. Their external Google Calendar event can't be reached from
+  // here (only that user's own consented browser session can act on
+  // their Calendar) and may go stale — accepted limitation, see spec.
+  await deleteSavedMatchesForMatch(matchId).catch((err) => {
+    console.warn(`Could not clean up savedMatches for deleted match ${matchId}:`, err);
+  });
 
   return remaining;
 }
@@ -653,4 +694,63 @@ export async function setEventRegistrationCounts(counts) {
   EVENT_TYPES.forEach(({ key }) => { clean[key] = Number(counts?.[key]) || 0; });
   const ref = doc(db, 'siteCounters', 'liveCounters');
   await setDoc(ref, { eventCounts: clean, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/* ─────────────────────────────────────────────
+   Saved matches (Save Match → Calendar reminder)
+   Stored at: savedMatches/{uid}_{matchId}
+   {
+     uid, level, matchId, sport, teamA, teamB,
+     calendarEventId,   // returned by Google Calendar's events.insert
+     createdAt,
+   }
+
+   One doc per (user, match) pair, keyed so save/unsave is a direct
+   set/delete by id — no query needed to check whether a single match is
+   already saved. getSavedMatchesForUser loads the whole set once per
+   page visit so the UI can check membership in memory instead of
+   issuing one read per visible match.
+───────────────────────────────────────────── */
+function savedMatchDocId(uid, matchId) {
+  return `${uid}_${matchId}`;
+}
+
+export async function getSavedMatchesForUser(uid) {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot load saved matches.');
+    return [];
+  }
+  const savedQuery = query(collection(db, 'savedMatches'), where('uid', '==', uid));
+  const snapshot = await getDocs(savedQuery);
+  return snapshot.docs.map((docSnap) => ({ id: docSnap.id, ...docSnap.data() }));
+}
+
+export async function saveMatchReminder(uid, level, match, calendarEventId) {
+  if (!db) throw new Error('Firestore not initialized.');
+  const ref = doc(db, 'savedMatches', savedMatchDocId(uid, match.id));
+  await setDoc(ref, {
+    uid,
+    level,
+    matchId: match.id,
+    sport: match.sport || '',
+    teamA: match.teamA || '',
+    teamB: match.teamB || '',
+    calendarEventId,
+    createdAt: serverTimestamp(),
+  });
+}
+
+export async function deleteSavedMatch(uid, matchId) {
+  if (!db) throw new Error('Firestore not initialized.');
+  await deleteDoc(doc(db, 'savedMatches', savedMatchDocId(uid, matchId)));
+}
+
+/* Internal: removes every user's savedMatches doc for one matchId.
+   Used by deleteMatchSchedule above. Not exported — schedule deletion
+   is the only caller. */
+async function deleteSavedMatchesForMatch(matchId) {
+  if (!db) return;
+  const matchQuery = query(collection(db, 'savedMatches'), where('matchId', '==', matchId));
+  const snapshot = await getDocs(matchQuery);
+  await Promise.all(snapshot.docs.map((docSnap) => deleteDoc(docSnap.ref)));
 }
