@@ -1,4 +1,10 @@
 import React, { useState, useRef, useContext, useEffect, useCallback, useMemo } from 'react';
+import {
+  parsePhoneNumberFromString,
+  getCountries,
+  getCountryCallingCode,
+  validatePhoneNumberLength,
+} from 'libphonenumber-js';
 import { AuthContext } from '../components/AuthContext';
 import {
   createRegistration,
@@ -45,6 +51,53 @@ function getSchoolLevel(gradeLevel) {
   return null;
 }
 
+// Region code ("PH", "US") -> display name ("Philippines", "United
+// States"), via the browser's own locale data — no separate country-name
+// dependency needed. Falls back to the bare code on older browsers.
+const regionNamer = typeof Intl !== 'undefined' && Intl.DisplayNames
+  ? new Intl.DisplayNames(['en'], { type: 'region' })
+  : null;
+function regionName(code) {
+  if (!code) return '';
+  try { return regionNamer ? regionNamer.of(code) : code; } catch { return code; }
+}
+
+// Country list for the phone-number Country dropdown below. There is no
+// separate "countries API" anywhere in this project — this reuses
+// libphonenumber-js (already installed for phone validation/formatting,
+// see the numvalidate.com note further down), which ships every country's
+// ISO code and calling code it supports (245 total), entirely offline —
+// no network fetch, so no loading/error state actually applies here the
+// way it would for a real remote API. Kept defensive anyway (empty-list
+// fallback below) in case that ever changes.
+const COUNTRY_OPTIONS = getCountries()
+  .map((code) => ({ code, name: regionName(code), callingCode: getCountryCallingCode(code) }))
+  .sort((a, b) => a.name.localeCompare(b.name));
+
+const DEFAULT_PHONE_COUNTRY = 'PH';
+
+// Per-country phone number rules (length, validity) come from
+// libphonenumber-js's own metadata via validatePhoneNumberLength — the
+// same Google libphonenumber data numvalidate.com's now-retired free API
+// used to wrap — instead of one fixed digit count for every country.
+// Returns undefined when the length is fine, or 'TOO_SHORT' / 'TOO_LONG' /
+// etc. otherwise (see libphonenumber-js docs for the full reason list).
+function usePhoneFieldCheck(nationalNumber, country) {
+  return useMemo(() => {
+    if (!nationalNumber) return { lengthIssue: null, valid: null };
+
+    const lengthIssue = validatePhoneNumberLength(nationalNumber, country);
+    if (lengthIssue) return { lengthIssue, valid: false };
+
+    const parsed = parsePhoneNumberFromString(nationalNumber, country);
+    return {
+      lengthIssue: null,
+      valid: !!parsed && parsed.isValid(),
+      internationalFormat: parsed?.formatInternational(),
+    };
+  }, [nationalNumber, country]);
+}
+
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB — keep in sync with storage.rules
 
 const PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -69,8 +122,16 @@ const INITIAL = {
   event: '',
   fullName: '', dob: '', age: '',
   gender: '',
-  contactNumber: '', email: '',
+  // `phoneCountry` is shared by Contact Number and Emergency Contact — one
+  // Country dropdown drives both, since the two are almost always in the
+  // same country and a second selector would just be more UI to keep in
+  // sync. `contactNumber`/`emergencyContactPhone` are the derived E.164
+  // strings (see composedContactNumber/composedEmergencyPhone) built from
+  // phoneCountry + the national-number digits actually typed.
+  phoneCountry: DEFAULT_PHONE_COUNTRY,
+  contactNumberNational: '', contactNumber: '',
   address: '', emergencyContact: '',
+  emergencyContactName: '', emergencyContactNational: '', emergencyContactPhone: '',
   gradeLevel: '', section: '',
   teamName: '', sport: '', position: '',
   message: '',
@@ -161,6 +222,66 @@ export default function RegistrationPage() {
     });
   };
 
+  // One Country dropdown drives both phone fields below it — changing it
+  // re-validates whichever national numbers are already typed against the
+  // newly selected country's rules (via contactNumberCheck/
+  // emergencyPhoneCheck, which take phoneCountry as a dependency).
+  const onPhoneCountryChange = (e) => {
+    const phoneCountry = e.target.value;
+    setForm(prev => ({ ...prev, phoneCountry }));
+    setErrors(prev => {
+      if (!prev.contactNumber && !prev.emergencyContact) return prev;
+      const next = { ...prev };
+      delete next.contactNumber;
+      delete next.emergencyContact;
+      return next;
+    });
+  };
+
+  // Digits-only national number, capped at the selected country's own max
+  // length (validatePhoneNumberLength) — typing a digit that would push
+  // the number past what that country allows is simply rejected, rather
+  // than silently accepted and only flagged as an error later. Backspacing
+  // (or pasting something shorter) always goes through, so users can
+  // always fix a number rather than getting stuck.
+  const onNationalNumberChange = (nationalKey, errorKey) => (e) => {
+    const digits = e.target.value.replace(/\D/g, '');
+    setForm(prev => {
+      if (digits.length > prev[nationalKey].length
+          && validatePhoneNumberLength(digits, prev.phoneCountry) === 'TOO_LONG') {
+        return prev;
+      }
+      return { ...prev, [nationalKey]: digits };
+    });
+    setErrors(prev => {
+      if (!prev[errorKey]) return prev;
+      const next = { ...prev };
+      delete next[errorKey];
+      return next;
+    });
+  };
+
+  const onContactNationalChange = onNationalNumberChange('contactNumberNational', 'contactNumber');
+  const onEmergencyNationalChange = onNationalNumberChange('emergencyContactNational', 'emergencyContact');
+
+  // Emergency Contact is a name plus a phone number, entered as two
+  // separate inputs but saved as the single "Name - +<number>" string
+  // AdminSchedulePage/Firestore already expect (see composedEmergencyContact
+  // below) — same split-inputs-compose-into-one-string approach as address.
+  const onEmergencyNameChange = (e) => {
+    const emergencyContactName = e.target.value;
+    setForm(prev => ({ ...prev, emergencyContactName }));
+    setErrors(prev => {
+      if (!prev.emergencyContact) return prev;
+      const next = { ...prev };
+      delete next.emergencyContact;
+      return next;
+    });
+  };
+
+  const contactNumberCheck  = usePhoneFieldCheck(form.contactNumberNational, form.phoneCountry);
+  const emergencyPhoneCheck = usePhoneFieldCheck(form.emergencyContactNational, form.phoneCountry);
+
   // Age is derived from Date of Birth rather than typed in directly —
   // keeps the two fields from disagreeing with each other.
   const calculateAge = (dobStr) => {
@@ -233,6 +354,48 @@ export default function RegistrationPage() {
   useEffect(() => {
     setForm(prev => (prev.address === composedAddress ? prev : { ...prev, address: composedAddress }));
   }, [composedAddress]);
+
+  // Contact Number saved as a full E.164 string — phoneCountry's calling
+  // code plus whatever national digits were typed. Empty until the user
+  // actually types a national number, same as every other derived field
+  // here (address, emergencyContact).
+  const composedContactNumber = useMemo(() => (
+    form.contactNumberNational
+      ? `+${getCountryCallingCode(form.phoneCountry)}${form.contactNumberNational}`
+      : ''
+  ), [form.phoneCountry, form.contactNumberNational]);
+
+  useEffect(() => {
+    setForm(prev => (prev.contactNumber === composedContactNumber
+      ? prev
+      : { ...prev, contactNumber: composedContactNumber }));
+  }, [composedContactNumber]);
+
+  const composedEmergencyPhone = useMemo(() => (
+    form.emergencyContactNational
+      ? `+${getCountryCallingCode(form.phoneCountry)}${form.emergencyContactNational}`
+      : ''
+  ), [form.phoneCountry, form.emergencyContactNational]);
+
+  useEffect(() => {
+    setForm(prev => (prev.emergencyContactPhone === composedEmergencyPhone
+      ? prev
+      : { ...prev, emergencyContactPhone: composedEmergencyPhone }));
+  }, [composedEmergencyPhone]);
+
+  const composedEmergencyContact = useMemo(() => {
+    const name  = form.emergencyContactName.trim();
+    const phone = form.emergencyContactPhone;
+    return [name, phone].filter(Boolean).join(' - ');
+  }, [form.emergencyContactName, form.emergencyContactPhone]);
+
+  // Same single-string requirement as address: createRegistration/
+  // AdminSchedulePage only know about one `emergencyContact` field.
+  useEffect(() => {
+    setForm(prev => (prev.emergencyContact === composedEmergencyContact
+      ? prev
+      : { ...prev, emergencyContact: composedEmergencyContact }));
+  }, [composedEmergencyContact]);
 
   const clearAddrError = (key) => setErrors(prev => {
     if (!prev[key]) return prev;
@@ -412,12 +575,33 @@ export default function RegistrationPage() {
     if (!form.age)                    errs.age              = 'Age is required';
     else if (Number(form.age) <= 0)   errs.age              = 'Enter a valid age';
     if (!form.gender)                 errs.gender           = 'Please select a gender';
-    if (!form.contactNumber.trim())   errs.contactNumber    = 'Contact number is required';
+
+    const phoneCountryName = COUNTRY_OPTIONS.find(c => c.code === form.phoneCountry)?.name || form.phoneCountry;
+    const phoneFieldError = (check) => {
+      if (check.lengthIssue === 'TOO_SHORT') return `Too short for ${phoneCountryName} — check the number`;
+      if (check.lengthIssue === 'TOO_LONG')  return `Too long for ${phoneCountryName} — check the number`;
+      if (check.lengthIssue)                 return 'Enter a valid phone number';
+      if (!check.valid)                      return `Not a valid ${phoneCountryName} phone number`;
+      return null;
+    };
+
+    if (!form.contactNumberNational)  errs.contactNumber    = 'Contact number is required';
+    else {
+      const err = phoneFieldError(contactNumberCheck);
+      if (err) errs.contactNumber = err;
+    }
     if (!addr.provinceCode)           errs.province         = 'Please select a province';
     if (!addr.municipalityCode)       errs.municipality     = 'Please select a city / municipality';
     if (!noBarangaysForMunicipality && !addr.barangayCode)
                                        errs.barangay         = 'Please select a barangay';
-    if (!form.emergencyContact.trim())errs.emergencyContact = 'Emergency contact is required';
+    if (!form.emergencyContactName.trim())
+                                       errs.emergencyContact = 'Emergency contact name is required';
+    else if (!form.emergencyContactNational)
+                                       errs.emergencyContact = 'Emergency contact number is required';
+    else {
+      const err = phoneFieldError(emergencyPhoneCheck);
+      if (err) errs.emergencyContact = err;
+    }
     if (!form.gradeLevel)             errs.gradeLevel       = 'Please select a grade / year level';
     if (!form.section)                errs.section          = 'Please select a section';
     if (!form.teamName)               errs.teamName         = 'Please select a team';
@@ -450,6 +634,10 @@ export default function RegistrationPage() {
             return;
         }
 
+        // form.contactNumber and form.emergencyContact are already kept in
+        // sync by the compose effects above (phoneCountry + national
+        // digits -> full E.164 / "Name - +<number>"), so `form` itself is
+        // already submission-ready — no extra normalization needed here.
         await createRegistration(
             currentUser.uid,
             currentUser.email,
@@ -606,9 +794,9 @@ export default function RegistrationPage() {
               </Field>
             </div>
 
-            {/* Row 2: Gender / Contact Number / Emergency Contact / Email —
+            {/* Row 2: Gender / Contact Number / Emergency Contact —
                 every "how to reach the student or family" field in one row. */}
-            <div className="reg-row reg-row--4">
+            <div className="reg-row reg-row--3eq">
               <Field label="Gender" required error={errors.gender}>
                 <div className="reg-radio-group">
                   {['Male', 'Female', 'Others'].map(g => (
@@ -621,16 +809,32 @@ export default function RegistrationPage() {
                 </div>
               </Field>
               <Field label="Contact Number" required error={errors.contactNumber}>
-                <input className="reg-input" placeholder="63+**********"
-                  value={form.contactNumber} onChange={set('contactNumber')} required />
+                <select className="reg-select" value={form.phoneCountry} onChange={onPhoneCountryChange} required>
+                  {COUNTRY_OPTIONS.length === 0 ? (
+                    <option value="">No countries available</option>
+                  ) : (
+                    COUNTRY_OPTIONS.map(c => (
+                      <option key={c.code} value={c.code}>{c.name} (+{c.callingCode})</option>
+                    ))
+                  )}
+                </select>
+                <span className="reg-phone-hint">Country also applies to Emergency Contact below</span>
+                <div className="reg-phone-row">
+                  <span className="reg-phone-prefix">+{getCountryCallingCode(form.phoneCountry)}</span>
+                  <input className="reg-input" type="tel" inputMode="numeric" placeholder="National number"
+                    value={form.contactNumberNational} onChange={onContactNationalChange} required />
+                </div>
+                <PhoneHint value={form.contactNumberNational} check={contactNumberCheck} />
               </Field>
               <Field label="Emergency Contact" required error={errors.emergencyContact}>
-                <input className="reg-input" placeholder="Name-63+**********"
-                  value={form.emergencyContact} onChange={set('emergencyContact')} required />
-              </Field>
-              <Field label="Email Address">
-                <input className="reg-input" type="email" placeholder="@src.edu.ph"
-                  value={form.email} onChange={set('email')} />
+                <input className="reg-input" placeholder="Contact person's name"
+                  value={form.emergencyContactName} onChange={onEmergencyNameChange} required />
+                <div className="reg-phone-row">
+                  <span className="reg-phone-prefix">+{getCountryCallingCode(form.phoneCountry)}</span>
+                  <input className="reg-input" type="tel" inputMode="numeric" placeholder="National number"
+                    value={form.emergencyContactNational} onChange={onEmergencyNationalChange} required />
+                </div>
+                <PhoneHint value={form.emergencyContactNational} check={emergencyPhoneCheck} />
               </Field>
             </div>
 
@@ -857,4 +1061,21 @@ function Field({ label, required, error, children }) {
       {error && <span className="reg-field__error">{error}</span>}
     </div>
   );
+}
+
+// Live feedback from usePhoneFieldCheck — shows either why the number
+// doesn't fit the selected country's rules yet, or its formatted
+// international form once it does.
+function PhoneHint({ value, check }) {
+  if (!value) return null;
+  if (check.lengthIssue === 'TOO_SHORT') return <span className="reg-phone-hint reg-phone-hint--bad">Too short for this country</span>;
+  if (check.lengthIssue === 'TOO_LONG')  return <span className="reg-phone-hint reg-phone-hint--bad">Too long for this country</span>;
+  if (check.lengthIssue)                 return <span className="reg-phone-hint reg-phone-hint--bad">✗ Not a valid number</span>;
+  if (check.valid) {
+    return <span className="reg-phone-hint reg-phone-hint--ok">✓ {check.internationalFormat}</span>;
+  }
+  if (check.valid === false) {
+    return <span className="reg-phone-hint reg-phone-hint--bad">✗ Not a valid number for this country</span>;
+  }
+  return null;
 }
