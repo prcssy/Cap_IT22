@@ -5,6 +5,7 @@ import { db } from '../firebase';
 import { getSportsTeamsConfig, getMatchSchedules, getActivityLogs } from '../services/firestoreService';
 import LevelTabs from '../components/LevelTabs';
 import ActivityLogsAndRoles from './ActivityLogsAndRoles';
+import StudentRegistrationDetails from './StudentRegistrationDetails';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
@@ -26,12 +27,6 @@ import {
    ═══════════════════════════════════════════════════════════════ */
 
 const LEVELS = ['elementary', 'highSchool', 'college'];
-
-const LEVEL_LABELS = {
-  elementary: 'Elementary',
-  highSchool: 'High School',
-  college:    'College',
-};
 
 const LEVEL_OPTIONS = [
   { key: 'all',        label: 'All Levels' },
@@ -605,24 +600,6 @@ export default function SuperAdminPage() {
     ];
   }, [rangedRegs]);
 
-  /* ── Recent registrations ── */
-  const recent = useMemo(() => {
-    const userById = {};
-    users.forEach((u) => { userById[u.id] = u; });
-
-    return [...rangedRegs]
-      .map(r => ({ ...r, created: toDate(r.createdAt) }))
-      .sort((a, b) => (b.created?.getTime() || 0) - (a.created?.getTime() || 0))
-      .slice(0, 8)
-      .map(r => ({
-        id: r.id,
-        name: r.fullName || r.email || 'Unnamed',
-        role: userById[r.uid] ? roleOf(userById[r.uid]) : 'player',
-        level: LEVEL_LABELS[getSchoolLevel(r.gradeLevel)] || '—',
-        created: r.created,
-      }));
-  }, [rangedRegs, users, roleOf]);
-
   const rangeCaption = useMemo(() => {
     if (!cutoff) return 'All time';
     return `${formatDay(cutoff)} — ${formatDay(new Date())}`;
@@ -801,44 +778,15 @@ export default function SuperAdminPage() {
             </div>
           </div>
 
-          {/* ── Recent registrations ── */}
-          <div className="sa-card sa-card--table">
-            <h3 className="sa-table-title">Recent Registrations</h3>
-
-            {loading ? (
-              <p className="sa-loading">Loading…</p>
-            ) : recent.length === 0 ? (
-              <p className="sa-loading">No registrations in this range.</p>
-            ) : (
-              <div className="sa-table-wrap">
-                <table className="sa-table">
-                  <thead>
-                    <tr>
-                      <th>User</th>
-                      <th>Role</th>
-                      <th>Level</th>
-                      <th>Registered On</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recent.map(row => (
-                      <tr key={row.id}>
-                        <td className="sa-td--name" data-label="User">{row.name}</td>
-                        <td data-label="Role"><span className={`sa-role sa-role--${row.role}`}>{row.role}</span></td>
-                        <td data-label="Level">{row.level}</td>
-                        <td className="sa-td--date" data-label="Registered On">{formatDateTime(row.created)}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
           <p className="sa-footnote">
             Sports, Teams and Matches show current totals — they're configuration rather than
             dated events, so the date range doesn't apply to them.
           </p>
+
+          {/* ── Student Registration Details ── */}
+          {/* Moved here from the Admin page's Registration tab — same
+              component, filters, table and modal, just relocated. */}
+          <StudentRegistrationDetails />
           </>
           )}
 

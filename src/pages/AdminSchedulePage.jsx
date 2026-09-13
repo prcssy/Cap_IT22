@@ -2,12 +2,15 @@ import React, { useState, useContext, useEffect, useCallback, useRef } from 'rea
 import { AuthContext } from '../components/AuthContext';
 import { useNavigate } from 'react-router-dom';
 import './AdminSchedulePage.css';
-import { FaTimes, FaSync, FaSearch, FaUsers, FaUserGraduate, FaChevronDown, FaCheck, FaEdit, FaPlus, FaMapMarkerAlt, FaTrophy, FaTrash, FaExclamationTriangle, FaDownload, FaBell, FaArrowRight } from 'react-icons/fa';
+// Recent Registrations (moved here from Super Admin) reuses SuperAdminPage's
+// sa-* table/card classes unchanged, so it looks exactly as it did there.
+import './SuperAdminPage.css';
+import { FaTimes, FaSync, FaUsers, FaChevronDown, FaCheck, FaEdit, FaPlus, FaMapMarkerAlt, FaTrophy, FaTrash, FaExclamationTriangle, FaDownload, FaBell, FaArrowRight } from 'react-icons/fa';
 import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, getEventLabel, EVENT_TYPES, getVenues, getAllMatchSchedules, subscribeScheduleRequests, updateScheduleRequest, deleteScheduleRequest } from '../services/firestoreService';
+import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, EVENT_TYPES, getVenues, getAllMatchSchedules, subscribeScheduleRequests, updateScheduleRequest, deleteScheduleRequest } from '../services/firestoreService';
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../components/LevelTabs';
@@ -24,18 +27,30 @@ const ELEMENTARY_GRADES = new Set(['Grade 1','Grade 2','Grade 3','Grade 4','Grad
 const HIGH_SCHOOL_GRADES = new Set(['Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12']);
 const COLLEGE_GRADES = new Set(['1st Year','2nd Year','3rd Year','4th Year']);
 
-const ALL_GRADES = [
-  'Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6',
-  'Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12',
-  '1st Year','2nd Year','3rd Year','4th Year',
-];
-
 function getSchoolLevel(gradeLevel) {
   if (!gradeLevel) return null;
   if (ELEMENTARY_GRADES.has(gradeLevel)) return 'elementary';
   if (HIGH_SCHOOL_GRADES.has(gradeLevel)) return 'highSchool';
   if (COLLEGE_GRADES.has(gradeLevel)) return 'college';
   return null;
+}
+
+/* Firestore returns a Timestamp; older or hand-edited docs might hold a
+   string or a plain Date. Accept all three, same convention as
+   SuperAdminPage's own `toDate`/`formatDateTime`. */
+function toDate(value) {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') return value.toDate();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatDateTime(date) {
+  if (!date) return '—';
+  return date.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
 }
 
 function buildSummary(registrations) {
@@ -2165,25 +2180,14 @@ export default function AdminSchedulePage() {
 
   // Registration data
   const [summaryRows,      setSummaryRows]      = useState([]);
-  const [allRegistrations, setAllRegistrations] = useState([]);
   // Raw student registrations kept around so the summary can be
-  // re-tallied per event without another round-trip to Firestore.
+  // re-tallied per event without another round-trip to Firestore, and so
+  // the Recent Registrations card below can list the latest submissions.
   const [studentRegs,      setStudentRegs]      = useState([]);
   const [eventCounts,      setEventCounts]      = useState({});
   const [summaryEvent,     setSummaryEvent]     = useState(''); // '' = all events
   const [summaryLoading,   setSummaryLoading]   = useState(false);
   const [summaryError,     setSummaryError]     = useState('');
-
-  // Filters
-  const [searchQuery,    setSearchQuery]    = useState('');
-  const [filterGrade,    setFilterGrade]    = useState('');
-  const [filterSection,  setFilterSection]  = useState('');
-  const [filterSport,    setFilterSport]    = useState('');
-  const [filterGender,   setFilterGender]   = useState('');
-  const [filterEvent,    setFilterEvent]    = useState('');
-
-  // Student detail modal
-  const [selectedStudent, setSelectedStudent] = useState(null);
 
   // Schedule requests — moderators asking for a fixture to be arranged.
   // Subscribed live (not just fetched on tab open) so the pending badge
@@ -2286,37 +2290,6 @@ const fetchSummary = useCallback(async () => {
     const studentUids = new Set(studentUsers.map(u => u.id));
     const studentRegistrations = registrations.filter(r => studentUids.has(r.uid));
 
-    // One row per STUDENT ACCOUNT (keyed by uid) — never collapsed or
-    // matched by name, since two different accounts can legitimately
-    // share the same name.
-    const merged = studentUsers.map(user => {
-      const registration = studentRegistrations.find(r => r.uid === user.id);
-
-      return {
-        ...user,
-        ...(registration || {}),
-        id: user.id,
-        uid: user.id,
-        fullName: (registration && registration.fullName) || user.name || '',
-        email: (registration && registration.email) || user.email || '',
-        // Gender / Grade-Year / Section always reflect what the student
-        // set when they created their account, not whatever a later
-        // sport-registration form happened to have typed into it.
-        gender: user.gender || '—',
-        gradeLevel: user.gradeLevel || '—',
-        section: user.section || '—',
-        // A student who hasn't registered for a sport yet isn't a
-        // player — say so plainly instead of leaving it blank.
-        sport: (registration && registration.sport) || 'N/A',
-        position: (registration && registration.position) || 'N/A',
-        teamName: (registration && registration.teamName) || 'N/A',
-        event: (registration && (getEventLabel(registration.eventKey || registration.event) || registration.event)) || 'N/A',
-      };
-    }).sort((a, b) =>
-      (a.fullName || '').localeCompare(b.fullName || '', undefined, { sensitivity: 'base' })
-    );
-
-    setAllRegistrations(merged);
     setStudentRegs(studentRegistrations);
     setSummaryRows(buildSummary(studentRegistrations));
 
@@ -2372,24 +2345,14 @@ const fetchSummary = useCallback(async () => {
   const totalCollege    = visibleSummaryRows.reduce((s, r) => s + r.college, 0);
   const totalPlayers    = totalElementary + totalHighSchool + totalCollege;
 
-  // Unique filter options from data
-  const uniqueSections = [...new Set(allRegistrations.map(r => r.section).filter(Boolean))].sort();
-  const uniqueSports   = [...new Set(allRegistrations.map(r => r.sport).filter(Boolean))].sort();
-
-  const filteredStudents = allRegistrations.filter(r => {
-    const q = searchQuery.toLowerCase();
-    return (
-      (!q             || (r.fullName || '').toLowerCase().includes(q)) &&
-      (!filterGrade   || r.gradeLevel === filterGrade) &&
-      (!filterSection || r.section    === filterSection) &&
-      (!filterSport   || r.sport      === filterSport) &&
-      (!filterGender  || (r.gender || '').toLowerCase() === filterGender.toLowerCase()) &&
-      (!filterEvent   || getEventBucket(r) === filterEvent)
-    );
-  });
-
-  const hasFilters = searchQuery || filterGrade || filterSection || filterSport || filterGender || filterEvent;
-  const clearFilters = () => { setSearchQuery(''); setFilterGrade(''); setFilterSection(''); setFilterSport(''); setFilterGender(''); setFilterEvent(''); };
+  // ── Recent Registrations — latest player/student submissions, moved
+  // here from Super Admin's Data Analytics tab. Sourced from the same
+  // `studentRegs` fetchSummary already pulled from Firestore, so there's
+  // no separate data system for it.
+  const recentRegistrations = [...studentRegs]
+    .map(r => ({ ...r, created: toDate(r.createdAt) }))
+    .sort((a, b) => (b.created?.getTime() || 0) - (a.created?.getTime() || 0))
+    .slice(0, 8);
 
   const fmt = (row, level) => row[level] === 0 ? '--' : row[level];
 
@@ -2578,108 +2541,42 @@ const fetchSummary = useCallback(async () => {
               </div>
             </div>
 
-            {/* ── Card 2: Student Details ── */}
-            <div className="asp-card">
-              {/* Card header row */}
-              <div className="asp-card__toprow">
-                <div className="asp-card__heading">
-                  <FaUserGraduate className="asp-card__icon" />
-                  <span>STUDENT REGISTRATION DETAILS</span>
-                </div>
-                <div className="asp-search-wrap">
-                  <FaSearch className="asp-search-icon" />
-                  <input
-                    className="asp-search-input"
-                    type="text"
-                    placeholder="Search by name…"
-                    value={searchQuery}
-                    onChange={e => setSearchQuery(e.target.value)}
-                  />
-                </div>
-              </div>
+            {/* ── Card 2: Recent Registrations ── */}
+            {/* Moved here from Super Admin's Data Analytics tab — same
+                columns/styling (sa-* classes from SuperAdminPage.css),
+                just relocated. Backed by the same `studentRegs` Firestore
+                fetch as the summary card above it. */}
+            <div className="sa-card sa-card--table">
+              <h3 className="sa-table-title">Recent Registrations</h3>
 
-              {/* Filter pills */}
-              <div className="asp-filters">
-                <select className="asp-filter-pill" value={filterGrade} onChange={e => setFilterGrade(e.target.value)}>
-                  <option value="">Grade/Year ▾</option>
-                  {ALL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-                </select>
-                <select className="asp-filter-pill" value={filterSection} onChange={e => setFilterSection(e.target.value)}>
-                  <option value="">Section ▾</option>
-                  {uniqueSections.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <select className="asp-filter-pill" value={filterSport} onChange={e => setFilterSport(e.target.value)}>
-                  <option value="">Sports ▾</option>
-                  {uniqueSports.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-                <select className="asp-filter-pill" value={filterGender} onChange={e => setFilterGender(e.target.value)}>
-                  <option value="">Gender ▾</option>
-                  <option value="Male">Male</option>
-                  <option value="Female">Female</option>
-                  <option value="Others">Others</option>
-                </select>
-                <select className="asp-filter-pill" value={filterEvent} onChange={e => setFilterEvent(e.target.value)}>
-                  <option value="">Event ▾</option>
-                  {EVENT_TYPES.map(ev => <option key={ev.key} value={ev.key}>{ev.label}</option>)}
-                  <option value="unassigned">No Event</option>
-                </select>
-                {hasFilters && (
-                  <button className="asp-clear-btn" onClick={clearFilters}>
-                    <FaTimes /> Clear Filter
-                  </button>
-                )}
-                <span className="asp-results-count">{filteredStudents.length} result{filteredStudents.length !== 1 ? 's' : ''}</span>
-              </div>
-
-              <div className="asp-table-wrap" style={{ marginTop: 8 }}>
-                {summaryLoading ? (
-                  <p className="asp-empty">Loading from Firestore…</p>
-                ) : filteredStudents.length === 0 ? (
-                  <p className="asp-empty">{hasFilters ? 'No students match the selected filters.' : 'No registrations found.'}</p>
-                ) : (
-                  <table className="asp-table asp-table--students">
+              {summaryLoading ? (
+                <p className="sa-loading">Loading…</p>
+              ) : recentRegistrations.length === 0 ? (
+                <p className="sa-loading">No registrations yet.</p>
+              ) : (
+                <div className="sa-table-wrap">
+                  <table className="sa-table">
                     <thead>
                       <tr>
-                        <th>#</th>
-                        <th>Name</th>
-                        <th>Gender</th>
-                        <th>Grade/Year</th>
-                        <th>Section</th>
-                        <th>Sport</th>
-                        <th>Event</th>
-                        <th>Action</th>
+                        <th>User</th>
+                        <th>Role</th>
+                        <th>Level</th>
+                        <th>Registered On</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {filteredStudents.map((reg, idx) => (
-                        <tr key={reg.id || idx}>
-                          <td className="asp-td--num" data-label="#">{idx + 1}</td>
-                          <td className="asp-td--name" data-label="Name">
-                            <span className="asp-avatar">
-                              {(reg.fullName || 'U').charAt(0).toUpperCase()}
-                            </span>
-                            <span className="asp-name-text">
-                              {reg.fullName || <em className="asp-placeholder">Last Name, First Name, Middle Name</em>}
-                            </span>
-                          </td>
-                          <td data-label="Gender">
-                            <span className={`asp-gender-badge asp-gender--${(reg.gender || 'unknown').toLowerCase()}`}>
-                              {reg.gender || '—'}
-                            </span>
-                          </td>
-                          <td data-label="Grade/Year">{reg.gradeLevel || '—'}</td>
-                          <td data-label="Section">{reg.section || '—'}</td>
-                          <td className="asp-td--sport" data-label="Sport">{reg.sport || '—'}</td>
-                          <td data-label="Event">{reg.event || '—'}</td>
-                          <td data-label="Action">
-                            <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
-                          </td>
+                      {recentRegistrations.map(row => (
+                        <tr key={row.id}>
+                          <td className="sa-td--name" data-label="User">{row.fullName || row.email || 'Unnamed'}</td>
+                          <td data-label="Role"><span className="sa-role sa-role--player">player</span></td>
+                          <td data-label="Level">{LEVEL_LABELS[getSchoolLevel(row.gradeLevel)] || '—'}</td>
+                          <td className="sa-td--date" data-label="Registered On">{formatDateTime(row.created)}</td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
-                )}
-              </div>
+                </div>
+              )}
             </div>
 
           </div>
@@ -2813,110 +2710,6 @@ const fetchSummary = useCallback(async () => {
         )}
       </div>
 
-      {/* ── Student Detail Modal ── */}
-      {selectedStudent && (
-        <div className="asp-modal-overlay" onClick={() => setSelectedStudent(null)}>
-          <div className="asp-modal" onClick={e => e.stopPropagation()}>
-            <div className="asp-modal__header">
-              <h2>Student Details</h2>
-              <button className="asp-modal__close" onClick={() => setSelectedStudent(null)}><FaTimes /></button>
-            </div>
-            <div className="asp-modal__body">
-              <div className="asp-form-row">
-                <div className="asp-form-group">
-                  <label>Full Name</label>
-                  <p>{selectedStudent.fullName || '—'}</p>
-                </div>
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Gender</label>
-                  <p>{selectedStudent.gender || '—'}</p>
-                </div>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Grade / Year Level</label>
-                  <p>{selectedStudent.gradeLevel || '—'}</p>
-                </div>
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Section</label>
-                  <p>{selectedStudent.section || '—'}</p>
-                </div>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group">
-                  <label>Date of Birth</label>
-                  <p>{selectedStudent.dob || '—'}</p>
-                </div>
-                <div className="asp-form-group">
-                  <label>Age</label>
-                  <p>{selectedStudent.age || '—'}</p>
-                </div>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group">
-                  <label>Contact Number</label>
-                  <p>{selectedStudent.contactNumber || '—'}</p>
-                </div>
-                <div className="asp-form-group">
-                  <label>Email</label>
-                  <p>{selectedStudent.email || selectedStudent.studentEmail || '—'}</p>
-                </div>
-              </div>
-              <div className="asp-form-group">
-                <label>Address</label>
-                <p>{selectedStudent.address || '—'}</p>
-              </div>
-              <div className="asp-form-group">
-                <label>Emergency Contact</label>
-                <p>{selectedStudent.emergencyContact || '—'}</p>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Sport</label>
-                  <p>{selectedStudent.sport || '—'}</p>
-                </div>
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Position</label>
-                  <p>{selectedStudent.position || '—'}</p>
-                </div>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Team Name</label>
-                  <p>{selectedStudent.teamName || '—'}</p>
-                </div>
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Event</label>
-                  <p>{selectedStudent.event || '—'}</p>
-                </div>
-              </div>
-              {selectedStudent.message && (
-                <div className="asp-form-group">
-                  <label>Message</label>
-                  <p>{selectedStudent.message}</p>
-                </div>
-              )}
-              <div className="asp-form-row">
-                {selectedStudent.photoURL && (
-                  <div className="asp-form-group">
-                    <label>Photo</label>
-                    <p><a href={selectedStudent.photoURL} target="_blank" rel="noreferrer">View photo</a></p>
-                  </div>
-                )}
-                {selectedStudent.waiverURL && (
-                  <div className="asp-form-group">
-                    <label>Waiver / Consent Form</label>
-                    <p><a href={selectedStudent.waiverURL} target="_blank" rel="noreferrer">View waiver</a></p>
-                  </div>
-                )}
-              </div>
-              <div className="asp-form-actions">
-                <button type="button" className="asp-btn-cancel" onClick={() => setSelectedStudent(null)}>Close</button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
