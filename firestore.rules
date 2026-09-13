@@ -71,9 +71,15 @@ service cloud.firestore {
       allow write: if signedIn();
     }
 
-    // ── Config docs managed by staff, read by any signed-in user ─
-    match /sportsTeamsConfig/{level} { allow read: if signedIn(); allow write: if isStaff(); }
-    match /matchSchedules/{level}    { allow read: if signedIn(); allow write: if isStaff(); }
+    // ── Config docs managed by staff ─────────────────────────────
+    // sportsTeamsConfig and matchSchedules hold no PII (sport/team names,
+    // logos, fixture date/time/venue) and are exactly what the PUBLIC
+    // landing page's Ongoing Matches card and Sports Statistics/Sports
+    // Available sections read for anonymous visitors — same reasoning
+    // already applied to teamRankings below, so these get the same
+    // public-read treatment instead of being gated to signed-in users.
+    match /sportsTeamsConfig/{level} { allow read: if true; allow write: if isStaff(); }
+    match /matchSchedules/{level}    { allow read: if true; allow write: if isStaff(); }
     match /venuesConfig/{docId}      { allow read: if signedIn(); allow write: if isStaff(); }
     match /matchRecords/{level}      { allow read: if signedIn(); allow write: if isStaff(); }
 

@@ -340,6 +340,20 @@
   overflow: hidden;
 }
 
+/* Houses the "ONGOING MATCHES" label and the Levels dropdown on one row,
+   so the dropdown sits inside the match card instead of the hero topbar,
+   without altering either element's own design. */
+.match-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.match-card-header .match-card-label {
+  margin-bottom: 0;
+}
+
 .match-card-label {
   font-size: 1.20725rem;
   font-family: "Inter", sans-serif;
@@ -707,6 +721,7 @@
 }
 
 .sport-tile {
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -718,6 +733,39 @@
   border-radius: 10px;
   transition: background 0.2s, transform 0.2s;
   cursor: pointer;
+}
+
+/* Hover/tap popover — which levels offer this sport. Purely additive
+   (absolutely positioned, doesn't affect the tile's own box), shown via
+   React state so it also works as a tap-to-toggle on touch devices
+   where CSS :hover never fires. */
+.sport-tile-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #001a3a;
+  color: #fff;
+  font-family: "Inter", sans-serif;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  box-shadow: 0 7.2px 21.6px rgba(0, 0, 0, 0.3);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.sport-tile-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #001a3a;
 }
 
 @media (hover: hover) and (pointer: fine) {

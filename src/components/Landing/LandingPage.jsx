@@ -6,7 +6,7 @@ import HighlightsBanner from './HighlightsBanner';
 import ImageCarousel from './ImageCarousel';
 import { AuthContext } from '../AuthContext';
 import { FaArrowRightLong } from "react-icons/fa6";
-import { fetchCollectionData, getMatchSchedules, getSportsTeamsConfig, getLiveStatsCounters } from '../../services/firestoreService';
+import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeMatchSchedules, subscribeLiveStatsCounters } from '../../services/firestoreService';
 import Contact from './Contact/Contact';
 
 /* ── NEW — additional icons for the scrollable content sections ── */
@@ -66,6 +66,11 @@ const LEVEL_KEY_MAP = { Elementary: 'elementary', 'High School': 'highSchool', C
 /* Every level's Firestore key, for stats that sum across the whole
    school (Elementary + High School + College) rather than one level. */
 const ALL_LEVEL_KEYS = ['elementary', 'highSchool', 'college'];
+
+/* Reverse of LEVEL_KEY_MAP — turns a Firestore level key back into the
+   display label shown in the Sports Available hover ("Available in:
+   Elementary • College"). */
+const LEVEL_KEY_TO_LABEL = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
 
 /* Case/whitespace-insensitive compare, for deduping sport names that
    Admin may have entered with different capitalization per level. */
@@ -160,15 +165,37 @@ const STATS = [
 ];
 
 const SPORTS = [
-  { name: "Athletics", icon: FaRunning },
-  { name: "Badminton", icon: GiShuttlecock },
-  { name: "Basketball", icon: FaBasketballBall },
-  { name: "Chess", icon: FaChess },
-  { name: "Mobile Legends", icon: FaGamepad },
-  { name: "Sepak Takraw", icon: FaVolleyballBall },
-  { name: "Table Tennis", icon: GiPingPongBat },
-  { name: "Volleyball", icon: FaVolleyballBall },
+  { name: "Athletics", icon: FaRunning, levels: [] },
+  { name: "Badminton", icon: GiShuttlecock, levels: [] },
+  { name: "Basketball", icon: FaBasketballBall, levels: [] },
+  { name: "Chess", icon: FaChess, levels: [] },
+  { name: "Mobile Legends", icon: FaGamepad, levels: [] },
+  { name: "Sepak Takraw", icon: FaVolleyballBall, levels: [] },
+  { name: "Table Tennis", icon: GiPingPongBat, levels: [] },
+  { name: "Volleyball", icon: FaVolleyballBall, levels: [] },
 ];
+
+/* Name → icon, for sports pulled live from Admin's per-level config
+   (sportsTeamsConfig/{level}.sports) rather than the hardcoded list
+   above. Matched case/whitespace-insensitively via `norm` so an admin
+   typing "basketball" still gets the basketball icon. Anything not in
+   this map (a sport an admin adds that isn't one of the defaults, e.g.
+   Swimming or Archery) falls back to DEFAULT_SPORT_ICON rather than
+   being left iconless. */
+const SPORT_ICON_MAP = {
+  athletics: FaRunning,
+  badminton: GiShuttlecock,
+  basketball: FaBasketballBall,
+  chess: FaChess,
+  'mobile legends': FaGamepad,
+  'sepak takraw': FaVolleyballBall,
+  'table tennis': GiPingPongBat,
+  volleyball: FaVolleyballBall,
+};
+const DEFAULT_SPORT_ICON = FaTrophy;
+function iconForSportName(name) {
+  return SPORT_ICON_MAP[norm(name)] || DEFAULT_SPORT_ICON;
+}
 
 const STEPS = [
   { number: 1, title: "Register", desc: "Fill out the registration form online.", icon: FaFileSignature },
@@ -246,6 +273,7 @@ function LandingPage() {
   const [steps, setSteps] = useState(STEPS);
   const [matches, setMatches] = useState(MATCHES);
   const [contactItems, setContactItems] = useState(CONTACT_ITEMS);
+  const [hoveredSportKey, setHoveredSportKey] = useState(null);
 
   const { openAuthModal = () => {} } = useContext(AuthContext);
   const contactFooterRef = useRef(null);
@@ -271,10 +299,9 @@ function LandingPage() {
   useEffect(() => {
     const loadFirestoreData = async () => {
       try {
-        const [fireInfo, fireStats, fireSports, fireSteps, fireContacts] = await Promise.all([
+        const [fireInfo, fireStats, fireSteps, fireContacts] = await Promise.all([
           fetchCollectionData('infoCards').catch(() => null),
           fetchCollectionData('stats').catch(() => null),
-          fetchCollectionData('sports').catch(() => null),
           fetchCollectionData('steps').catch(() => null),
           fetchCollectionData('contactItems').catch(() => null),
         ]);
@@ -288,7 +315,6 @@ function LandingPage() {
           const validStats = fireStats.filter((s) => s && typeof s.label === 'string' && typeof s.icon === 'function');
           if (validStats.length) setStats(validStats);
         }
-        if (Array.isArray(fireSports) && fireSports.length) setSports(fireSports);
         if (Array.isArray(fireSteps) && fireSteps.length) setSteps(fireSteps);
         if (Array.isArray(fireContacts) && fireContacts.length) setContactItems(fireContacts);
       } catch (error) {
@@ -299,44 +325,76 @@ function LandingPage() {
     loadFirestoreData();
   }, []);
 
-  /* Sports Statistics row — Total Matches, Sports, and Teams are computed
-     live from the same Sports & Teams config and match schedules Admin
-     already maintains (summed across all 3 levels), instead of being
-     typed in by hand. Uses a functional update so it only touches those
-     3 entries and never clobbers "Players":
+  /* Sports Statistics row + Sports Available cards — both driven by the
+     SAME live read of Admin's per-level Sports & Teams config and match
+     schedules (summed/deduped across all 3 levels), instead of typed-in
+     numbers or the old standalone `sports` collection (which had no
+     connection to what Admin actually configures per level).
+     - "Sports" / Sports Available: one entry per sport name, normalized
+       (trim + lowercase) so "Basketball" saved under two levels — or
+       typed with different casing — still counts and displays once,
+       tagged with every level it's actually offered in (for the hover).
+     - "Teams" is likewise deduped by normalized name — the same team
+       name entered under two levels no longer counts twice.
      - "Players" is read from siteCounters/liveCounters (a single public
        counter AdminSchedulePage keeps updated) rather than computed
        here, because the only source for a real count, `registrations`,
        deliberately isn't public-readable (it holds each registrant's
        address, phone number, emergency contact, etc.); see
-       setLivePlayerCount's comment in firestoreService.js. */
+       setLivePlayerCount's comment in firestoreService.js.
+     Uses a functional update for `stats` so it only touches the 3
+     entries it computes and never clobbers "Players" (set from the
+     separate counter above) or any other entry another source added.
+
+     Subscribes (rather than fetching once) to each level's config,
+     each level's schedules, and the public counters doc, so an Admin
+     adding/editing/deleting a sport, team, or match — or a fresh
+     Players count being published — recomputes these cards immediately
+     for anyone already on the homepage, not just on next page load. */
   useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      try {
-        const [configs, schedules, liveCounters] = await Promise.all([
-          Promise.all(ALL_LEVEL_KEYS.map((lvl) => getSportsTeamsConfig(lvl).catch(() => ({ sports: [], teams: [] })))),
-          Promise.all(ALL_LEVEL_KEYS.map((lvl) => getMatchSchedules(lvl).catch(() => []))),
-          getLiveStatsCounters().catch(() => ({})),
-        ]);
-        if (cancelled) return;
+    const configsByLevel = {};
+    const schedulesByLevel = {};
+    let liveCounters = {};
 
-        const sportNames = new Set();
-        let teamCount = 0;
-        configs.forEach((cfg) => {
-          (cfg.sports || []).forEach((s) => { if (s?.name) sportNames.add(norm(s.name)); });
-          teamCount += (cfg.teams || []).length;
+    const recompute = () => {
+      const sportsByKey = new Map();
+      const teamNames = new Set();
+      ALL_LEVEL_KEYS.forEach((levelKey) => {
+        const cfg = configsByLevel[levelKey] || { sports: [], teams: [] };
+        (cfg.sports || []).forEach((s) => {
+          if (!s?.name) return;
+          const key = norm(s.name);
+          const existing = sportsByKey.get(key);
+          if (existing) existing.levels.add(levelKey);
+          else sportsByKey.set(key, { name: s.name.trim(), levels: new Set([levelKey]) });
         });
-        const matchCount = schedules.reduce((sum, list) => sum + (list || []).length, 0);
+        (cfg.teams || []).forEach((t) => { if (t?.name) teamNames.add(norm(t.name)); });
+      });
+      const matchCount = ALL_LEVEL_KEYS.reduce(
+        (sum, levelKey) => sum + (schedulesByLevel[levelKey] || []).length, 0,
+      );
 
-        const computed = { 'Total Matches': matchCount, Sports: sportNames.size, Teams: teamCount };
-        if (typeof liveCounters.players === 'number') computed.Players = liveCounters.players;
-        setStats((prev) => prev.map((s) => (s.label in computed ? { ...s, value: computed[s.label] } : s)));
-      } catch (error) {
-        console.error('Failed to compute live sports statistics:', error);
-      }
-    })();
-    return () => { cancelled = true; };
+      const sportEntries = [...sportsByKey.values()]
+        .map((entry) => ({
+          name: entry.name,
+          icon: iconForSportName(entry.name),
+          levels: ALL_LEVEL_KEYS.filter((lvl) => entry.levels.has(lvl)).map((lvl) => LEVEL_KEY_TO_LABEL[lvl]),
+        }))
+        .sort((a, b) => a.name.localeCompare(b.name));
+
+      const computed = { 'Total Matches': matchCount, Sports: sportEntries.length, Teams: teamNames.size };
+      if (typeof liveCounters.players === 'number') computed.Players = liveCounters.players;
+      setStats((prev) => prev.map((s) => (s.label in computed ? { ...s, value: computed[s.label] } : s)));
+      setSports(sportEntries);
+    };
+
+    const unsubscribers = ALL_LEVEL_KEYS.flatMap((levelKey) => [
+      subscribeSportsTeamsConfig(levelKey, (cfg) => { configsByLevel[levelKey] = cfg; recompute(); }),
+      subscribeMatchSchedules(levelKey, (matches) => { schedulesByLevel[levelKey] = matches; recompute(); }),
+    ]);
+    unsubscribers.push(subscribeLiveStatsCounters((counters) => { liveCounters = counters; recompute(); }));
+
+    return () => unsubscribers.forEach((unsubscribe) => unsubscribe());
   }, []);
 
   /* "Ongoing matches" card, wired straight to what the Administrator has
@@ -418,27 +476,6 @@ function LandingPage() {
 
           {/* Right controls */}
           <div className="header-controls">
-            {/* Level dropdown */}
-            <div className="level-dropdown" ref={levelDropdownRef}>
-              <button
-                className="level-btn"
-                onClick={() => setLevelOpen((prev) => !prev)}
-              >
-                {selectedLevel} <FaChevronDown className={`level-chevron ${levelOpen ? "open" : ""}`} />
-              </button>
-              <ul className={`level-menu ${levelOpen ? "open" : ""}`}>
-                {LEVELS.map((lvl) => (
-                  <li
-                    key={lvl}
-                    className={`level-item ${selectedLevel === lvl ? "active" : ""}`}
-                    onClick={() => { setSelectedLevel(lvl); setLevelOpen(false); }}
-                  >
-                    {lvl}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
             {/* Message / suggestions */}
             <button
               className="icon-btn"
@@ -487,7 +524,30 @@ function LandingPage() {
 
           {/* Right — ongoing match card */}
           <div className="match-card">
-            <p className="match-card-label">ONGOING MATCHES</p>
+            <div className="match-card-header">
+              <p className="match-card-label">ONGOING MATCHES</p>
+
+              {/* Level dropdown — filters the matches shown in this card */}
+              <div className="level-dropdown" ref={levelDropdownRef}>
+                <button
+                  className="level-btn"
+                  onClick={() => setLevelOpen((prev) => !prev)}
+                >
+                  {selectedLevel} <FaChevronDown className={`level-chevron ${levelOpen ? "open" : ""}`} />
+                </button>
+                <ul className={`level-menu ${levelOpen ? "open" : ""}`}>
+                  {LEVELS.map((lvl) => (
+                    <li
+                      key={lvl}
+                      className={`level-item ${selectedLevel === lvl ? "active" : ""}`}
+                      onClick={() => { setSelectedLevel(lvl); setLevelOpen(false); }}
+                    >
+                      {lvl}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
 
             {currentMatch ? (
               <>
@@ -594,12 +654,28 @@ function LandingPage() {
         </div>
 
         <div className="sports-row">
-          {sports.map((sport) => (
-            <div key={sport.name} className="sport-tile">
-              <sport.icon className="sport-tile-icon" />
-              <span className="sport-tile-name">{sport.name.toUpperCase()}</span>
-            </div>
-          ))}
+          {sports.map((sport) => {
+            const sportKey = norm(sport.name);
+            const isHovered = hoveredSportKey === sportKey;
+            const availableLevels = sport.levels || [];
+            return (
+              <div
+                key={sport.name}
+                className="sport-tile"
+                onMouseEnter={() => setHoveredSportKey(sportKey)}
+                onMouseLeave={() => setHoveredSportKey((k) => (k === sportKey ? null : k))}
+                onClick={() => setHoveredSportKey((k) => (k === sportKey ? null : sportKey))}
+              >
+                <sport.icon className="sport-tile-icon" />
+                <span className="sport-tile-name">{sport.name.toUpperCase()}</span>
+                {isHovered && availableLevels.length > 0 && (
+                  <div className="sport-tile-tooltip" role="tooltip">
+                    Available in: {availableLevels.join(' • ')}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </div>
 
         {/* ── How to join as a player ── */}

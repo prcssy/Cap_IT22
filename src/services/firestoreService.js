@@ -423,6 +423,29 @@ export async function getSportsTeamsConfig(level) {
   };
 }
 
+/**
+ * Live-subscribes to one level's sports/teams config. Used by the public
+ * landing page's Sports Statistics and Sports Available sections so an
+ * Admin adding/editing/deleting a sport or team shows up there right
+ * away, the same way subscribeMatchSchedules already does for matches.
+ * Returns an unsubscribe function.
+ */
+export function subscribeSportsTeamsConfig(level, callback) {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot subscribe to sports/teams config.');
+    callback({ sports: [], teams: [] });
+    return () => {};
+  }
+  const configRef = doc(db, 'sportsTeamsConfig', level);
+  return onSnapshot(configRef, (snapshot) => {
+    const data = snapshot.exists() ? snapshot.data() : {};
+    callback({ sports: data.sports || [], teams: data.teams || [] });
+  }, (error) => {
+    console.warn('Sports/teams config listener failed:', error);
+    callback({ sports: [], teams: [] });
+  });
+}
+
 export async function saveSportsConfig(level, sports, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
@@ -1058,6 +1081,26 @@ export async function getLiveStatsCounters() {
   const ref = doc(db, 'siteCounters', 'liveCounters');
   const snapshot = await getDoc(ref);
   return snapshot.exists() ? snapshot.data() : {};
+}
+
+/**
+ * Live-subscribes to the public counters doc (currently just `players`,
+ * plus `eventCounts`). Lets the landing page's Players stat update the
+ * moment AdminSchedulePage republishes a fresh count, without a reload.
+ * Returns an unsubscribe function.
+ */
+export function subscribeLiveStatsCounters(callback) {
+  if (!db) {
+    callback({});
+    return () => {};
+  }
+  const ref = doc(db, 'siteCounters', 'liveCounters');
+  return onSnapshot(ref, (snapshot) => {
+    callback(snapshot.exists() ? snapshot.data() : {});
+  }, (error) => {
+    console.warn('Live stats counters listener failed:', error);
+    callback({});
+  });
 }
 
 export async function setLivePlayerCount(count) {
