@@ -41,18 +41,23 @@ export const EVENT_TYPES = [
 ];
 
 /* Accepts either the stored key ('prisaa') or the display label
-   ('Prisaa'), so old records and new ones both resolve. */
-export function getEventKey(value) {
+   ('Prisaa'), so old records and new ones both resolve.
+
+   `eventList` defaults to the static EVENT_TYPES above, but callers that
+   have the live, Super-Admin-editable list (via BrandingContext) pass it
+   explicitly, so resolution works against whatever events currently
+   exist rather than only the original 3. */
+export function getEventKey(value, eventList = EVENT_TYPES) {
   if (!value) return '';
   const needle = String(value).trim().toLowerCase();
-  const match  = EVENT_TYPES.find(
+  const match  = eventList.find(
     (e) => e.key === needle || e.label.toLowerCase() === needle,
   );
   return match ? match.key : '';
 }
 
-export function getEventLabel(value) {
-  const match = EVENT_TYPES.find((e) => e.key === getEventKey(value));
+export function getEventLabel(value, eventList = EVENT_TYPES) {
+  const match = eventList.find((e) => e.key === getEventKey(value, eventList));
   return match ? match.label : '';
 }
 
@@ -316,7 +321,7 @@ async function uploadFile(file, storagePath) {
    registrations/{uid}/{timestamp}_photo|waiver.
    URLs (or null) are saved in the Firestore doc.
 ───────────────────────────────────────────── */
-export async function createRegistration(uid, email, formData, photoFile, waiverFile, actorRole = 'student') {
+export async function createRegistration(uid, email, formData, photoFile, waiverFile, actorRole = 'student', eventList = EVENT_TYPES) {
   if (!db) throw new Error('Firestore not initialized.');
 
   // Upload both files in parallel — either can be null (optional)
@@ -347,8 +352,8 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
 
     // Event the student is registering for
     // (Intramurals / Sportsfest / Prisaa — all share this same form)
-    event:    getEventLabel(formData.event),
-    eventKey: getEventKey(formData.event),
+    event:    getEventLabel(formData.event, eventList),
+    eventKey: getEventKey(formData.event, eventList),
 
     // Sport info
     teamName: formData.teamName || '',
@@ -380,7 +385,7 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
   // the real documents every time it loads and overwrites this counter,
   // so any drift self-corrects.
   if (registrationData.eventKey) {
-    bumpEventRegistrationCount(registrationData.eventKey).catch((err) => {
+    bumpEventRegistrationCount(registrationData.eventKey, 1, eventList).catch((err) => {
       console.warn('Could not update the public event counter:', err);
     });
   }
@@ -1121,17 +1126,17 @@ export async function setLivePlayerCount(count) {
    admin opens the Registration tab (setEventRegistrationCounts), which
    keeps the public number honest even if a bump was ever missed.
 ───────────────────────────────────────────── */
-export async function getEventRegistrationCounts() {
+export async function getEventRegistrationCounts(eventList = EVENT_TYPES) {
   const data = await getLiveStatsCounters();
   const raw = data.eventCounts || {};
   const counts = {};
-  EVENT_TYPES.forEach(({ key }) => { counts[key] = Number(raw[key]) || 0; });
+  eventList.forEach(({ key }) => { counts[key] = Number(raw[key]) || 0; });
   return counts;
 }
 
-export async function bumpEventRegistrationCount(eventKey, by = 1) {
+export async function bumpEventRegistrationCount(eventKey, by = 1, eventList = EVENT_TYPES) {
   if (!db) throw new Error('Firestore not initialized.');
-  const key = getEventKey(eventKey);
+  const key = getEventKey(eventKey, eventList);
   if (!key) return;
   const ref = doc(db, 'siteCounters', 'liveCounters');
   await setDoc(
@@ -1142,10 +1147,86 @@ export async function bumpEventRegistrationCount(eventKey, by = 1) {
 }
 
 /* Overwrite the counters with freshly computed totals (admin reconcile). */
-export async function setEventRegistrationCounts(counts) {
+export async function setEventRegistrationCounts(counts, eventList = EVENT_TYPES) {
   if (!db) throw new Error('Firestore not initialized.');
   const clean = {};
-  EVENT_TYPES.forEach(({ key }) => { clean[key] = Number(counts?.[key]) || 0; });
+  eventList.forEach(({ key }) => { clean[key] = Number(counts?.[key]) || 0; });
   const ref = doc(db, 'siteCounters', 'liveCounters');
   await setDoc(ref, { eventCounts: clean, updatedAt: serverTimestamp() }, { merge: true });
+}
+
+/* ─────────────────────────────────────────────
+   Site branding / Web Customization — one document
+   (siteConfig/branding) is the single source of truth for the school
+   name, tagline, motto, copyright text, logo, and the list of school
+   events (EVENT_TYPES above is only the seed/fallback shape). Read
+   publicly (the landing page and login screens are unauthenticated);
+   written only by a Super Admin (enforced in firestore.rules).
+
+   BrandingContext (src/components/BrandingContext.jsx) is the one place
+   that subscribes to this doc — everything else reads it through that
+   context, never by querying Firestore directly, same "one place owns
+   the read" convention as AuthContext for auth state.
+───────────────────────────────────────────── */
+export const DEFAULT_BRANDING = {
+  schoolName: 'SANTA RITA COLLEGE OF PAMPANGA, INC',
+  tagline: 'WHERE CHAMPIONS ARE MADE.',
+  motto: 'PERFORMANCE. TALENTS. SKILLS.',
+  copyrightText: `© ${new Date().getFullYear()} Santa Rita College of Pampanga, Inc. All Rights Reserved.`,
+  logoURL: null,
+  events: EVENT_TYPES,
+};
+
+export function subscribeBrandingConfig(callback) {
+  if (!db) {
+    callback(DEFAULT_BRANDING);
+    return () => {};
+  }
+  return onSnapshot(
+    doc(db, 'siteConfig', 'branding'),
+    (snap) => {
+      callback(snap.exists() ? { ...DEFAULT_BRANDING, ...snap.data() } : DEFAULT_BRANDING);
+    },
+    (error) => {
+      console.warn('Branding config listener failed:', error);
+      callback(DEFAULT_BRANDING);
+    },
+  );
+}
+
+/* Website Name / Tagline / Motto / Copyright Text — merged in one write
+   so the 4 School Information fields save together. `fields` is whatever
+   subset changed (e.g. just { logoURL } for an upload/remove, or all 4
+   text fields from the School Information card). */
+export async function updateBrandingInfo(fields, actorEmail, actorRole = 'superadmin') {
+  if (!db) throw new Error('Firestore not initialized.');
+  await setDoc(
+    doc(db, 'siteConfig', 'branding'),
+    { ...fields, updatedAt: serverTimestamp(), updatedBy: actorEmail || '' },
+    { merge: true },
+  );
+  logActivity({
+    actorRole,
+    type: 'Branding Updated',
+    details: `Updated site branding (${Object.keys(fields).join(', ')})`,
+    targetType: 'branding',
+    targetId: 'siteConfig/branding',
+  });
+}
+
+/* School Events — read-modify-write the whole array, same convention as
+   every other list-valued config doc in this app (see CLAUDE.md). */
+export async function saveSchoolEvents(events, actorEmail, actorRole = 'superadmin') {
+  return updateBrandingInfo({ events }, actorEmail, actorRole);
+}
+
+/* Uploads a new logo to Storage and returns its download URL — same
+   `uploadFile` helper (and same silent-null-on-failure behavior while
+   Storage/Blaze isn't provisioned) used for registration photo/waiver
+   uploads. Does not itself write the Firestore doc — callers should
+   follow up with updateBrandingInfo({ logoURL }). */
+export async function uploadBrandingLogo(file) {
+  const timestamp = Date.now();
+  const ext = (file?.type || '').split('/')[1] || 'png';
+  return uploadFile(file, `branding/logo_${timestamp}.${ext}`);
 }

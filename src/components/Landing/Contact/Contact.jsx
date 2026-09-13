@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { useContext } from 'react';
 import { FaMapMarkerAlt, FaPhoneAlt, FaEnvelope, FaFacebookF } from 'react-icons/fa';
 import HeaderWithLines from '../HeaderWithLines';
+import { BrandingContext } from '../../BrandingContext';
 
 const DEFAULT_CONTACT_ITEMS = [
   {
@@ -26,6 +27,7 @@ const DEFAULT_CONTACT_ITEMS = [
 ];
 
 export default function ContactFooter({ items = DEFAULT_CONTACT_ITEMS, contactFooterRef }) {
+  const { copyrightText } = useContext(BrandingContext);
   return (
     <footer className="contact-footer" ref={contactFooterRef}>
       <HeaderWithLines text="CONTACT US" className="contact-footer-header" />
@@ -60,6 +62,7 @@ export default function ContactFooter({ items = DEFAULT_CONTACT_ITEMS, contactFo
           );
         })}
       </div>
+      {copyrightText && <p className="contact-copyright">{copyrightText}</p>}
     </footer>
   );
 }

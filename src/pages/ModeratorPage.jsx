@@ -19,6 +19,7 @@ import {
 } from '../services/firestoreService';
 import LevelTabs from '../components/LevelTabs';
 import { AuthContext } from '../components/AuthContext';
+import { BrandingContext } from '../components/BrandingContext';
 
 /* ═══════════════════════════════════════════
    CONSTANTS
@@ -1494,6 +1495,7 @@ const mkEntry = () => ({ id: uid(), teamId: '', points: '', time: '', violations
 export default function ModeratorPage() {
   const navigate = useNavigate();
   const { currentUser, userProfile } = useContext(AuthContext);
+  const { schoolName } = useContext(BrandingContext);
   const summaryRef = useRef(null);
 
   const [level, setLevel] = useState('highSchool');
@@ -2399,7 +2401,7 @@ export default function ModeratorPage() {
   return (
     <div className="mp-page">
       <header className="mp-header">
-        <h1 className="mp-header__title">Santa Rita College of Pampanga, Inc</h1>
+        <h1 className="mp-header__title">{schoolName}</h1>
       </header>
 
       <div className="mp-body">

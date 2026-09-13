@@ -1,5 +1,6 @@
 import React, { useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { AuthContext } from '../components/AuthContext';
+import { BrandingContext } from '../components/BrandingContext';
 import { useNavigate } from 'react-router-dom';
 import './AdminSchedulePage.css';
 // Recent Registrations (moved here from Super Admin) reuses SuperAdminPage's
@@ -85,16 +86,17 @@ function countsAsPlayer(r) {
 /* Which event bucket a registration belongs to. Registrations saved
    before the event picker existed have no event on them, so they land
    in `unassigned` rather than being silently dropped. */
-function getEventBucket(r) {
-  return getEventKey(r.eventKey || r.event) || 'unassigned';
+function getEventBucket(r, eventList = EVENT_TYPES) {
+  return getEventKey(r.eventKey || r.event, eventList) || 'unassigned';
 }
 
-/* Tally registrations per event (Intramurals / Sportsfest / Prisaa). */
-function buildEventCounts(registrations) {
+/* Tally registrations per event (Intramurals / Sportsfest / Prisaa, or
+   whatever Super Admin's Web Customization page currently lists). */
+function buildEventCounts(registrations, eventList = EVENT_TYPES) {
   const counts = { unassigned: 0 };
-  EVENT_TYPES.forEach(({ key }) => { counts[key] = 0; });
+  eventList.forEach(({ key }) => { counts[key] = 0; });
   registrations.filter(countsAsPlayer).forEach((r) => {
-    counts[getEventBucket(r)]++;
+    counts[getEventBucket(r, eventList)]++;
   });
   return counts;
 }
@@ -697,6 +699,7 @@ function LabelBracketTree({ roundNames, roundsMatches, leafLabels }) {
 }
 
 function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, actorRole }) {
+  const { schoolName } = useContext(BrandingContext);
   const [sportsList, setSportsList] = useState([]);
   const [teamsList,  setTeamsList]  = useState([]);
   const [loading,    setLoading]    = useState(false);
@@ -1205,7 +1208,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
     doc.setFontSize(14);
     doc.setFont(undefined, 'bold');
-    doc.text('SANTA RITA COLLEGE OF PAMPANGA, INC', pageWidth / 2, 40, { align: 'center' });
+    doc.text(schoolName, pageWidth / 2, 40, { align: 'center' });
     doc.setFontSize(11);
     doc.setFont(undefined, 'normal');
     doc.text(`Match Schedule — ${LEVEL_LABELS[level] || level}`, pageWidth / 2, 58, { align: 'center' });
@@ -2173,6 +2176,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
 export default function AdminSchedulePage() {
   const { isAdmin, authLoading, userProfile } = useContext(AuthContext);
+  const { schoolName, events } = useContext(BrandingContext);
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState(REGISTRATION_TAB_INDEX);
@@ -2296,9 +2300,9 @@ const fetchSummary = useCallback(async () => {
     // Recompute the per-event totals from the real documents and publish
     // them, which also repairs any drift in the counter the registration
     // form increments as students submit.
-    const freshEventCounts = buildEventCounts(studentRegistrations);
+    const freshEventCounts = buildEventCounts(studentRegistrations, events);
     setEventCounts(freshEventCounts);
-    setEventRegistrationCounts(freshEventCounts).catch((err) => {
+    setEventRegistrationCounts(freshEventCounts, events).catch((err) => {
       console.error('Failed to publish event registration counts:', err);
     });
 
@@ -2321,14 +2325,14 @@ const fetchSummary = useCallback(async () => {
   } finally {
     setSummaryLoading(false);
   }
-}, []);
+}, [events]);
 
   useEffect(() => { if (activeTab === REGISTRATION_TAB_INDEX) fetchSummary(); }, [activeTab, fetchSummary]);
 
   // Summary table + level totals follow the event filter; with no filter
   // they show every event combined, exactly as before.
   const visibleSummaryRows = summaryEvent
-    ? buildSummary(studentRegs.filter(r => getEventBucket(r) === summaryEvent))
+    ? buildSummary(studentRegs.filter(r => getEventBucket(r, events) === summaryEvent))
     : summaryRows;
 
   // "All Events" is the sum of the buckets, never the raw document
@@ -2376,7 +2380,7 @@ const fetchSummary = useCallback(async () => {
 
       {/* Header */}
       <header className="asp-header">
-        <h1 className="asp-header__title">SANTA RITA COLLEGE OF PAMPANGA, INC</h1>
+        <h1 className="asp-header__title">{schoolName}</h1>
       </header>
 
       {/* Intro */}
@@ -2480,7 +2484,7 @@ const fetchSummary = useCallback(async () => {
                     </span>
                     <span className="asp-event-chip__label">All Events</span>
                   </button>
-                  {EVENT_TYPES.map(ev => (
+                  {events.map(ev => (
                     <button
                       key={ev.key}
                       type="button"
@@ -2500,7 +2504,7 @@ const fetchSummary = useCallback(async () => {
                 Total Registered Players
                 {summaryEvent && (
                   <span className="asp-card__subtitle-tag">
-                    {EVENT_TYPES.find(e => e.key === summaryEvent)?.label || 'No Event'}
+                    {events.find(e => e.key === summaryEvent)?.label || 'No Event'}
                   </span>
                 )}
               </p>
@@ -2513,7 +2517,7 @@ const fetchSummary = useCallback(async () => {
                 ) : visibleSummaryRows.length === 0 ? (
                   <p className="asp-empty">
                     {summaryEvent
-                      ? `No registrations for ${EVENT_TYPES.find(e => e.key === summaryEvent)?.label || 'No Event'} yet.`
+                      ? `No registrations for ${events.find(e => e.key === summaryEvent)?.label || 'No Event'} yet.`
                       : 'No registrations found.'}
                   </p>
                 ) : (

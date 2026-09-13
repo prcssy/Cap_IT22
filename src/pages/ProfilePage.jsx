@@ -1,6 +1,7 @@
 import React, { useState, useContext } from 'react';
 import './ProfilePage.css';
 import Contact from '../components/Landing/Contact/Contact';
+import { BrandingContext } from '../components/BrandingContext';
 import EventsJoinedModal from '../components/EventsJoinedModal/EventsJoinedModal';
 import AwardsModal from '../components/AwardsModal/AwardsModal';
 import SubmittedRegistrationsModal from '../components/SubmittedRegistrationsModal/SubmittedRegistrationsModal';
@@ -62,6 +63,7 @@ function StatCard({ icon, count, label, arrow, onClick }) {
 
 export default function ProfilePage() {
   const { currentUser, userProfile, updatePassword } = useContext(AuthContext);
+  const { schoolName } = useContext(BrandingContext);
 
   /* ── All modal states ── */
   const [eventsModalOpen,        setEventsModalOpen]        = useState(false);
@@ -116,7 +118,7 @@ export default function ProfilePage() {
     <div className="profile-page">
 
       <header className="dash-header">
-        <h1 className="dash-header__title">SANTA RITA COLLEGE OF PAMPANGA, INC</h1>
+        <h1 className="dash-header__title">{schoolName}</h1>
       </header>
 
       <div className="profile-page-intro">

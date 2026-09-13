@@ -1,8 +1,9 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useContext } from 'react';
 import { FaSearch, FaTimes, FaUserGraduate } from 'react-icons/fa';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getEventKey, getEventLabel, EVENT_TYPES } from '../services/firestoreService';
+import { getEventKey, getEventLabel } from '../services/firestoreService';
+import { BrandingContext } from '../components/BrandingContext';
 import './AdminSchedulePage.css';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -23,11 +24,12 @@ const ALL_GRADES = [
 
 /* Which event bucket a registration belongs to — same rule AdminSchedulePage
    uses for its own event filter/chips. */
-function getEventBucket(r) {
-  return getEventKey(r.eventKey || r.event) || 'unassigned';
+function getEventBucket(r, eventList) {
+  return getEventKey(r.eventKey || r.event, eventList) || 'unassigned';
 }
 
 export default function StudentRegistrationDetails() {
+  const { events } = useContext(BrandingContext);
   const [allRegistrations, setAllRegistrations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -85,7 +87,7 @@ export default function StudentRegistrationDetails() {
           sport: (registration && registration.sport) || 'N/A',
           position: (registration && registration.position) || 'N/A',
           teamName: (registration && registration.teamName) || 'N/A',
-          event: (registration && (getEventLabel(registration.eventKey || registration.event) || registration.event)) || 'N/A',
+          event: (registration && (getEventLabel(registration.eventKey || registration.event, events) || registration.event)) || 'N/A',
         };
       }).sort((a, b) =>
         (a.fullName || '').localeCompare(b.fullName || '', undefined, { sensitivity: 'base' })
@@ -98,7 +100,7 @@ export default function StudentRegistrationDetails() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [events]);
 
   useEffect(() => { fetchStudents(); }, [fetchStudents]);
 
@@ -113,7 +115,7 @@ export default function StudentRegistrationDetails() {
       (!filterSection || r.section    === filterSection) &&
       (!filterSport   || r.sport      === filterSport) &&
       (!filterGender  || (r.gender || '').toLowerCase() === filterGender.toLowerCase()) &&
-      (!filterEvent   || getEventBucket(r) === filterEvent)
+      (!filterEvent   || getEventBucket(r, events) === filterEvent)
     );
   });
 
@@ -164,7 +166,7 @@ export default function StudentRegistrationDetails() {
           </select>
           <select className="asp-filter-pill" value={filterEvent} onChange={e => setFilterEvent(e.target.value)}>
             <option value="">Event ▾</option>
-            {EVENT_TYPES.map(ev => <option key={ev.key} value={ev.key}>{ev.label}</option>)}
+            {events.map(ev => <option key={ev.key} value={ev.key}>{ev.label}</option>)}
             <option value="unassigned">No Event</option>
           </select>
           {hasFilters && (

@@ -1166,6 +1166,19 @@
   line-height: normal;
 }
 
+.contact-copyright {
+  margin: 1.75rem 0 0;
+  padding-top: 1.25rem;
+  width: 100%;
+  max-width: 60rem;
+  border-top: 1px solid rgba(10, 29, 82, 0.1);
+  text-align: center;
+  color: rgba(10, 29, 82, 0.6);
+  font-family: "Inter";
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
 .contact-divider {
   width: 1px;
   height: 24px;

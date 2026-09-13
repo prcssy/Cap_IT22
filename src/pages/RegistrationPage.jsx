@@ -6,11 +6,12 @@ import {
   validatePhoneNumberLength,
 } from 'libphonenumber-js';
 import { AuthContext } from '../components/AuthContext';
+import { BrandingContext } from '../components/BrandingContext';
 import {
   createRegistration,
   getSportsTeamsConfig,
   getEventRegistrationCounts,
-  EVENT_TYPES,
+  getEventKey,
 } from '../services/firestoreService';
 import {
   getAllProvinces,
@@ -161,6 +162,7 @@ const CONTACT_ITEMS = [
 export default function RegistrationPage() {
 
   const { currentUser, userProfile } = useContext(AuthContext);
+  const { schoolName, events } = useContext(BrandingContext);
   const [form, setForm] = useState(INITIAL);
   const [addr, setAddr] = useState(ADDR_INITIAL);
   const [photo, setPhoto]         = useState(null);
@@ -190,7 +192,7 @@ export default function RegistrationPage() {
   // the pre-registration number and make the count appear to jump back.
   const loadEventCounts = useCallback((minimums) => {
     setCountsLoading(true);
-    return getEventRegistrationCounts()
+    return getEventRegistrationCounts(events)
       .then((counts) => {
         const merged = { ...counts };
         Object.entries(minimums || {}).forEach(([key, value]) => {
@@ -203,7 +205,7 @@ export default function RegistrationPage() {
         setEventCounts({});
       })
       .finally(() => setCountsLoading(false));
-  }, []);
+  }, [events]);
 
   useEffect(() => { loadEventCounts(); }, [loadEventCounts]);
 
@@ -644,14 +646,15 @@ export default function RegistrationPage() {
             form,
             photo,
             waiver,
-            userProfile?.role || 'student'
+            userProfile?.role || 'student',
+            events
         );
 
         setSubmitted(true);
 
         // Show the new number straight away, then re-sync with the
         // server so the displayed count matches what was actually saved.
-        const chosenKey = (EVENT_TYPES.find(ev => ev.label === form.event) || {}).key;
+        const chosenKey = getEventKey(form.event, events);
         if (chosenKey) {
           const next = (Number(eventCounts[chosenKey]) || 0) + 1;
           setEventCounts(prev => ({ ...prev, [chosenKey]: next }));
@@ -670,7 +673,7 @@ export default function RegistrationPage() {
     return (
       <div className="reg-page">
         <header className="reg-dash-header">
-          <h1 className="reg-dash-header__title">SANTA RITA COLLEGE OF PAMPANGA, INC</h1>
+          <h1 className="reg-dash-header__title">{schoolName}</h1>
         </header>
         <div className="reg-page-intro">
           <h2 className="reg-page-title">Player Registration</h2>
@@ -689,7 +692,7 @@ export default function RegistrationPage() {
             <div className="reg-event-counts reg-event-counts--center">
               <span className="reg-event-counts__title">Players Registered per Event</span>
               <div className="reg-event-counts__chips">
-                {EVENT_TYPES.map(ev => (
+                {events.map(ev => (
                   <div
                     key={ev.key}
                     className={`reg-event-chip${form.event === ev.label ? ' reg-event-chip--active' : ''}`}
@@ -715,7 +718,7 @@ export default function RegistrationPage() {
   return (
     <div className="reg-page">
       <header className="reg-dash-header">
-        <h1 className="reg-dash-header__title">SANTA RITA COLLEGE OF PAMPANGA, INC</h1>
+        <h1 className="reg-dash-header__title">{schoolName}</h1>
       </header>
 
       <div className="reg-page-intro">
@@ -751,7 +754,7 @@ export default function RegistrationPage() {
                 <Field label="Register For Event" required error={errors.event}>
                   <select className="reg-select" value={form.event} onChange={set('event')} required>
                     <option value="">Select Event</option>
-                    {EVENT_TYPES.map(ev => (
+                    {events.map(ev => (
                       <option key={ev.key} value={ev.label}>{ev.label}</option>
                     ))}
                   </select>
@@ -763,7 +766,7 @@ export default function RegistrationPage() {
                 <div className="reg-event-counts">
                   <span className="reg-event-counts__title">Players Registered per Event</span>
                   <div className="reg-event-counts__chips">
-                    {EVENT_TYPES.map(ev => (
+                    {events.map(ev => (
                       <div
                         key={ev.key}
                         className={`reg-event-chip${form.event === ev.label ? ' reg-event-chip--active' : ''}`}

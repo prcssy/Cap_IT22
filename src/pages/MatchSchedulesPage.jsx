@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useContext } from 'react';
+import { BrandingContext } from '../components/BrandingContext';
 import './MatchSchedulesPage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import { FaSearch, FaTrophy } from 'react-icons/fa';
@@ -252,6 +253,7 @@ function ScheduleDayTable({ day, matches, resultFor }) {
 }
 
 export default function MatchSchedulesPage() {
+  const { schoolName } = useContext(BrandingContext);
   const [levelKey, setLevelKey] = useState(LEVELS[0].key);
   const level = LEVELS.find(l => l.key === levelKey) || LEVELS[0];
   const [category, setCategory] = useState(null);
@@ -426,7 +428,7 @@ export default function MatchSchedulesPage() {
 
       {/* ── Top header ── */}
       <header className="ms-dash-header">
-        <h1 className="ms-dash-header__title">SANTA RITA COLLEGE OF PAMPANGA, INC</h1>
+        <h1 className="ms-dash-header__title">{schoolName}</h1>
       </header>
 
       {/* ── Page intro ── */}

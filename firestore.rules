@@ -71,6 +71,15 @@ service cloud.firestore {
       allow write: if signedIn();
     }
 
+    // ── Site branding / Web Customization ────────────────────────
+    // Public read (the landing page and login screens are unauthenticated
+    // and need the school name/logo/tagline/events), write restricted to
+    // a Super Admin — same gate as the staff-allowlist docs above.
+    match /siteConfig/{docId} {
+      allow read: if true;
+      allow write: if isSuperAdmin();
+    }
+
     // ── Config docs managed by staff ─────────────────────────────
     // sportsTeamsConfig and matchSchedules hold no PII (sport/team names,
     // logos, fixture date/time/venue) and are exactly what the PUBLIC

@@ -24,6 +24,21 @@ service firebase.storage {
       allow update, delete: if false; // registrations are create-once from the client
     }
 
+    // Site branding logo: branding/logo_{timestamp}.{ext}
+    // Public read — the landing page/login screens are unauthenticated and
+    // the favicon needs it too. Write restricted to a Super Admin, checked
+    // the same way firestore.rules' isSuperAdmin() does (a doc existing at
+    // superadmins/{lowercased-email}).
+    match /branding/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && firestore.exists(/databases/(default)/documents/superadmins/$(request.auth.token.email.lower()))
+                   && request.resource.size <= 1 * 1024 * 1024
+                   && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+      allow delete: if request.auth != null
+                    && firestore.exists(/databases/(default)/documents/superadmins/$(request.auth.token.email.lower()));
+    }
+
     // Deny everything else by default.
     match /{allPaths=**} {
       allow read, write: if false;

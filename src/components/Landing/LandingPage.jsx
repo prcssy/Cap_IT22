@@ -5,6 +5,7 @@ import HeaderWithLines from './HeaderWithLines';
 import HighlightsBanner from './HighlightsBanner';
 import ImageCarousel from './ImageCarousel';
 import { AuthContext } from '../AuthContext';
+import { BrandingContext } from '../BrandingContext';
 import { FaArrowRightLong } from "react-icons/fa6";
 import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeMatchSchedules, subscribeLiveStatsCounters } from '../../services/firestoreService';
 import Contact from './Contact/Contact';
@@ -284,6 +285,7 @@ function LandingPage() {
   const [hoveredSportKey, setHoveredSportKey] = useState(null);
 
   const { openAuthModal = () => {} } = useContext(AuthContext);
+  const { schoolName, tagline, motto, logo } = useContext(BrandingContext);
   const contactFooterRef = useRef(null);
   const levelDropdownRef = useRef(null);
 
@@ -507,20 +509,18 @@ function LandingPage() {
           <div className="hero-left">
             <h1 className="hero-headline">
               <div className="school-identity">
-            <img src="/SRCLogo.png" alt="SRC Logo" className="school-logo" />
+            <img src={logo} alt="School logo" className="school-logo" />
             <div className="school-name">
-              <span className="school-name-main">SANTA RITA COLLEGE
-                <br />
-                 OF PAMPANGA, INC.</span>
+              <span className="school-name-main">{schoolName}</span>
 
             </div>
           </div>
-          <div className="hero-headline">WHERE CHAMPIONS<br />ARE MADE.</div>
-              
+          <div className="hero-headline">{tagline}</div>
+
             </h1>
-            
+
             <div className="line"></div>
-            <p className="hero-tagline">PERFORMANCE. TALENTS. SKILLS.</p>
+            <p className="hero-tagline">{motto}</p>
             <p className="hero-copy">
               Sports is not just a GAME;<br />
               it is a PASSION.<br />

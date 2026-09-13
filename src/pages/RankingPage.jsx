@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useContext } from 'react';
+import { BrandingContext } from '../components/BrandingContext';
 import './RankingPage.css';
 import { FaSearch, FaCrown, FaMedal, FaChevronDown } from 'react-icons/fa';
 import Contact from '../components/Landing/Contact/Contact';
@@ -312,6 +313,7 @@ function MedalTable({ data, search }) {
 }
 
 export default function RankingPage() {
+  const { schoolName } = useContext(BrandingContext);
   const [levelLabel, setLevelLabel] = useState('High School');
   const [championSport, setChampionSport] = useState('All Sports');
   const [medalSport, setMedalSport] = useState('All Sports');
@@ -653,7 +655,7 @@ export default function RankingPage() {
 
       {/* ── Top header ── */}
       <header className="rk-dash-header">
-        <h1 className="rk-dash-header__title">SANTA RITA COLLEGE OF PAMPANGA, INC</h1>
+        <h1 className="rk-dash-header__title">{schoolName}</h1>
       </header>
 
       {/* ── Scrollable body ── */}

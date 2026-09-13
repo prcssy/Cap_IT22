@@ -1,0 +1,322 @@
+/* ═══════════════════════════════════════════
+   BrandingSettings.css — Super Admin "Web Customization" tab
+   Reuses SuperAdminPage.css tokens/classes (.sa-card, .sa-panel__title,
+   .sa-panel__sub, .sa-export, .sa-icon-btn, .sa-loading, .sa-spin) for
+   visual consistency with Data Analytics / Roles & Permissions. Only
+   new, feature-specific classes live here (prefixed `ws-`).
+   ═══════════════════════════════════════════ */
+
+.ws-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.ws-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr;
+  gap: 16px;
+  align-items: start;
+}
+
+.ws-col {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  min-width: 0;
+}
+
+.ws-col--preview {
+  position: sticky;
+  top: 0;
+}
+
+.ws-card-title {
+  font-size: 0.85rem;
+  font-weight: 900;
+  color: #001529;
+  margin: 0 0 10px;
+}
+
+.ws-card-toprow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.ws-card-toprow .ws-card-title {
+  margin: 0;
+}
+
+.ws-card-hint {
+  display: block;
+  font-size: 10.5px;
+  color: #94a3b8;
+  font-weight: 500;
+  margin-top: 3px;
+}
+
+.ws-card-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+
+/* ── Logo ── */
+.ws-logo-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.ws-logo-box {
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 10px;
+  background: #f7f9fc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.ws-logo-box img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.ws-logo-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.ws-btn-ghost {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 30px;
+  padding: 0 14px;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 7px;
+  background: #fff;
+  color: #b91c1c;
+  font-family: 'Inter', sans-serif;
+  font-size: 11.5px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ws-btn-ghost:hover:not(:disabled) {
+    background: #fdf2f1;
+    border-color: #b91c1c;
+  }
+}
+
+.ws-btn-ghost:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* ── Form fields (School Information) ── */
+.ws-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 14px;
+}
+
+.ws-field:last-of-type {
+  margin-bottom: 0;
+}
+
+.ws-field__label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  color: #475569;
+}
+
+.ws-field input {
+  height: 34px;
+  padding: 0 12px;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: #001529;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.ws-field input:focus {
+  border-color: #16337a;
+}
+
+/* ── School Events ── */
+.ws-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.ws-event-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.ws-event-row__num {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #16337a;
+  color: #fff;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+.ws-event-row input {
+  flex: 1;
+  min-width: 0;
+  height: 32px;
+  padding: 0 10px;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 7px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: #001529;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.ws-event-row input:focus {
+  border-color: #16337a;
+}
+
+.ws-icon-btn--danger {
+  color: #b91c1c;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ws-icon-btn--danger:hover:not(:disabled) {
+    border-color: #b91c1c;
+  }
+}
+
+/* ── Inline feedback (shared success/error message style) ── */
+.ws-msg {
+  font-size: 11.5px;
+  font-weight: 600;
+  border-radius: 8px;
+  padding: 8px 10px;
+  margin: 0;
+  flex: 1;
+}
+
+.ws-msg--success {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.ws-msg--error {
+  background: #fdf2f1;
+  color: #9c2c20;
+}
+
+/* ── Preview ── */
+.ws-preview-card {
+  display: flex;
+  flex-direction: column;
+}
+
+.ws-preview-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  padding: 22px 16px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #001529 0%, #16337a 100%);
+}
+
+.ws-preview-logo {
+  width: 56px;
+  height: 56px;
+  object-fit: contain;
+  border-radius: 8px;
+  background: #fff;
+  padding: 4px;
+}
+
+.ws-preview-name {
+  font-family: 'Lalezar', sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: 0.02em;
+}
+
+.ws-preview-tagline {
+  font-family: 'Lalezar', sans-serif;
+  font-size: 1.1rem;
+  color: #f5a623;
+  line-height: 1.15;
+}
+
+.ws-preview-motto {
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #cbd5e1;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1000px) {
+  .ws-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ws-col--preview {
+    position: static;
+  }
+}
+
+@media (max-width: 620px) {
+  .ws-logo-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .ws-logo-actions {
+    align-items: center;
+  }
+
+  .ws-card-actions {
+    justify-content: stretch;
+  }
+
+  .ws-card-actions .sa-export {
+    width: 100%;
+    justify-content: center;
+  }
+}

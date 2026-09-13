@@ -1,12 +1,13 @@
 import React, { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../AuthContext';
+import { BrandingContext } from '../BrandingContext';
 import { FaTimes, FaEye, FaEyeSlash } from 'react-icons/fa';
 import { findStaffAllowlistEntry } from '../../services/firestoreService';
 import './LoginModal.css';
-import srcLogo from '../img/SRCLogo.png';
 
 function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification }) {
+  const { logo } = useContext(BrandingContext);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -46,7 +47,7 @@ function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification 
   return (
     <div className="auth-modal-content login-screen">
       <div className="auth-logo">
-        <img src={srcLogo} alt="SRC Logo" />
+        <img src={logo} alt="School logo" />
       </div>
 
       <h2 className="auth-title">Login to Dashboard</h2>
@@ -144,6 +145,7 @@ const ROLE_LABELS = {
 };
 
 function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
+  const { logo } = useContext(BrandingContext);
   const [role, setRole] = useState('student'); // student | admin | moderator | superadmin
   const [formData, setFormData] = useState({
     name: '',
@@ -234,7 +236,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
   return (
     <div className="auth-modal-content signup-screen">
       <div className="auth-logo">
-        <img src={srcLogo} alt="SRC Logo" />
+        <img src={logo} alt="School logo" />
       </div>
 
       <h2 className="auth-title">Sign up to Dashboard</h2>
@@ -449,6 +451,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
 }
 
 function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
+  const { logo } = useContext(BrandingContext);
   const [email, setEmail] = useState('');
 
   const handleSubmit = async (e) => {
@@ -465,7 +468,7 @@ function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
   return (
     <div className="auth-modal-content forgot-password-screen">
       <div className="auth-logo">
-        <img src={srcLogo} alt="SRC Logo" />
+        <img src={logo} alt="School logo" />
       </div>
 
       <h2 className="auth-title">Forgot Password</h2>
@@ -502,6 +505,7 @@ function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
 }
 
 function NewPasswordScreen({ onSwitchScreen, onUpdatePassword, currentUser }) {
+  const { logo } = useContext(BrandingContext);
   const [passwords, setPasswords] = useState({
     newPassword: '',
     confirmPassword: '',
@@ -535,7 +539,7 @@ function NewPasswordScreen({ onSwitchScreen, onUpdatePassword, currentUser }) {
   return (
     <div className="auth-modal-content new-password-screen">
       <div className="auth-logo">
-        <img src={srcLogo} alt="SRC Logo" />
+        <img src={logo} alt="School logo" />
       </div>
 
       <h2 className="auth-title">New Password</h2>

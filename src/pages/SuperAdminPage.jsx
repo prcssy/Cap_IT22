@@ -1,11 +1,13 @@
 import React, { useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import { AuthContext } from '../components/AuthContext';
+import { BrandingContext } from '../components/BrandingContext';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
 import { getSportsTeamsConfig, getMatchSchedules, getActivityLogs } from '../services/firestoreService';
 import LevelTabs from '../components/LevelTabs';
 import ActivityLogsAndRoles from './ActivityLogsAndRoles';
 import StudentRegistrationDetails from './StudentRegistrationDetails';
+import BrandingSettings from './BrandingSettings';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
@@ -413,6 +415,7 @@ function buildTimeSeries(seriesA, seriesB, days) {
 
 export default function SuperAdminPage() {
   const { userProfile, authLoading } = useContext(AuthContext);
+  const { schoolName } = useContext(BrandingContext);
 
   const [users, setUsers]                 = useState([]);
   const [registrations, setRegistrations] = useState([]);
@@ -640,11 +643,19 @@ export default function SuperAdminPage() {
     <div className="sa-page">
 
       <header className="sa-header">
-        <h1 className="sa-header__title">SANTA RITA COLLEGE OF PAMPANGA, INC</h1>
+        <h1 className="sa-header__title">{schoolName}</h1>
       </header>
 
       <nav className="sa-crumbs">
-        <span className="sa-crumbs__current">{sectionTab === 'roles' ? 'Roles & Permissions' : 'Data Analytics'}</span>
+        {sectionTab === 'branding' && (
+          <>
+            <span>Web Customization</span>
+            <FaChevronRight />
+          </>
+        )}
+        <span className="sa-crumbs__current">
+          {sectionTab === 'roles' ? 'Roles & Permissions' : sectionTab === 'branding' ? 'Branding' : 'Data Analytics'}
+        </span>
         <FaChevronRight />
       </nav>
 
@@ -652,7 +663,11 @@ export default function SuperAdminPage() {
         <div className="sa-panel">
 
           <LevelTabs
-            levels={[{ key: 'analytics', label: 'Data Analytics' }, { key: 'roles', label: 'Roles & Permissions' }]}
+            levels={[
+              { key: 'analytics', label: 'Data Analytics' },
+              { key: 'roles', label: 'Roles & Permissions' },
+              { key: 'branding', label: 'Web Customization' },
+            ]}
             value={sectionTab}
             onChange={setSectionTab}
             containerClassName="sa-lvltabs"
@@ -679,6 +694,8 @@ export default function SuperAdminPage() {
                 actorRole={userProfile?.role}
               />
             </>
+          ) : sectionTab === 'branding' ? (
+            <BrandingSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
           ) : (
           <>
           {/* ── Panel head ── */}

@@ -1,7 +1,8 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo, useContext } from 'react';
 import { FiAward, FiAlertTriangle, FiChevronLeft, FiChevronRight, FiChevronDown, FiTrendingUp, FiClock, FiMapPin } from 'react-icons/fi';
 import './DashboardPage.css';
 import Contact from '../components/Landing/Contact/Contact';
+import { BrandingContext } from '../components/BrandingContext';
 import LevelTabs from '../components/LevelTabs';
 import { getMatchSchedules, subscribeMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '../services/firestoreService';
 
@@ -441,6 +442,7 @@ function SportFilter({ sports, value, onChange }) {
 
 
 export default function DashboardPage() {
+  const { schoolName } = useContext(BrandingContext);
   const contactFooterRef = useRef(null);
 
   const [levelLabel, setLevelLabel] = useState('High School');
@@ -627,7 +629,7 @@ export default function DashboardPage() {
   return (
     <div className="user-dashboard">
       <header className="dash-header">
-        <h1 className="dash-header__title">SANTA RITA COLLEGE OF PAMPANGA, INC</h1>
+        <h1 className="dash-header__title">{schoolName}</h1>
       </header>
       <div className="profile-page-intro dash-intro-row">
         <div>
