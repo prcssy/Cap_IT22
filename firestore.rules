@@ -60,5 +60,13 @@ service cloud.firestore {
       allow read: if true;
       allow write: if isStaff();
     }
+
+    // Schedule requests — a moderator asks the admin to arrange a fixture.
+    // Staff-only both ways: moderators file requests, admins read/resolve
+    // them (mark scheduled or decline), same as every other staff config
+    // doc above.
+    match /scheduleRequests/{docId} {
+      allow read, write: if isStaff();
+    }
   }
 }

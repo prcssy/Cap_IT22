@@ -3,7 +3,7 @@ import { FiAward, FiAlertTriangle, FiChevronLeft, FiChevronRight, FiChevronDown,
 import './DashboardPage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import LevelTabs from '../components/LevelTabs';
-import { getMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '../services/firestoreService';
+import { getMatchSchedules, subscribeMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '../services/firestoreService';
 
 /* ═══════════════════════════════════════════
    LIVE MATCH STATUS
@@ -179,6 +179,9 @@ function OngoingCard({ match }) {
   return (
     <div className="ongoing-card">
       <div className="oc-banners">
+        {match.matchLabel && (
+          <div className="match-label-row"><span className="match-label-pill">{match.matchLabel}</span></div>
+        )}
         <TeamBanner team={match.teamA} size="oc" />
         <TeamBanner team={match.teamB} size="oc" />
       </div>
@@ -199,6 +202,9 @@ function UpcomingCard({ match }) {
   return (
     <div className="upcoming-card" tabIndex={0}>
       <div className="uc-banners">
+        {match.matchLabel && (
+          <div className="match-label-row"><span className="match-label-pill">{match.matchLabel}</span></div>
+        )}
         <TeamBanner team={match.teamA} size="uc" />
         {match.teamB ? <TeamBanner team={match.teamB} size="uc" /> : <div className="tbd-slot" />}
       </div>
@@ -495,6 +501,14 @@ export default function DashboardPage() {
     return () => { cancelled = true; };
   }, [levelKey, refreshKey]);
 
+  // Live on top of the fetch above — an admin deleting/editing a schedule
+  // (or fulfilling a moderator's request) should drop off the dashboard
+  // right away rather than waiting for the next 30s poll.
+  useEffect(() => {
+    const unsubscribe = subscribeMatchSchedules(levelKey, setMatches);
+    return unsubscribe;
+  }, [levelKey]);
+
   // Re-check the clock periodically so a match flips from Upcoming to
   // Ongoing (and out of Ongoing once it's over) without a page refresh.
   useEffect(() => {
@@ -547,6 +561,7 @@ export default function DashboardPage() {
         teamB: toCardTeam(m.teamB, m.teamBLogo),
         sport: (m.sport || '').toUpperCase(),
         venue: (m.location || 'TBA').toUpperCase(),
+        matchLabel: m.matchLabel || null,
       }));
 
     const upcomingList = withWindow
@@ -561,6 +576,7 @@ export default function DashboardPage() {
         teamA: toCardTeam(m.teamA, m.teamALogo),
         teamB: toCardTeam(m.teamB, m.teamBLogo),
         sport: (m.sport || '').toUpperCase(),
+        matchLabel: m.matchLabel || null,
       }));
 
     const finishedList = finishedMatches

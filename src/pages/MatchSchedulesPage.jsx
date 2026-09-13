@@ -216,6 +216,17 @@ function ScheduleDayTable({ day, matches, resultFor }) {
                 const bold = (team) => (winner && norm(team) === norm(winner) ? { fontWeight: 800 } : undefined);
                 return (
                   <>
+                    {m.matchLabel && (
+                      <span
+                        style={{
+                          marginRight: 8, fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.04em',
+                          textTransform: 'uppercase', padding: '2px 7px', borderRadius: 20,
+                          background: '#fff3d6', color: '#8a5f04',
+                        }}
+                      >
+                        {m.matchLabel}
+                      </span>
+                    )}
                     <span style={bold(m.teamA)}>{m.teamA}</span>
                     <span className="ms-team-vs">vs</span>
                     <span style={bold(m.teamB)}>{m.teamB}</span>

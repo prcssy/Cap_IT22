@@ -456,6 +456,64 @@
   display: inline-block;
 }
 
+/* Ribbon/pennant shape (flat left edge, notched right tip) instead of a
+   plain rounded pill. The clip-path polygon pulls the right edge in to
+   ~88% width at vertical center, leaving both right corners at full
+   width — that's what creates the forked tip. Generous right padding
+   keeps the label text clear of that notch. The ::after triangle is the
+   small darker "fold" shadow tucked into the bottom-left corner that
+   ribbon graphics like this usually have.
+   The top-left corner is rounded (it's the corner that sits closest to
+   the card's own rounded corner, now that the label is left-aligned) —
+   `clip-path` ignores `border-radius`, so the curve is approximated with
+   a few extra polygon points along a small arc instead. */
+.match-label-pill {
+  position: relative;
+  background: #FFC72C;
+  color: #6b3f00;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 5px 22px 5px 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  clip-path: polygon(
+    6px 0, 100% 0, 88% 50%, 100% 100%, 0 100%,
+    0 6px, 0.4px 3.5px, 1.8px 1.8px, 3.5px 0.4px
+  );
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-label-pill::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+/* Overlaid on the banners themselves (which are already `position:
+   relative`) rather than inserted as its own row — the card's overall
+   height is fixed, so adding a row would push the date/teams/sport pills
+   further down and clip them against the card's `overflow: hidden`. This
+   way every card lines up identically whether or not it has a label.
+   Sits right at the very top of the card (inside its own 10px padding,
+   above where the banners themselves start) rather than overlapping
+   down onto the banners. Left-aligned at left:0 so its own left edge
+   matches the left edge of the banners below it, instead of centered. */
+.match-label-row {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  z-index: 2;
+}
+
 .ft-label {
   font-size: 12px;
   font-family: 'Inter', sans-serif;
