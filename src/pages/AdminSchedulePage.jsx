@@ -7,7 +7,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, getEventLabel, EVENT_TYPES, getVenues, getAllMatchSchedules } from '../services/firestoreService';
+import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, syncRecordedFlags, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, getEventLabel, EVENT_TYPES, getVenues, getAllMatchSchedules } from '../services/firestoreService';
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../components/LevelTabs';
@@ -712,11 +712,25 @@ function MatchScheduleFormatSection({ level }) {
       setSavedSchedules(schedules);
       /* Optional: the schedule manager still works if results can't be
          read, it just won't show which fixtures are already recorded. */
+      let records = [];
       try {
-        setMatchRecords(await getMatchRecords(level) || []);
+        records = await getMatchRecords(level) || [];
+        setMatchRecords(records);
       } catch (recordError) {
         console.warn('Match records unavailable:', recordError);
         setMatchRecords([]);
+      }
+      // Self-heals the public `recorded` flag matchSchedules mirrors for the
+      // landing page (which can't read matchRecords directly — see
+      // firestore.rules) — re-derives it from schedules+records here so a
+      // fixture recorded before this mirror existed still gets flagged. Kept
+      // out of the try above so a sync-write failure can never wipe the
+      // match records the admin just successfully loaded.
+      try {
+        const updated = await syncRecordedFlags(level, records, schedules);
+        if (updated !== schedules) setSavedSchedules(updated);
+      } catch (syncError) {
+        console.warn('Failed to sync recorded flags:', syncError);
       }
       /* Venues + every level's schedules — needed to disable an
          already-booked venue in the Add/Edit Schedule dropdowns. Optional
@@ -2125,10 +2139,14 @@ const fetchSummary = useCallback(async () => {
     // comment in firestoreService.js for why). Fire-and-forget: a failed
     // write here shouldn't block or error out the registration table
     // this page actually exists to show.
-    const summaryForCount = buildSummary(studentRegistrations);
-    const totalPlayerCount = summaryForCount.reduce(
-      (sum, row) => sum + row.elementary + row.highSchool + row.college, 0,
-    );
+    //
+    // Count every student registration doc, not summaryForCount's
+    // elementary/highSchool/college tally — that one only bucket-counts
+    // registrations with a sport AND a recognizable gradeLevel, so a
+    // registration missing/mismatching a grade level silently dropped
+    // out of the landing-page total while still showing up everywhere
+    // else (Super Admin's "Total Players" included).
+    const totalPlayerCount = studentRegistrations.length;
     setLivePlayerCount(totalPlayerCount).catch((err) => {
       console.error('Failed to publish live player count:', err);
     });

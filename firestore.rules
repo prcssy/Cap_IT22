@@ -49,9 +49,13 @@ service cloud.firestore {
       allow write: if signedIn();
     }
 
-    // ── Config docs managed by staff, read by any signed-in user ─
-    match /sportsTeamsConfig/{level} { allow read: if signedIn(); allow write: if isStaff(); }
-    match /matchSchedules/{level}    { allow read: if signedIn(); allow write: if isStaff(); }
+    // ── Config docs managed by staff ─────────────────────────────
+    // Sports/teams and match schedules hold no private data (team
+    // names/logos, match date/time/venue) and are shown on the public
+    // landing page (Sports Statistics, ongoing/upcoming match card), so
+    // they're readable by anyone — same precedent as teamRankings below.
+    match /sportsTeamsConfig/{level} { allow read: if true; allow write: if isStaff(); }
+    match /matchSchedules/{level}    { allow read: if true; allow write: if isStaff(); }
     match /venuesConfig/{docId}      { allow read: if signedIn(); allow write: if isStaff(); }
     match /matchRecords/{level}      { allow read: if signedIn(); allow write: if isStaff(); }
 
@@ -59,6 +63,14 @@ service cloud.firestore {
     match /teamRankings/{level} {
       allow read: if true;
       allow write: if isStaff();
+    }
+
+    // Schedule requests — a moderator asks the admin to arrange a fixture.
+    // Staff-only both ways: moderators file requests, admins read/resolve
+    // them (mark scheduled or decline), same as every other staff config
+    // doc above.
+    match /scheduleRequests/{docId} {
+      allow read, write: if isStaff();
     }
   }
 }

@@ -4,16 +4,18 @@ import './DashboardPage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import LevelTabs from '../components/LevelTabs';
 import { getMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '../services/firestoreService';
+import { displayCategory, sameTeam, resolveScheduleRecords } from '../utils/matchRecords';
 
 /* ═══════════════════════════════════════════
    LIVE MATCH STATUS
-   A saved match only has a start time (date + time), not a duration,
-   so "ongoing" needs an assumed match length to know when it ends.
+   A match is "ongoing" from its scheduled start time until a Moderator
+   records a result for it — there's no assumed duration, since a fixed
+   cutoff would make an unrecorded match silently vanish from the
+   dashboard (neither upcoming nor ongoing) once it ran long.
    Matches created by the schedule generator but not yet assigned a
    date/time (round-robin/bracket placeholders) are skipped entirely —
    they have nothing to compare against the clock yet.
 ═══════════════════════════════════════════ */
-const ASSUMED_MATCH_MINUTES = 120; // 2 hours, matching the original mock's "7:00–9:00 AM" style windows
 
 const LEVEL_KEY_BY_LABEL = { 'Elementary': 'elementary', 'High School': 'highSchool', 'College': 'college' };
 
@@ -21,51 +23,7 @@ function matchWindow(match) {
   if (!match.date || !match.time) return null;
   const start = new Date(`${match.date}T${match.time}`);
   if (Number.isNaN(start.getTime())) return null;
-  const end = new Date(start.getTime() + ASSUMED_MATCH_MINUTES * 60000);
-  return { start, end };
-}
-
-function norm(value) {
-  return (value || '').trim().toLowerCase();
-}
-
-/* Categories used to be saved as values such as "MEN 5v5". The dashboard
-   shows the sport and division, not the child match format. */
-function displayCategory(category) {
-  return (category || '')
-    .trim()
-    .replace(/\s+\d+\s*[v×x]\s*\d+\s*$/i, '')
-    .replace(/\s+$/, '')
-    .trim();
-}
-
-function sameTeam(a, b) {
-  return !!a && !!b && norm(a) === norm(b);
-}
-
-function recordIdentity(record) {
-  if (record?.id) return `id:${record.id}`;
-  const participants = record?.participants?.length ? record.participants : [record?.teamA, record?.teamB];
-  const teams = participants.map(p => norm(p?.name)).filter(Boolean).sort().join('|');
-  return [norm(record?.sportName), norm(record?.category), teams].join('::');
-}
-
-/* New Moderator records store scheduleId, making the schedule fixture the
-   source of truth. The team fallback keeps older records readable. */
-function recordMatchesSchedule(record, schedule) {
-  if (!record || !schedule) return false;
-  if (record.scheduleId) return String(record.scheduleId) === String(schedule.id);
-  if (norm(record.sportName) !== norm(schedule.sport)) return false;
-  const recordCategory = norm(displayCategory(record.category));
-  const scheduleCategory = norm(displayCategory(schedule.category));
-  if (recordCategory && scheduleCategory && recordCategory !== scheduleCategory
-      && !recordCategory.endsWith(` ${scheduleCategory}`)
-      && !scheduleCategory.endsWith(` ${recordCategory}`)) return false;
-  const participants = record.participants?.length ? record.participants : [record.teamA, record.teamB];
-  const names = participants.map(p => p?.name).filter(Boolean);
-  return names.length >= 2
-    && names.some(name => sameTeam(name, schedule.teamA))
-    && names.some(name => sameTeam(name, schedule.teamB));
+  return { start };
 }
 
 function finishedCardFrom(schedule, record, teamsByName) {
@@ -486,25 +444,16 @@ export default function DashboardPage() {
     // The schedule is the source of truth. Walk scheduled fixtures first,
     // then attach at most one Moderator result to each fixture. This prevents
     // one record from being reused for several schedule cards.
-    const uniqueRecords = Array.from(
-      new Map(records.map(record => [recordIdentity(record), record])).values(),
-    );
-    const usedRecordKeys = new Set();
+    const { recordByScheduleId, recordedIds } = resolveScheduleRecords(matches, records);
     const finishedMatches = withWindow
       .map(({ m, w }) => {
-        const record = uniqueRecords.find(candidate => {
-          const key = recordIdentity(candidate);
-          return !usedRecordKeys.has(key) && recordMatchesSchedule(candidate, m);
-        });
-        if (!record) return null;
-        usedRecordKeys.add(recordIdentity(record));
-        return { m, w, record };
+        const record = recordByScheduleId.get(m.id);
+        return record ? { m, w, record } : null;
       })
       .filter(Boolean);
-    const recordedIds = new Set(finishedMatches.map(({ m }) => m.id));
 
     const ongoingList = withWindow
-      .filter(({ w }) => now >= w.start && now < w.end)
+      .filter(({ w }) => now >= w.start)
       .filter(({ m }) => !recordedIds.has(m.id))
       .sort((a, b) => a.w.start - b.w.start)
       .map(({ m }) => ({

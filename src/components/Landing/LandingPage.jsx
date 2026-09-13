@@ -73,21 +73,19 @@ function norm(str) {
   return (str || '').trim().toLowerCase();
 }
 
-/* Same assumed match length Admin/Moderator use to decide whether a
-   scheduled match is "over" — there's no real end-time saved per match,
-   so a match counts as finished once this long has passed its start. */
-const ASSUMED_MATCH_MINUTES = 120;
-
 function scheduleStart(schedule) {
   if (!schedule.date || !schedule.time) return null;
   const d = new Date(`${schedule.date}T${schedule.time}`);
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function scheduleHasFinished(schedule) {
+// A match is "ongoing" once its start time has passed — matching
+// DashboardPage, which drops the old fixed-duration cutoff since a match
+// with no recorded result yet is still ongoing, however long it's run.
+function scheduleIsOngoing(schedule) {
   const start = scheduleStart(schedule);
-  if (!start) return false; // no date/time set yet — treat as upcoming, not finished
-  return Date.now() >= start.getTime() + ASSUMED_MATCH_MINUTES * 60000;
+  if (!start) return false;
+  return Date.now() >= start.getTime();
 }
 
 function formatScheduleDate(dateStr) {
@@ -246,6 +244,7 @@ function LandingPage() {
   const [steps, setSteps] = useState(STEPS);
   const [matches, setMatches] = useState(MATCHES);
   const [contactItems, setContactItems] = useState(CONTACT_ITEMS);
+  const [ongoingRefreshKey, setOngoingRefreshKey] = useState(0);
 
   const { openAuthModal = () => {} } = useContext(AuthContext);
   const contactFooterRef = useRef(null);
@@ -345,13 +344,30 @@ function LandingPage() {
      Defaults to High School while the dropdown still shows the generic
      "Levels" placeholder, so the card has real data on first load. */
   const activeLevelKey = LEVEL_KEY_MAP[selectedLevel] || 'highSchool';
+
+  // Without this, the card only ever reflects whatever was ongoing at the
+  // moment the page loaded: a match that starts later, or one a Moderator
+  // has since recorded a result for, wouldn't show up (or disappear) until
+  // the visitor switched the level dropdown or reloaded — same fix as
+  // DashboardPage's `refreshKey` interval, so both pages agree at all times.
+  useEffect(() => {
+    const t = setInterval(() => setOngoingRefreshKey((k) => k + 1), 30000);
+    return () => clearInterval(t);
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
       try {
         const schedules = await getMatchSchedules(activeLevelKey);
+        // matchRecords/{level} is signed-in-only (see firestore.rules), so an
+        // anonymous visitor can't read it directly to tell a finished match
+        // apart from an ongoing one. Instead this relies on the `recorded`
+        // flag firestoreService mirrors onto each schedule entry (public)
+        // whenever a Moderator/Admin saves or deletes its result — see
+        // syncRecordedFlags in firestoreService.js.
         const upcoming = (schedules || [])
-          .filter((s) => s.teamA && s.teamB && !scheduleHasFinished(s))
+          .filter((s) => s.teamA && s.teamB && scheduleIsOngoing(s) && !s.recorded)
           .map(mapScheduleToCardMatch)
           .sort((a, b) => {
             if (!a._start && !b._start) return 0;
@@ -368,7 +384,7 @@ function LandingPage() {
       }
     })();
     return () => { cancelled = true; };
-  }, [activeLevelKey]);
+  }, [activeLevelKey, ongoingRefreshKey]);
 
   const currentMatch = matches[matchIndex] || matches[0] || null;
   const prevMatch = () => {
@@ -418,27 +434,6 @@ function LandingPage() {
 
           {/* Right controls */}
           <div className="header-controls">
-            {/* Level dropdown */}
-            <div className="level-dropdown" ref={levelDropdownRef}>
-              <button
-                className="level-btn"
-                onClick={() => setLevelOpen((prev) => !prev)}
-              >
-                {selectedLevel} <FaChevronDown className={`level-chevron ${levelOpen ? "open" : ""}`} />
-              </button>
-              <ul className={`level-menu ${levelOpen ? "open" : ""}`}>
-                {LEVELS.map((lvl) => (
-                  <li
-                    key={lvl}
-                    className={`level-item ${selectedLevel === lvl ? "active" : ""}`}
-                    onClick={() => { setSelectedLevel(lvl); setLevelOpen(false); }}
-                  >
-                    {lvl}
-                  </li>
-                ))}
-              </ul>
-            </div>
-
             {/* Message / suggestions */}
             <button
               className="icon-btn"
@@ -487,7 +482,30 @@ function LandingPage() {
 
           {/* Right — ongoing match card */}
           <div className="match-card">
-            <p className="match-card-label">ONGOING MATCHES</p>
+            <div className="match-card-header">
+              <p className="match-card-label">ONGOING MATCHES</p>
+
+              {/* Level dropdown */}
+              <div className="level-dropdown" ref={levelDropdownRef}>
+                <button
+                  className="level-btn"
+                  onClick={() => setLevelOpen((prev) => !prev)}
+                >
+                  {selectedLevel} <FaChevronDown className={`level-chevron ${levelOpen ? "open" : ""}`} />
+                </button>
+                <ul className={`level-menu ${levelOpen ? "open" : ""}`}>
+                  {LEVELS.map((lvl) => (
+                    <li
+                      key={lvl}
+                      className={`level-item ${selectedLevel === lvl ? "active" : ""}`}
+                      onClick={() => { setSelectedLevel(lvl); setLevelOpen(false); }}
+                    >
+                      {lvl}
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
 
             {currentMatch ? (
               <>
@@ -534,7 +552,7 @@ function LandingPage() {
               </>
             ) : (
               <div className="match-card-empty">
-                No matches scheduled for {selectedLevel === 'Levels' ? 'this level' : selectedLevel} yet — check back soon.
+                No {selectedLevel === 'Levels' ? '' : `${selectedLevel} `}matches are ongoing right now.
               </div>
             )}
           </div>

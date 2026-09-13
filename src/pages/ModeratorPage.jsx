@@ -11,6 +11,7 @@ import {
   getMatchSchedules,
   getMatchRecords,
   upsertMatchRecord,
+  syncRecordedFlags,
   getTeamRankings,
   saveTeamRankings,
 } from '../services/firestoreService';
@@ -1452,6 +1453,17 @@ export default function ModeratorPage() {
         console.error('Failed to load team rankings:', ranksR.reason);
         setRankings({});
         failed.push('Team Rankings');
+      }
+
+      // Self-heals the public `recorded` flag matchSchedules mirrors for the
+      // landing page: a match saved before that mirror existed (or edited
+      // straight in Firestore) won't have it set yet, so re-derive it here
+      // from schedules+records — a moderator/admin visiting this page is
+      // exactly the staff access syncRecordedFlags' write needs.
+      if (schedsR.status === 'fulfilled' && recsR.status === 'fulfilled') {
+        syncRecordedFlags(level, recsR.value || [], schedsR.value || [])
+          .then((updated) => { if (!cancelled) setSchedules(updated); })
+          .catch((error) => console.error('Failed to sync recorded flags:', error));
       }
 
       if (failed.length) {

@@ -17,6 +17,7 @@ import {
   getDownloadURL,
 } from 'firebase/storage';
 import { db } from '../firebase';
+import { resolveScheduleRecords } from '../utils/matchRecords';
 
 /* ─────────────────────────────────────────────
    Registration events
@@ -508,6 +509,36 @@ export async function getMatchRecords(level) {
 }
 
 /**
+ * matchRecords/{level} is signed-in-only (it's staff working data), but the
+ * public landing page still needs to tell an ongoing match apart from a
+ * finished one. Rather than loosening that read rule, this mirrors just a
+ * `recorded: true/false` flag per fixture onto matchSchedules/{level} —
+ * already public — using the same schedule↔record matching Dashboard uses.
+ * Called after every record write below, so the flag never lags behind.
+ * Only writes back when something actually changed, so calling it
+ * speculatively (e.g. from a staff page's own load effect, to self-heal
+ * any pre-existing mismatch) doesn't spam the doc on every read.
+ */
+export async function syncRecordedFlags(level, records, schedules) {
+  if (!db) return schedules || [];
+  const list = schedules || await getMatchSchedules(level);
+  if (!list.length) return list;
+  const recs = records || await getMatchRecords(level);
+  const { recordedIds } = resolveScheduleRecords(list, recs);
+  const changed = list.some(m => !!m.recorded !== recordedIds.has(m.id));
+  if (!changed) return list;
+
+  const updated = list.map(m => ({ ...m, recorded: recordedIds.has(m.id) }));
+  const configRef = doc(db, 'matchSchedules', level);
+  await setDoc(
+    configRef,
+    { matches: updated, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
+  return updated;
+}
+
+/**
  * Adds (or updates) a single confirmed match record.
  */
 export async function upsertMatchRecord(level, record) {
@@ -525,6 +556,8 @@ export async function upsertMatchRecord(level, record) {
     { records: merged, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  await syncRecordedFlags(level, merged);
 
   return merged;
 }
@@ -545,6 +578,8 @@ export async function deleteMatchRecord(level, recordId) {
     { records: remaining, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  await syncRecordedFlags(level, remaining);
 
   return remaining;
 }

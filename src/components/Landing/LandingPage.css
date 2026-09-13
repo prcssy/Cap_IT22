@@ -144,12 +144,12 @@
 .level-btn {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: 0.6rem;
   padding: 0.405rem 0.99rem;
-  background: #001a3a;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.25);
   color: #fff;
-  margin-right: 1rem;
-  border: none;
+  flex-shrink: 0;
   border-radius: 999px;
   font-size: 0.81rem;
   font-weight: 600;
@@ -159,7 +159,7 @@
 
 @media (hover: hover) and (pointer: fine) {
 .level-btn:hover {
-  background: #1a3a6e;
+  background: rgba(255, 255, 255, 0.22);
 }
 }
 
@@ -337,7 +337,15 @@
   flex-shrink: 0;
   color: #fff;
   align-self: center;
-  overflow: hidden;
+  overflow: visible;
+}
+
+.match-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.9rem;
+  margin-bottom: 0.6rem;
 }
 
 .match-card-label {
@@ -347,7 +355,7 @@
   letter-spacing: 0.14em;
   color: #fff;
   text-transform: uppercase;
-  margin-bottom: 0.6rem;
+  margin-bottom: 0;
 }
 
 .match-teams {
