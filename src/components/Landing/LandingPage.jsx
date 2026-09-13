@@ -89,10 +89,18 @@ function scheduleStart(schedule) {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function scheduleHasFinished(schedule) {
+/* True only while the match is actually in progress right now — same
+   [start, start+120min) window Dashboard's own Ongoing section uses.
+   The previous version only checked "hasn't finished yet", which is
+   also true for a match that hasn't started — so a future/upcoming
+   fixture (tomorrow, next week) showed up in this "Ongoing Matches"
+   card right alongside — or instead of — the one Dashboard actually
+   shows as ongoing. */
+function scheduleIsOngoing(schedule) {
   const start = scheduleStart(schedule);
-  if (!start) return false; // no date/time set yet — treat as upcoming, not finished
-  return Date.now() >= start.getTime() + ASSUMED_MATCH_MINUTES * 60000;
+  if (!start) return false; // no date/time set yet — nothing to compare against the clock
+  const now = Date.now();
+  return now >= start.getTime() && now < start.getTime() + ASSUMED_MATCH_MINUTES * 60000;
 }
 
 function formatScheduleDate(dateStr) {
@@ -400,16 +408,23 @@ function LandingPage() {
   /* "Ongoing matches" card, wired straight to what the Administrator has
      actually put on the schedule (matchSchedules/{level}) — not sample
      data. Re-runs whenever the visitor switches level in the dropdown.
-     Defaults to High School while the dropdown still shows the generic
-     "Levels" placeholder, so the card has real data on first load. */
-  const activeLevelKey = LEVEL_KEY_MAP[selectedLevel] || 'highSchool';
+     No level picked yet ("Levels" placeholder) used to silently default
+     to High School, so a visitor saw a real match before ever touching
+     the dropdown with no way to tell which level it belonged to. Now it
+     shows nothing (and the card prompts "Pick a level…") until a level
+     is actually chosen. */
+  const activeLevelKey = LEVEL_KEY_MAP[selectedLevel] || null;
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      if (!activeLevelKey) {
+        if (!cancelled) { setMatches([]); setMatchIndex(0); }
+        return;
+      }
       try {
         const schedules = await getMatchSchedules(activeLevelKey);
         const upcoming = (schedules || [])
-          .filter((s) => s.teamA && s.teamB && !scheduleHasFinished(s))
+          .filter((s) => s.teamA && s.teamB && scheduleIsOngoing(s))
           .map(mapScheduleToCardMatch)
           .sort((a, b) => {
             if (!a._start && !b._start) return 0;
@@ -594,7 +609,9 @@ function LandingPage() {
               </>
             ) : (
               <div className="match-card-empty">
-                No matches scheduled for {selectedLevel === 'Levels' ? 'this level' : selectedLevel} yet — check back soon.
+                {selectedLevel === 'Levels'
+                  ? 'Pick a level above to see ongoing matches.'
+                  : `No matches scheduled for ${selectedLevel} yet — check back soon.`}
               </div>
             )}
           </div>
