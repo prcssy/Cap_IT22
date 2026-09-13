@@ -398,6 +398,7 @@ export async function deleteScheduleSet(level, sport, category) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getMatchSchedules(level);
+  const removed = existing.filter(m => m.sport === sport && m.category === category);
   const remaining = existing.filter(
     m => !(m.sport === sport && m.category === category)
   );
@@ -407,6 +408,14 @@ export async function deleteScheduleSet(level, sport, category) {
     configRef,
     { matches: remaining, updatedAt: serverTimestamp() },
     { merge: true }
+  );
+
+  // Same reasoning as deleteMatchSchedule: any user who had one of these
+  // matches saved gets their Firestore savedMatches doc cleaned up too.
+  await Promise.all(
+    removed.map((m) => deleteSavedMatchesForMatch(m.id).catch((err) => {
+      console.warn(`Could not clean up savedMatches for deleted match ${m.id}:`, err);
+    }))
   );
 
   return remaining;
