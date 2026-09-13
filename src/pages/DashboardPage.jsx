@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { FiAward, FiAlertTriangle, FiChevronLeft, FiChevronRight, FiStar, FiTrendingUp, FiZap, FiClock, FiMapPin } from 'react-icons/fi';
+import { FiAward, FiAlertTriangle, FiChevronLeft, FiChevronRight, FiTrendingUp, FiClock, FiMapPin } from 'react-icons/fi';
 import './DashboardPage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import LevelTabs from '../components/LevelTabs';
@@ -81,14 +81,13 @@ function finishedCardFrom(schedule, record, teamsByName) {
     : record.winner === 'A' || record.winner === 'B'
       ? record.winner
       : (a.place === 1 ? 'A' : b.place === 1 ? 'B' : null);
-  /* Only the five details the dashboard is meant to show: the Elo rating
-     points, the score, the violations, who won (the WIN/LOSE badge above),
-     and each team's chance of winning. */
+  /* Only the details the dashboard is meant to show: final score, violation
+     count, comeback flag, and each team's chance of winning (who won is
+     already conveyed by the WIN/LOSE badge above). */
   const stat = (p, other) => ({
-    eloPoints: formatRating(p.finalPoints ?? p.prevPoints),
-    eloChange: p.change == null ? null : `${p.change >= 0 ? '+' : ''}${Math.round(p.change * 100) / 100}`,
     score: p.points != null ? String(p.points) : (formatMinutes(p.minutes) ?? '—'),
     violation: p.totalViolations ?? 0,
+    comeback: !!p.comeback,
     winChance: winChance(p, other),
   });
   return {
@@ -96,6 +95,7 @@ function finishedCardFrom(schedule, record, teamsByName) {
     sport: (schedule.sport || record.sportName || '').toUpperCase(),
     gender: displayCategory(schedule.category || record.category || '').toUpperCase(),
     date: formatDatePill(schedule.date),
+    time: formatTimePill(schedule.date, schedule.time),
     teamA: team(schedule.teamA, schedule.teamALogo, a),
     teamB: team(schedule.teamB, schedule.teamBLogo, b),
     winner,
@@ -114,11 +114,6 @@ function formatMinutes(mins) {
   const sec = totalSeconds % 60;
   const pad = (n) => String(n).padStart(2, '0');
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
-}
-
-function formatRating(value) {
-  if (value == null || Number.isNaN(Number(value))) return '—';
-  return String(Math.round(Number(value) * 100) / 100);
 }
 
 /* "Chance of winning" is the Elo expected score the moderator's own
@@ -227,57 +222,74 @@ function UpcomingCard({ match }) {
   );
 }
 
-function FinishedCard({ match, isActive }) {
-  const drawn = match.winner === 'DRAW' || match.winner == null;
-  const winnerA = match.winner === 'A';
-  const winnerB = match.winner === 'B';
-  const resultLabel = (isWinner) => (drawn ? 'DRAW' : isWinner ? 'WIN' : 'LOSE');
-  const resultClass = (isWinner) => (drawn ? 'fc-result--draw' : isWinner ? 'fc-result--win' : 'fc-result--lose');
-
-  const StatRow = ({ label, icon: Icon, aVal, bVal, aWin, bWin }) => (
+function StatRow({ label, icon: Icon, aVal, bVal, aWin, bWin }) {
+  return (
     <div className="fc-stat-row">
       <span className={`fc-stat-val ${aWin ? 'fc-stat-val--win' : ''}`}>{aVal}</span>
       <span className="fc-stat-label"><span className="fc-stat-icon"><Icon /></span>{label}</span>
       <span className={`fc-stat-val ${bWin ? 'fc-stat-val--win' : ''}`}>{bVal}</span>
     </div>
   );
+}
+
+function FinishedCard({ match, isActive }) {
+  const drawn = match.winner === 'DRAW' || match.winner == null;
+  const winnerA = match.winner === 'A';
+  const winnerB = match.winner === 'B';
+  const resultLabel = (isWinner) => (drawn ? 'DRAW' : isWinner ? 'WIN' : 'LOSE');
+  const resultClass = (isWinner) => (drawn ? 'fc-result--draw' : isWinner ? 'fc-result--win' : 'fc-result--lose');
+  const hasTime = match.time && match.time !== 'TBA';
 
   return (
     <div className={`finished-card ${isActive ? 'finished-card--active' : 'finished-card--side'}`}>
       <div className="fc-header">
-        <div className="fc-sport">{match.sport} {match.gender}</div>
-        <div className="fc-date">{match.date}</div>
+        <span className="fc-sport">{match.sport} {match.gender}</span>
+        <span className="fc-status"><span className="fc-status-dot" />Finished</span>
       </div>
+      <div className="fc-datetime">{match.date}{hasTime ? ` · ${match.time}` : ''}</div>
+
       <div className="fc-match">
         <div className="fc-team">
           <TeamBanner team={match.teamA} size={isActive ? 'fc' : 'fc-small'} />
           <span className="fc-team-name">{match.teamA.label}</span>
           <span className={`fc-result ${resultClass(winnerA)}`}>{resultLabel(winnerA)}</span>
         </div>
-        <div className="fc-vs">VS</div>
+        <div className="fc-score">
+          <span className="fc-score-val">{match.teamAStats.score}</span>
+          <span className="fc-score-sep">–</span>
+          <span className="fc-score-val">{match.teamBStats.score}</span>
+        </div>
         <div className="fc-team">
           <TeamBanner team={match.teamB} size={isActive ? 'fc' : 'fc-small'} />
           <span className="fc-team-name">{match.teamB.label}</span>
           <span className={`fc-result ${resultClass(winnerB)}`}>{resultLabel(winnerB)}</span>
         </div>
       </div>
+
       <div className="fc-stats">
-        <StatRow label="Elo Rating"     icon={FiZap}           aVal={match.teamAStats.eloPoints}  bVal={match.teamBStats.eloPoints}  aWin={winnerA} bWin={winnerB} />
-        <StatRow label="Points Gained"  icon={FiTrendingUp}    aVal={match.teamAStats.eloChange ?? '—'} bVal={match.teamBStats.eloChange ?? '—'} aWin={winnerA} bWin={winnerB} />
-        <StatRow label="Score"          icon={FiStar}          aVal={match.teamAStats.score}      bVal={match.teamBStats.score}      aWin={winnerA} bWin={winnerB} />
-        <StatRow label="Violation"      icon={FiAlertTriangle} aVal={match.teamAStats.violation}  bVal={match.teamBStats.violation}  aWin={winnerA} bWin={winnerB} />
-        <StatRow label="Win Chance"     icon={FiAward}         aVal={match.teamAStats.winChance}  bVal={match.teamBStats.winChance}  aWin={winnerA} bWin={winnerB} />
+        <StatRow label="Violation"   icon={FiAlertTriangle} aVal={match.teamAStats.violation}              bVal={match.teamBStats.violation}              aWin={winnerA} bWin={winnerB} />
+        <StatRow label="Comeback"    icon={FiTrendingUp}    aVal={match.teamAStats.comeback ? 'Yes' : 'No'} bVal={match.teamBStats.comeback ? 'Yes' : 'No'} aWin={winnerA} bWin={winnerB} />
+        <StatRow label="Win Chance"  icon={FiAward}         aVal={match.teamAStats.winChance}               bVal={match.teamBStats.winChance}               aWin={winnerA} bWin={winnerB} />
       </div>
     </div>
   );
 }
 
-function FinishedCarousel({ matches }) {
+function FinishedCarousel({ matches, emptyText }) {
   const total = matches.length;
   // `center` is the displayed active index (can be fractional during anim — we use it as integer)
   const [center, setCenter] = useState(0);
   const lockRef = useRef(false);
   const prevCenterRef = useRef(center);
+
+  // The list this carousel shows can change identity whenever the global
+  // sport filter changes (a fresh, shorter/longer array). Without this, an
+  // index picked under "All Sports" could point past the end of a smaller
+  // filtered list, leaving no slide marked active.
+  useEffect(() => {
+    setCenter(0);
+    prevCenterRef.current = 0;
+  }, [matches]);
 
   const wrapIdx = useCallback((i) => ((i % total) + total) % total, [total]);
   const wrapSigned = useCallback((i) => {
@@ -299,12 +311,15 @@ function FinishedCarousel({ matches }) {
     <section className="dash-section dash-section--finished">
       <div className="section-header">
         <h2 className="section-title">FINISHED MATCHES</h2>
-        <div className="scroll-arrows">
-          <button className="arrow-btn" onClick={() => go(-1)} aria-label="Scroll left"><FiChevronLeft /></button>
-          <button className="arrow-btn" onClick={() => go(1)}  aria-label="Scroll right"><FiChevronRight /></button>
-        </div>
+        {total > 0 && (
+          <div className="scroll-arrows">
+            <button className="arrow-btn" onClick={() => go(-1)} aria-label="Scroll left"><FiChevronLeft /></button>
+            <button className="arrow-btn" onClick={() => go(1)}  aria-label="Scroll right"><FiChevronRight /></button>
+          </div>
+        )}
       </div>
 
+      {total === 0 ? <p className="dash-empty">{emptyText}</p> : (
       <div className="finished-carousel">
         <div className="finished-carousel__track">
           {matches.map((match, matchIdx) => {
@@ -339,6 +354,7 @@ function FinishedCarousel({ matches }) {
           })}
         </div>
       </div>
+      )}
     </section>
   );
 }
@@ -362,30 +378,22 @@ function ScrollRow({ children, label, variant, isEmpty, emptyText }) {
   );
 }
 
-function FinishedSportButtons({ sports, value, onChange }) {
+/* Global Dashboard-wide sport filter — lives beside the level tabs in the
+   header so it reads as "this controls the whole page", not just one
+   section. Every section below (Ongoing/Upcoming/Finished) filters off
+   the same `value`, so switching sports here can never leave one section
+   showing a different sport than the others. */
+function SportFilter({ sports, value, onChange }) {
   return (
-    <label className="finished-sport-selector" style={{ display: 'flex', alignItems: 'center', gap: '0.65rem', margin: '0 0 1rem', flexWrap: 'wrap' }}>
-      <span style={{ fontSize: '0.78rem', fontWeight: 800, letterSpacing: '0.04em' }}>SPORT:</span>
+    <label className="dash-sport-filter">
+      <span className="dash-sport-filter__label">Sport</span>
       <select
+        className="dash-sport-filter__select"
         value={value}
         onChange={(event) => onChange(event.target.value)}
-        aria-label="Choose a sport for finished matches"
-        style={{
-          appearance: 'auto',
-          border: '1px solid #f5b400',
-          borderRadius: '999px',
-          background: '#fff',
-          color: '#333',
-          cursor: 'pointer',
-          fontSize: '0.82rem',
-          fontWeight: 700,
-          minHeight: '2.4rem',
-          minWidth: '12rem',
-          maxWidth: '100%',
-          padding: '0.55rem 1rem',
-        }}
+        aria-label="Filter the whole dashboard by sport"
       >
-        <option value="ALL SPORTS">ALL SPORTS</option>
+        <option value="ALL SPORTS">All Sports</option>
         {sports.map((sport) => <option key={sport} value={sport}>{sport}</option>)}
       </select>
     </label>
@@ -403,7 +411,10 @@ export default function DashboardPage() {
   const [loading, setLoading] = useState(false);
   const [loadError, setLoadError] = useState('');
   const [refreshKey, setRefreshKey] = useState(0);
-  const [finishedSport, setFinishedSport] = useState('ALL SPORTS');
+  // Global, page-wide sport filter — every section (Ongoing/Upcoming/
+  // Finished) reads from this same value, so there is exactly one source
+  // of truth for "which sport am I looking at" across the whole Dashboard.
+  const [sportFilter, setSportFilter] = useState('ALL SPORTS');
   const [availableSports, setAvailableSports] = useState([]);
   const [now, setNow] = useState(() => new Date());
 
@@ -527,23 +538,42 @@ export default function DashboardPage() {
     return { ongoing: ongoingList, upcoming: upcomingList, finished: finishedList };
   }, [matches, records, now, teamsByName]);
 
-  const finishedSports = useMemo(
-    () => Array.from(new Set([...availableSports, ...finished.map(match => match.sport)])).sort(),
-    [availableSports, finished],
+  // The dropdown's options: every sport configured for this level, plus any
+  // sport that only shows up in a match/record (older data, or a sport
+  // since removed from config) so nothing silently becomes unfilterable.
+  const filterSports = useMemo(
+    () => Array.from(new Set([
+      ...availableSports,
+      ...ongoing.map(match => match.sport),
+      ...upcoming.map(match => match.sport),
+      ...finished.map(match => match.sport),
+    ])).filter(Boolean).sort(),
+    [availableSports, ongoing, upcoming, finished],
   );
 
+  // Switching level can change which sports exist — fall back to "All
+  // Sports" rather than silently filtering everything out on a sport that
+  // no longer applies to the newly selected level.
   useEffect(() => {
-    if (finishedSport !== 'ALL SPORTS' && !finishedSports.includes(finishedSport)) {
-      setFinishedSport('ALL SPORTS');
+    if (sportFilter !== 'ALL SPORTS' && !filterSports.includes(sportFilter)) {
+      setSportFilter('ALL SPORTS');
     }
-  }, [finishedSport, finishedSports]);
+  }, [sportFilter, filterSports]);
 
-  const visibleFinished = useMemo(
-    () => finishedSport === 'ALL SPORTS'
-      ? finished
-      : finished.filter(match => match.sport === finishedSport),
-    [finished, finishedSport],
+  const visibleOngoing = useMemo(
+    () => sportFilter === 'ALL SPORTS' ? ongoing : ongoing.filter(match => match.sport === sportFilter),
+    [ongoing, sportFilter],
   );
+  const visibleUpcoming = useMemo(
+    () => sportFilter === 'ALL SPORTS' ? upcoming : upcoming.filter(match => match.sport === sportFilter),
+    [upcoming, sportFilter],
+  );
+  const visibleFinished = useMemo(
+    () => sportFilter === 'ALL SPORTS' ? finished : finished.filter(match => match.sport === sportFilter),
+    [finished, sportFilter],
+  );
+
+  const sportSuffix = sportFilter === 'ALL SPORTS' ? '' : ` ${sportFilter}`;
 
   return (
     <div className="user-dashboard">
@@ -555,14 +585,17 @@ export default function DashboardPage() {
           <h2 className="profile-page-title">Home</h2>
           <p className="profile-page-subtitle">Browse for matches informations</p>
         </div>
-        <LevelTabs
-          levels={LEVELS}
-          value={levelLabel}
-          onChange={setLevelLabel}
-          containerClassName="dash-lvltabs"
-          tabClassName="dash-lvltab"
-          activeClassName="dash-lvltab--active"
-        />
+        <div className="dash-filters-row">
+          <LevelTabs
+            levels={LEVELS}
+            value={levelLabel}
+            onChange={setLevelLabel}
+            containerClassName="dash-lvltabs"
+            tabClassName="dash-lvltab"
+            activeClassName="dash-lvltab--active"
+          />
+          <SportFilter sports={filterSports} value={sportFilter} onChange={setSportFilter} />
+        </div>
       </div>
       <div className="dash-body">
         {loadError && <p className="dash-empty">{loadError}</p>}
@@ -570,30 +603,24 @@ export default function DashboardPage() {
         <ScrollRow
           label="ONGOING MATCHES"
           variant="ongoing"
-          isEmpty={!loading && ongoing.length === 0}
-          emptyText="No matches are ongoing right now."
+          isEmpty={!loading && visibleOngoing.length === 0}
+          emptyText={`No${sportSuffix} matches are ongoing right now.`}
         >
-          {ongoing.map(m => <OngoingCard key={m.id} match={m} />)}
+          {visibleOngoing.map(m => <OngoingCard key={m.id} match={m} />)}
         </ScrollRow>
         <ScrollRow
           label="UPCOMING MATCHES"
           variant="upcoming"
-          isEmpty={!loading && upcoming.length === 0}
-          emptyText="No upcoming matches scheduled yet."
+          isEmpty={!loading && visibleUpcoming.length === 0}
+          emptyText={`No upcoming${sportSuffix} matches scheduled yet.`}
         >
-          {upcoming.map(m => <UpcomingCard key={m.id} match={m} />)}
+          {visibleUpcoming.map(m => <UpcomingCard key={m.id} match={m} />)}
         </ScrollRow>
         {finished.length > 0 && (
-          <>
-            <div className="finished-sport-filter-wrap">
-              <FinishedSportButtons
-                sports={finishedSports}
-                value={finishedSport}
-                onChange={setFinishedSport}
-              />
-            </div>
-            {visibleFinished.length > 0 && <FinishedCarousel matches={visibleFinished} />}
-          </>
+          <FinishedCarousel
+            matches={visibleFinished}
+            emptyText={`No finished${sportSuffix} matches yet.`}
+          />
         )}
         <Contact contactFooterRef={contactFooterRef} />
       </div>
