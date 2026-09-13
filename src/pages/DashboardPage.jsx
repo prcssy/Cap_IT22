@@ -1,9 +1,11 @@
-import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useRef, useContext, useEffect, useCallback, useMemo } from 'react';
 import { FiAward, FiAlertTriangle, FiChevronLeft, FiChevronRight, FiChevronDown, FiTrendingUp, FiClock, FiMapPin } from 'react-icons/fi';
 import './DashboardPage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import LevelTabs from '../components/LevelTabs';
-import { getMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '../services/firestoreService';
+import SaveMatchButton from '../components/SaveMatchButton';
+import { AuthContext } from '../components/AuthContext';
+import { getMatchSchedules, getMatchRecords, getSportsTeamsConfig, getSavedMatchesForUser } from '../services/firestoreService';
 
 /* ═══════════════════════════════════════════
    LIVE MATCH STATUS
@@ -195,9 +197,17 @@ function OngoingCard({ match }) {
   );
 }
 
-function UpcomingCard({ match }) {
+function UpcomingCard({ match, currentUser, savedInfo, onToggleSave }) {
   return (
     <div className="upcoming-card" tabIndex={0}>
+      <SaveMatchButton
+        match={match.scheduleMatch}
+        currentUser={currentUser}
+        savedInfo={savedInfo}
+        onChange={onToggleSave}
+        className="dash-save-btn"
+        savedClassName="dash-save-btn--saved"
+      />
       <div className="uc-banners">
         <TeamBanner team={match.teamA} size="uc" />
         {match.teamB ? <TeamBanner team={match.teamB} size="uc" /> : <div className="tbd-slot" />}
@@ -436,6 +446,8 @@ function SportFilter({ sports, value, onChange }) {
 
 export default function DashboardPage() {
   const contactFooterRef = useRef(null);
+  const { currentUser } = useContext(AuthContext);
+  const [savedMap, setSavedMap] = useState(new Map()); // matchId -> { calendarEventId }
 
   const [levelLabel, setLevelLabel] = useState('High School');
   const [matches, setMatches] = useState([]);
@@ -509,6 +521,38 @@ export default function DashboardPage() {
     return () => clearInterval(t);
   }, []);
 
+  // Load which matches the signed-in user already saved, once per sign-in,
+  // so SaveMatchButton can check membership in memory — same pattern as
+  // MatchSchedulesPage's saved-matches effect.
+  useEffect(() => {
+    let cancelled = false;
+    async function load() {
+      if (!currentUser) {
+        setSavedMap(new Map());
+        return;
+      }
+      try {
+        const docs = await getSavedMatchesForUser(currentUser.uid);
+        if (cancelled) return;
+        setSavedMap(new Map(docs.map((d) => [d.matchId, { calendarEventId: d.calendarEventId }])));
+      } catch (err) {
+        console.warn('Failed to load saved matches:', err);
+        if (!cancelled) setSavedMap(new Map());
+      }
+    }
+    load();
+    return () => { cancelled = true; };
+  }, [currentUser]);
+
+  const handleToggleSave = (matchId, savedInfo) => {
+    setSavedMap((prev) => {
+      const next = new Map(prev);
+      if (savedInfo) next.set(matchId, savedInfo);
+      else next.delete(matchId);
+      return next;
+    });
+  };
+
   const toCardTeam = (name, logo) => ({ label: (name || '').toUpperCase(), banner: logo || teamsByName[name]?.logo || null });
 
   const { ongoing, upcoming, finished } = useMemo(() => {
@@ -561,6 +605,10 @@ export default function DashboardPage() {
         teamA: toCardTeam(m.teamA, m.teamALogo),
         teamB: toCardTeam(m.teamB, m.teamBLogo),
         sport: (m.sport || '').toUpperCase(),
+        // Untransformed match + level, for SaveMatchButton (it needs plain
+        // teamA/teamB strings and a raw yyyy-mm-dd/HH:MM date/time, not the
+        // display-formatted/uppercased fields built above for the card).
+        scheduleMatch: { ...m, level: levelKey },
       }));
 
     const finishedList = finishedMatches
@@ -647,7 +695,15 @@ export default function DashboardPage() {
           isEmpty={!loading && visibleUpcoming.length === 0}
           emptyText={`No upcoming${sportSuffix} matches scheduled yet.`}
         >
-          {visibleUpcoming.map(m => <UpcomingCard key={m.id} match={m} />)}
+          {visibleUpcoming.map(m => (
+            <UpcomingCard
+              key={m.id}
+              match={m}
+              currentUser={currentUser}
+              savedInfo={savedMap.get(m.id) || null}
+              onToggleSave={handleToggleSave}
+            />
+          ))}
         </ScrollRow>
         {finished.length > 0 && (
           <FinishedCarousel

@@ -563,6 +563,42 @@
   overflow: hidden;
 }
 
+/* ── Save Match button — top-right corner of each upcoming card.
+   z-index above .uc-hover-info (which covers the whole card on hover
+   with pointer-events: auto) so it stays visible and clickable even
+   while the card is hovered/focused. ── */
+.dash-save-btn {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  color: #0A1D52;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.dash-save-btn:hover:not(:disabled) {
+  background: #fff;
+}
+
+.dash-save-btn--saved {
+  color: #C98A00;
+}
+
+.dash-save-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
 .uc-banners {
   display: flex;
   gap: 10px;

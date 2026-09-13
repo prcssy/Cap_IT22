@@ -7,7 +7,14 @@ import { saveMatchReminder, deleteSavedMatch } from '../services/firestoreServic
    ~10-minute-before popup reminder via a separate Google OAuth consent
    (independent of this app's own Firebase Auth). On failure to obtain
    consent, fails silently — the match just stays unsaved. ── */
-export default function SaveMatchButton({ match, currentUser, savedInfo, onChange }) {
+export default function SaveMatchButton({
+  match,
+  currentUser,
+  savedInfo,
+  onChange,
+  className = 'ms-save-btn',
+  savedClassName = 'ms-save-btn--saved',
+}) {
   const [busy, setBusy] = useState(false);
 
   if (!currentUser) return null;
@@ -45,7 +52,7 @@ export default function SaveMatchButton({ match, currentUser, savedInfo, onChang
   return (
     <button
       type="button"
-      className={`ms-save-btn ${savedInfo ? 'ms-save-btn--saved' : ''}`}
+      className={`${className} ${savedInfo ? savedClassName : ''}`}
       onClick={handleClick}
       disabled={disabled || busy}
       aria-pressed={!!savedInfo}
