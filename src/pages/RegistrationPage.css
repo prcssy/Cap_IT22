@@ -339,6 +339,16 @@
 }
 }
 
+.reg-upload-box--filled {
+  cursor: default;
+}
+
+.reg-upload-box--filled .reg-upload-icon {
+  background: #eef7ef;
+  border-color: #2e7d32;
+  border-style: solid;
+}
+
 .reg-upload-caption {
   font-family: "Inter", sans-serif;
   font-size: 10px;
@@ -356,12 +366,51 @@
 }
 
 .reg-upload-preview {
+  display: flex;
+  align-items: center;
+  gap: 4px;
   font-size: 10px;
   color: #2e7d32;
   font-weight: 600;
   max-width: 80px;
   word-break: break-all;
   text-align: center;
+}
+
+.reg-upload-remove {
+  flex: 0 0 auto;
+  position: relative;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: #c62828;
+  cursor: pointer;
+}
+
+.reg-upload-remove:hover {
+  background: #b71c1c;
+}
+
+.reg-upload-remove::before,
+.reg-upload-remove::after {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 7px;
+  height: 1.4px;
+  background: #fff;
+  border-radius: 1px;
+}
+
+.reg-upload-remove::before {
+  transform: translate(-50%, -50%) rotate(45deg);
+}
+
+.reg-upload-remove::after {
+  transform: translate(-50%, -50%) rotate(-45deg);
 }
 
 /* ── Textarea ── */

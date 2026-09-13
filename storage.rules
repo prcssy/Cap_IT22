@@ -14,10 +14,12 @@ service firebase.storage {
                     && request.auth.uid == uid
                     && request.resource.size <= 5 * 1024 * 1024
                     && (
-                         request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp']
-                         || request.resource.contentType == 'application/pdf'
-                         || request.resource.contentType == 'application/msword'
-                         || request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                         (fileName.matches('.*_photo') && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'])
+                         || (fileName.matches('.*_waiver') && (
+                              request.resource.contentType == 'application/pdf'
+                              || request.resource.contentType == 'application/msword'
+                              || request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+                            ))
                        );
       allow update, delete: if false; // registrations are create-once from the client
     }
