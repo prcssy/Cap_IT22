@@ -426,22 +426,6 @@
   fill: #64748b;
 }
 
-.sa-donut__num {
-  font-family: 'Lalezar', sans-serif;
-  font-size: 22px;
-  font-weight: 900;
-  fill: #16337a;
-}
-
-.sa-donut__cap {
-  font-family: 'Inter', sans-serif;
-  font-size: 7.5px;
-  font-weight: 700;
-  fill: #a3aec0;
-  letter-spacing: 0.05em;
-  text-transform: uppercase;
-}
-
 .sa-donut-row {
   display: flex;
   align-items: center;

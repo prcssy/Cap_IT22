@@ -118,7 +118,12 @@ function donutArcPath(cx, cy, rOuter, rInner, startAngle, endAngle) {
   ].join(' ');
 }
 
-function Donut({ segments, centerValue, centerLabel, showPercent = true }) {
+/* No center total here on purpose — that number already appears in the
+   stat tile row above (Total Users / Total Matches / Total Players), so
+   repeating it here would just be the same statistic shown twice. The
+   ring + legend below are what this chart adds that the tiles don't:
+   how that total splits across categories. */
+function Donut({ segments, showPercent = true }) {
   const data  = segments.filter(s => Number(s.value) > 0);
   const total = data.reduce((sum, s) => sum + Number(s.value), 0);
 
@@ -160,8 +165,6 @@ function Donut({ segments, centerValue, centerLabel, showPercent = true }) {
             return <path key={seg.label} d={path} fill={seg.color} />;
           })
         )}
-        <text x={cx} y={cy - 1} className="sa-donut__num" textAnchor="middle">{centerValue}</text>
-        <text x={cx} y={cy + 14} className="sa-donut__cap" textAnchor="middle">{centerLabel}</text>
       </svg>
 
       <ul className="sa-legend">
@@ -664,8 +667,6 @@ export default function SuperAdminPage() {
       </header>
 
       <nav className="sa-crumbs">
-        <span>Home</span>
-        <FaChevronRight />
         <span className="sa-crumbs__current">{sectionTab === 'roles' ? 'Roles & Permissions' : 'Data Analytics'}</span>
         <FaChevronRight />
       </nav>
@@ -782,21 +783,21 @@ export default function SuperAdminPage() {
               <div className="sa-card__head"><h3>Event Status</h3></div>
               {loading
                 ? <p className="sa-loading">Loading…</p>
-                : <Donut segments={statusSegments} centerValue={matches.length} centerLabel="Total Events" />}
+                : <Donut segments={statusSegments} />}
             </div>
 
             <div className="sa-card">
               <div className="sa-card__head"><h3>User Distribution by Role</h3></div>
               {loading
                 ? <p className="sa-loading">Loading…</p>
-                : <Donut segments={roleSegments} centerValue={rangedUsers.length} centerLabel="Total Users" />}
+                : <Donut segments={roleSegments} />}
             </div>
 
             <div className="sa-card">
               <div className="sa-card__head"><h3>Gender Distribution</h3></div>
               {loading
                 ? <p className="sa-loading">Loading…</p>
-                : <Donut segments={genderSegments} centerValue={rangedRegs.length} centerLabel="Participants" />}
+                : <Donut segments={genderSegments} />}
             </div>
           </div>
 
