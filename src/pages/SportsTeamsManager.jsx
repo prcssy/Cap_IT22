@@ -1,10 +1,11 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import {
   FaRunning, FaUsers, FaPlus, FaTimes,
   FaEdit, FaCheck, FaSync,
 } from 'react-icons/fa';
 import './SportsTeamsManager.css';
 import { getSportsTeamsConfig, saveSportsConfig, saveTeamsConfig } from '../services/firestoreService';
+import { AuthContext } from '../components/AuthContext';
 
 /* ═══════════════════════════════════════════
    CONSTANTS
@@ -757,6 +758,8 @@ function TeamsConfirmModal({ teams, saving, onClose, onSave }) {
    MAIN COMPONENT
 ═══════════════════════════════════════════ */
 export default function SportsTeamsManager({ level }) {
+  const { userProfile } = useContext(AuthContext);
+  const actorRole = userProfile?.role;
   const [sportsRows,  setSportsRows]  = useState([]);
   const [teamsRows,   setTeamsRows]   = useState([]);
   const [sportsList,  setSportsList]  = useState([]);
@@ -854,8 +857,8 @@ export default function SportsTeamsManager({ level }) {
     if (retargetedTeams) setTeamsList(retargetedTeams);
 
     try {
-      await saveSportsConfig(level, merged);
-      if (retargetedTeams) await saveTeamsConfig(level, retargetedTeams);
+      await saveSportsConfig(level, merged, actorRole);
+      if (retargetedTeams) await saveTeamsConfig(level, retargetedTeams, actorRole);
       flash(`✓ "${updatedSport.name}" updated.`);
       setEditSportTarget(null);
     } catch (e) {
@@ -873,7 +876,7 @@ export default function SportsTeamsManager({ level }) {
     setTeamsList(merged);
     setSavingEditTeam(true);
     try {
-      await saveTeamsConfig(level, merged);
+      await saveTeamsConfig(level, merged, actorRole);
       flash(`✓ "${updatedTeam.name}" updated.`);
       setEditTeamTarget(null);
     } catch (e) {
@@ -892,7 +895,7 @@ export default function SportsTeamsManager({ level }) {
     setDeleteSportTarget(null);
     setDeletingSport(true);
     try {
-      await saveSportsConfig(level, remaining);
+      await saveSportsConfig(level, remaining, actorRole);
       flash(`✓ "${sport.name}" deleted.`);
     } catch (e) {
       console.error(e);
@@ -921,7 +924,7 @@ export default function SportsTeamsManager({ level }) {
     // Then persist to Firestore in background
     setSaving(true);
     try {
-      await saveSportsConfig(level, merged);
+      await saveSportsConfig(level, merged, actorRole);
       flash('✓ Sports saved!');
     } catch (e) {
       console.error(e);
@@ -962,7 +965,7 @@ export default function SportsTeamsManager({ level }) {
     // Then persist to Firestore in background
     setSaving(true);
     try {
-      await saveTeamsConfig(level, merged);
+      await saveTeamsConfig(level, merged, actorRole);
       flash('✓ Teams saved!');
     } catch (e) {
       console.error(e);
@@ -983,7 +986,7 @@ export default function SportsTeamsManager({ level }) {
     setDeleteTeamTarget(null);
     setDeletingTeam(true);
     try {
-      await saveTeamsConfig(level, remaining);
+      await saveTeamsConfig(level, remaining, actorRole);
       flash(`✓ "${team.name}" deleted.`);
     } catch (e) {
       console.error(e);

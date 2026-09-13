@@ -681,7 +681,7 @@ function LabelBracketTree({ roundNames, roundsMatches, leafLabels }) {
   );
 }
 
-function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }) {
+function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, actorRole }) {
   const [sportsList, setSportsList] = useState([]);
   const [teamsList,  setTeamsList]  = useState([]);
   const [loading,    setLoading]    = useState(false);
@@ -895,7 +895,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }
     if (!selSport || !selCategory) return;
     setResettingSchedule(true);
     try {
-      const remaining = await deleteScheduleSet(level, selSport.name, selCategory.label);
+      const remaining = await deleteScheduleSet(level, selSport.name, selCategory.label, actorRole);
       setSavedSchedules(remaining);
       syncAllSchedulesForLevel(remaining);
       setResetConfirmOpen(false);
@@ -983,7 +983,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }
 
     setSavingSchedule(true);
     try {
-      const merged = await saveGeneratedSchedule(level, matches);
+      const merged = await saveGeneratedSchedule(level, matches, actorRole);
       setSavedSchedules(merged);
       syncAllSchedulesForLevel(merged);
       setSuccessModal({
@@ -1076,7 +1076,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }
         status: 'scheduled',
         source: 'manual',
       };
-      merged = await upsertMatchSchedule(level, match);
+      merged = await upsertMatchSchedule(level, match, actorRole);
     }
     setSavedSchedules(merged);
     syncAllSchedulesForLevel(merged);
@@ -1085,7 +1085,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }
     if (fulfillingRequestId) {
       const requestId = fulfillingRequestId;
       setFulfillingRequestId(null);
-      updateScheduleRequest(requestId, { status: 'scheduled' }).catch((err) => {
+      updateScheduleRequest(requestId, { status: 'scheduled' }, actorRole).catch((err) => {
         console.error('Failed to auto-mark schedule request as scheduled:', err);
       });
     }
@@ -1113,7 +1113,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }
       teamBLogo: editPool.find(t => t.name === editForm.teamB)?.logo ?? editForm.teamBLogo ?? null,
       matchLabel: (editForm.matchLabel || '').trim() || null,
     };
-    const merged = await upsertMatchSchedule(level, updated);
+    const merged = await upsertMatchSchedule(level, updated, actorRole);
     setSavedSchedules(merged);
     syncAllSchedulesForLevel(merged);
     setEditModalOpen(false);
@@ -1129,7 +1129,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }
     if (!editForm?.id) return;
     setDeletingSchedule(true);
     try {
-      const merged = await deleteMatchSchedule(level, editForm.id);
+      const merged = await deleteMatchSchedule(level, editForm.id, actorRole);
       setSavedSchedules(merged);
       syncAllSchedulesForLevel(merged);
       setDeleteConfirmOpen(false);
@@ -2156,7 +2156,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }
 
 
 export default function AdminSchedulePage() {
-  const { isAdmin, authLoading } = useContext(AuthContext);
+  const { isAdmin, authLoading, userProfile } = useContext(AuthContext);
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState(REGISTRATION_TAB_INDEX);
@@ -2220,7 +2220,7 @@ export default function AdminSchedulePage() {
 
   const handleMarkRequestScheduled = async (requestId) => {
     try {
-      await updateScheduleRequest(requestId, { status: 'scheduled' });
+      await updateScheduleRequest(requestId, { status: 'scheduled' }, userProfile?.role);
     } catch (err) {
       console.error('Failed to mark schedule request as scheduled:', err);
       setRequestActionToast({ text: friendlyFirestoreError(err, 'Could not update the request') });
@@ -2229,7 +2229,7 @@ export default function AdminSchedulePage() {
 
   const handleDeclineRequest = async (requestId) => {
     try {
-      await updateScheduleRequest(requestId, { status: 'declined', declineReason: declineReasonDraft.trim() });
+      await updateScheduleRequest(requestId, { status: 'declined', declineReason: declineReasonDraft.trim() }, userProfile?.role);
       setDecliningRequestId(null);
       setDeclineReasonDraft('');
     } catch (err) {
@@ -2689,6 +2689,7 @@ const fetchSummary = useCallback(async () => {
             level={level}
             pendingRequest={prefillFromRequest}
             onConsumedPrefill={clearPrefillFromRequest}
+            actorRole={userProfile?.role}
           />
         )}
 

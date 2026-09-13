@@ -9,8 +9,8 @@ import {
   signOut,
   updatePassword as firebaseUpdatePassword,
 } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
-import { createUserProfile, getUserProfile } from '../services/firestoreService';
+import { doc, getDoc, onSnapshot } from 'firebase/firestore';
+import { createUserProfile, getUserProfile, logActivity } from '../services/firestoreService';
 
 // ════════════════════════════════════════════════════════════════════════════════
 // STAFF ACCOUNTS CONFIGURATION
@@ -57,6 +57,12 @@ export function AuthProvider({ children }) {
   const [currentUser, setCurrentUser] = useState(null);
   const [userProfile, setUserProfile] = useState(null);
   const [authLoading, setAuthLoading] = useState(true);
+  // Mirrors whether the signed-in user's email currently has a doc in each
+  // staff allowlist collection. Kept live (via onSnapshot below) so a role
+  // granted/revoked by a Super Admin reaches an already-open session
+  // immediately — resolveStaffRole() below is only a ONE-SHOT lookup used
+  // for the initial login/signup decision, it never re-fires on its own.
+  const [staffDocs, setStaffDocs] = useState({ admin: false, moderator: false, superadmin: false });
 
   /**
    * Check the "superadmins", "admins", and "moderators" Firestore collections
@@ -95,6 +101,15 @@ export function AuthProvider({ children }) {
           const staffRole = await resolveStaffRole(user.email);
           const isAdminRole = staffRole === 'admin' || staffRole === 'superadmin';
 
+          // Seed the live-listener state from this same lookup, so the
+          // recompute effect below doesn't start from all-false and briefly
+          // flash a demoted role before its own onSnapshot listeners land.
+          setStaffDocs({
+            admin: staffRole === 'admin',
+            moderator: staffRole === 'moderator',
+            superadmin: staffRole === 'superadmin',
+          });
+
           if (profile) {
             setUserProfile({
               ...profile,
@@ -128,6 +143,49 @@ export function AuthProvider({ children }) {
 
     return unsubscribe;
   }, []);
+
+  /* Live role propagation: subscribe to the signed-in user's own docs in
+     all three staff allowlist collections, so a role a Super Admin grants
+     or revokes from the new Roles & Permissions panel reaches THIS
+     already-open session immediately — no refresh/re-login required. */
+  useEffect(() => {
+    if (!db || !currentUser?.email) {
+      setStaffDocs({ admin: false, moderator: false, superadmin: false });
+      return;
+    }
+    const lower = currentUser.email.toLowerCase();
+    const unsubs = ROLE_COLLECTIONS.map(({ role, collection: collectionName }) => {
+      const key = role === 'superadmin' ? 'superadmin' : role === 'admin' ? 'admin' : 'moderator';
+      return onSnapshot(doc(db, collectionName, lower), (snap) => {
+        setStaffDocs((prev) => (prev[key] === snap.exists() ? prev : { ...prev, [key]: snap.exists() }));
+      }, (error) => {
+        console.warn(`Role listener failed for ${collectionName}:`, error);
+      });
+    });
+    return () => unsubs.forEach((unsub) => unsub());
+  }, [currentUser?.email]);
+
+  /* Recomputes the effective role every time the live staffDocs flags
+     change (same superadmin > admin > moderator > student priority as
+     resolveStaffRole), and merges it onto the existing profile. Sidebar
+     visibility, ProtectedRoute redirects and the per-page `isAdmin`/`role`
+     guards all read userProfile/userRole, so this one state update is what
+     makes every one of them react live. */
+  useEffect(() => {
+    const role = staffDocs.superadmin ? 'superadmin' : staffDocs.admin ? 'admin' : staffDocs.moderator ? 'moderator' : 'student';
+    const isAdminRole = role === 'admin' || role === 'superadmin';
+    setUserProfile((prev) => {
+      if (prev) {
+        if (prev.role === role && prev.isAdmin === isAdminRole) return prev;
+        return { ...prev, role, isAdmin: isAdminRole };
+      }
+      // No profile loaded (yet, or ever) — only worth promoting to a
+      // bare staff profile if there's actually a signed-in user and a
+      // staff role to show, same fallback shape used above.
+      if (role === 'student' || !currentUser) return prev;
+      return { role, isAdmin: isAdminRole, email: currentUser.email, name: currentUser.displayName || '' };
+    });
+  }, [staffDocs, currentUser]);
 
   const openAuthModal = (screen = 'login') => {
     setAuthModal({ isOpen: true, screen });
@@ -167,6 +225,7 @@ export function AuthProvider({ children }) {
     }
 
     const resolvedRole = await resolveStaffRole(user.email);
+    await logActivity({ actorRole: resolvedRole, type: 'Login', details: `${user.email} logged in` });
     return { user, role: resolvedRole };
   };
 
@@ -248,6 +307,10 @@ export function AuthProvider({ children }) {
 
   const logout = async () => {
     if (!auth) return;
+    // Logged BEFORE signOut — logActivity needs a still-valid session to
+    // attribute the write to (auth.currentUser is cleared once signOut
+    // resolves), so it's awaited here rather than fired-and-forgotten.
+    await logActivity({ actorRole: userProfile?.role || 'student', type: 'Logout' });
     await signOut(auth);
     setUserProfile(null);
   };

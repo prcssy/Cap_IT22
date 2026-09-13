@@ -5,8 +5,10 @@ import {
   setDoc,
   getDoc,
   addDoc,
+  deleteDoc,
   query,
   orderBy,
+  limit,
   serverTimestamp,
   increment,
   onSnapshot,
@@ -17,7 +19,7 @@ import {
   uploadBytes,
   getDownloadURL,
 } from 'firebase/storage';
-import { db } from '../firebase';
+import { db, auth } from '../firebase';
 
 /* ─────────────────────────────────────────────
    Registration events
@@ -135,6 +137,148 @@ export async function findStaffAllowlistEntry(email, role) {
 }
 
 /* ─────────────────────────────────────────────
+   Activity logs — a single, append-only audit trail written by every
+   part of the app that performs a "named" action (login/logout, role
+   changes, registrations, schedule/tournament and match-record CRUD).
+   Stored at: activityLogs/{autoId}, newest first.
+
+   `logActivity` always attributes the entry to whoever is CURRENTLY
+   signed in (never a caller-supplied identity) — that's what lets the
+   Firestore rule require `actorUid == request.auth.uid`, so a client
+   can only ever log its own actions, not forge someone else's. A
+   failed write here is swallowed (console.warn only) so a logging
+   hiccup can never block the real action it's describing.
+───────────────────────────────────────────── */
+export async function logActivity({
+  actorRole = 'student',
+  type,
+  details = '',
+  targetType = null,
+  targetId = null,
+  targetLabel = null,
+} = {}) {
+  if (!db || !auth?.currentUser || !type) return;
+  try {
+    const user = auth.currentUser;
+    await addDoc(collection(db, 'activityLogs'), {
+      actorUid: user.uid,
+      actorEmail: user.email || '',
+      actorName: user.displayName || '',
+      actorRole,
+      type,
+      details,
+      targetType,
+      targetId,
+      targetLabel,
+      timestamp: serverTimestamp(),
+    });
+  } catch (error) {
+    console.warn(`Failed to log activity (${type}):`, error);
+  }
+}
+
+/**
+ * Most-recent 500 activity log entries, for the Super Admin "Roles &
+ * Permissions" tab. Filtering/pagination happens client-side over this
+ * batch — same convention SuperAdminPage already uses for `users` and
+ * `registrations` — with a Refresh button to pull a fresh batch.
+ */
+export async function getActivityLogs() {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot load activity logs.');
+    return [];
+  }
+  const logsQuery = query(collection(db, 'activityLogs'), orderBy('timestamp', 'desc'), limit(500));
+  const snapshot = await getDocs(logsQuery);
+  return snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
+}
+
+/* ─────────────────────────────────────────────
+   Super Admin role management — grants/revokes the SAME
+   admins/moderators/superadmins allowlist docs AuthContext reads at
+   login (doc id = lowercase email). Exactly one of the three is ever
+   kept for a given email: assigning a new role deletes the other two
+   first, matching AuthContext's own superadmin > admin > moderator
+   priority so it never has two disagreeing docs to resolve.
+
+   `targetUser` is a { id (uid), email, name } shape — the same shape
+   as a row from the `users` collection already loaded elsewhere.
+   Both functions refuse to act on the CURRENTLY SIGNED IN account, so
+   a Super Admin can never lock themselves out from this panel (the
+   Firestore rules also refuse to let a superadmin delete their own
+   `superadmins` doc, as a second layer of the same guard).
+───────────────────────────────────────────── */
+const STAFF_ROLE_COLLECTIONS = { admin: 'admins', moderator: 'moderators', superadmin: 'superadmins' };
+const STAFF_ROLE_LABELS = { admin: 'Admin', moderator: 'Moderator', superadmin: 'Super Admin' };
+
+export async function assignStaffRole(targetUser, role, actorRole) {
+  if (!db) throw new Error('Firestore not initialized.');
+  const collectionName = STAFF_ROLE_COLLECTIONS[role];
+  if (!collectionName) throw new Error(`Unknown staff role: ${role}`);
+  if (targetUser.id && auth?.currentUser?.uid === targetUser.id) {
+    throw new Error("You can't change your own role here.");
+  }
+
+  const email = (targetUser.email || '').trim().toLowerCase();
+  if (!email) throw new Error('This user has no email on file.');
+
+  await Promise.all(
+    Object.values(STAFF_ROLE_COLLECTIONS)
+      .filter((c) => c !== collectionName)
+      .map((c) => deleteDoc(doc(db, c, email)))
+  );
+  await setDoc(doc(db, collectionName, email), { email, addedAt: serverTimestamp() });
+
+  if (targetUser.id) {
+    await setDoc(
+      doc(db, 'users', targetUser.id),
+      { role, isAdmin: role === 'admin' || role === 'superadmin' },
+      { merge: true }
+    ).catch((error) => console.warn('Could not sync role onto user profile:', error));
+  }
+
+  await logActivity({
+    actorRole,
+    type: 'Role Assigned',
+    details: `Assigned ${STAFF_ROLE_LABELS[role]} role to ${targetUser.name || email}`,
+    targetType: 'user',
+    targetId: targetUser.id || email,
+    targetLabel: email,
+  });
+}
+
+export async function removeStaffRole(targetUser, actorRole) {
+  if (!db) throw new Error('Firestore not initialized.');
+  if (targetUser.id && auth?.currentUser?.uid === targetUser.id) {
+    throw new Error("You can't change your own role here.");
+  }
+
+  const email = (targetUser.email || '').trim().toLowerCase();
+  if (!email) throw new Error('This user has no email on file.');
+
+  await Promise.all(
+    Object.values(STAFF_ROLE_COLLECTIONS).map((c) => deleteDoc(doc(db, c, email)))
+  );
+
+  if (targetUser.id) {
+    await setDoc(
+      doc(db, 'users', targetUser.id),
+      { role: 'student', isAdmin: false },
+      { merge: true }
+    ).catch((error) => console.warn('Could not sync role onto user profile:', error));
+  }
+
+  await logActivity({
+    actorRole,
+    type: 'Role Removed',
+    details: `Removed staff role from ${targetUser.name || email}`,
+    targetType: 'user',
+    targetId: targetUser.id || email,
+    targetLabel: email,
+  });
+}
+
+/* ─────────────────────────────────────────────
    Upload a single file to Firebase Storage.
    Returns the public download URL.
    Returns null silently if no file provided
@@ -172,7 +316,7 @@ async function uploadFile(file, storagePath) {
    registrations/{uid}/{timestamp}_photo|waiver.
    URLs (or null) are saved in the Firestore doc.
 ───────────────────────────────────────────── */
-export async function createRegistration(uid, email, formData, photoFile, waiverFile) {
+export async function createRegistration(uid, email, formData, photoFile, waiverFile, actorRole = 'student') {
   if (!db) throw new Error('Firestore not initialized.');
 
   // Upload both files in parallel — either can be null (optional)
@@ -241,6 +385,15 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
     });
   }
 
+  logActivity({
+    actorRole,
+    type: 'Registration Submitted',
+    details: `${registrationData.fullName || email} registered for ${registrationData.event || 'an event'}${registrationData.sport ? ` (${registrationData.sport})` : ''}`,
+    targetType: 'registration',
+    targetId: docRef.id,
+    targetLabel: registrationData.fullName || email,
+  });
+
   return docRef;
 }
 
@@ -270,7 +423,7 @@ export async function getSportsTeamsConfig(level) {
   };
 }
 
-export async function saveSportsConfig(level, sports) {
+export async function saveSportsConfig(level, sports, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const configRef = doc(db, 'sportsTeamsConfig', level);
@@ -283,9 +436,17 @@ export async function saveSportsConfig(level, sports) {
     },
     { merge: true }
   );
+
+  logActivity({
+    actorRole,
+    type: 'Sports Updated',
+    details: `Saved the sports list for ${level} (${sports.length} sport${sports.length === 1 ? '' : 's'})`,
+    targetType: 'sportsConfig',
+    targetId: level,
+  });
 }
 
-export async function saveTeamsConfig(level, teams) {
+export async function saveTeamsConfig(level, teams, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const configRef = doc(db, 'sportsTeamsConfig', level);
@@ -298,6 +459,14 @@ export async function saveTeamsConfig(level, teams) {
     },
     { merge: true }
   );
+
+  logActivity({
+    actorRole,
+    type: 'Teams Updated',
+    details: `Saved the teams roster for ${level} (${teams.length} team${teams.length === 1 ? '' : 's'})`,
+    targetType: 'teamsConfig',
+    targetId: level,
+  });
 }
 
 /* ─────────────────────────────────────────────
@@ -357,7 +526,7 @@ export function subscribeMatchSchedules(level, callback) {
  * MatchScheduleFormatSection's `isLocked` — so this only ever collides
  * with itself when called twice for the exact same set.
  */
-export async function saveGeneratedSchedule(level, matches) {
+export async function saveGeneratedSchedule(level, matches, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const configRef = doc(db, 'matchSchedules', level);
@@ -375,6 +544,15 @@ export async function saveGeneratedSchedule(level, matches) {
     { matches: merged, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  logActivity({
+    actorRole,
+    type: 'Schedule Created',
+    details: `Generated ${matches.length} match${matches.length === 1 ? '' : 'es'} for ${sport || 'a sport'}${category ? ` (${category})` : ''}`,
+    targetType: 'schedule',
+    targetId: `${level}::${sport}::${category}`,
+    targetLabel: sport,
+  });
 
   return merged;
 }
@@ -407,7 +585,7 @@ async function deleteMatchRecordsByScheduleIds(level, scheduleIds) {
  * "Reset Schedule" confirmation in Match Schedules Format once a set
  * is locked.
  */
-export async function deleteScheduleSet(level, sport, category) {
+export async function deleteScheduleSet(level, sport, category, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getMatchSchedules(level);
@@ -425,6 +603,15 @@ export async function deleteScheduleSet(level, sport, category) {
 
   await deleteMatchRecordsByScheduleIds(level, removed.map(m => m.id));
 
+  logActivity({
+    actorRole,
+    type: 'Schedule Deleted',
+    details: `Reset the ${sport || 'schedule'}${category ? ` (${category})` : ''} schedule set (${removed.length} match${removed.length === 1 ? '' : 'es'})`,
+    targetType: 'schedule',
+    targetId: `${level}::${sport}::${category}`,
+    targetLabel: sport,
+  });
+
   return remaining;
 }
 
@@ -432,7 +619,7 @@ export async function deleteScheduleSet(level, sport, category) {
  * Adds (or updates) a single manually-entered match — the
  * "Add Schedule" / "Edit" flow, as opposed to the bulk generator.
  */
-export async function upsertMatchSchedule(level, match) {
+export async function upsertMatchSchedule(level, match, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getMatchSchedules(level);
@@ -448,16 +635,26 @@ export async function upsertMatchSchedule(level, match) {
     { merge: true }
   );
 
+  logActivity({
+    actorRole,
+    type: idx >= 0 ? 'Schedule Updated' : 'Schedule Created',
+    details: `${idx >= 0 ? 'Updated' : 'Added'} a ${match.sport || 'match'} fixture${match.category ? ` (${match.category})` : ''}`,
+    targetType: 'schedule',
+    targetId: match.id,
+    targetLabel: match.sport,
+  });
+
   return merged;
 }
 
 /**
  * Removes a single match from a level's schedule by id.
  */
-export async function deleteMatchSchedule(level, matchId) {
+export async function deleteMatchSchedule(level, matchId, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getMatchSchedules(level);
+  const removed = existing.find(m => m.id === matchId);
   const remaining = existing.filter(m => m.id !== matchId);
 
   const configRef = doc(db, 'matchSchedules', level);
@@ -468,6 +665,15 @@ export async function deleteMatchSchedule(level, matchId) {
   );
 
   await deleteMatchRecordsByScheduleIds(level, [matchId]);
+
+  logActivity({
+    actorRole,
+    type: 'Schedule Deleted',
+    details: `Deleted a ${removed?.sport || 'match'} fixture${removed?.category ? ` (${removed.category})` : ''}`,
+    targetType: 'schedule',
+    targetId: matchId,
+    targetLabel: removed?.sport,
+  });
 
   return remaining;
 }
@@ -529,7 +735,7 @@ export function subscribeScheduleRequests(callback) {
  * the hood, so requests get real ids without ever loading a whole
  * second collection just to auto-increment something.
  */
-export async function createScheduleRequest(request) {
+export async function createScheduleRequest(request, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getScheduleRequests();
@@ -547,6 +753,15 @@ export async function createScheduleRequest(request) {
     { merge: true }
   );
 
+  logActivity({
+    actorRole,
+    type: 'Schedule Requested',
+    details: `${newRequest.requestedByName || 'A moderator'} requested a schedule for ${newRequest.sport || 'a sport'}${newRequest.category ? ` (${newRequest.category})` : ''}`,
+    targetType: 'scheduleRequest',
+    targetId: newRequest.id,
+    targetLabel: newRequest.sport,
+  });
+
   return newRequest;
 }
 
@@ -556,10 +771,11 @@ export async function createScheduleRequest(request) {
  * a reason. `patch` merges onto the existing request (e.g. `{ status:
  * 'declined', declineReason }` or `{ status: 'scheduled' }`).
  */
-export async function updateScheduleRequest(requestId, patch) {
+export async function updateScheduleRequest(requestId, patch, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getScheduleRequests();
+  const target = existing.find((r) => r.id === requestId);
   const merged = existing.map((r) => (
     r.id === requestId ? { ...r, ...patch, resolvedAt: Date.now() } : r
   ));
@@ -570,6 +786,17 @@ export async function updateScheduleRequest(requestId, patch) {
     { requests: merged, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  if (patch.status === 'scheduled' || patch.status === 'declined') {
+    logActivity({
+      actorRole,
+      type: patch.status === 'scheduled' ? 'Schedule Request Approved' : 'Schedule Request Declined',
+      details: `${patch.status === 'scheduled' ? 'Approved' : 'Declined'} ${target?.requestedByName || 'a moderator'}'s request for ${target?.sport || 'a sport'}${target?.category ? ` (${target.category})` : ''}`,
+      targetType: 'scheduleRequest',
+      targetId: requestId,
+      targetLabel: target?.sport,
+    });
+  }
 
   return merged;
 }
@@ -598,7 +825,7 @@ export async function getVenues() {
   return snapshot.data().venues || [];
 }
 
-export async function saveVenues(venues) {
+export async function saveVenues(venues, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
   const configRef = doc(db, 'venuesConfig', 'global');
   await setDoc(
@@ -606,6 +833,15 @@ export async function saveVenues(venues) {
     { venues, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  logActivity({
+    actorRole,
+    type: 'Venues Updated',
+    details: `Saved the venues list (${venues.length} venue${venues.length === 1 ? '' : 's'})`,
+    targetType: 'venuesConfig',
+    targetId: 'global',
+  });
+
   return venues;
 }
 
@@ -662,7 +898,7 @@ export async function getMatchRecords(level) {
 /**
  * Adds (or updates) a single confirmed match record.
  */
-export async function upsertMatchRecord(level, record) {
+export async function upsertMatchRecord(level, record, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getMatchRecords(level);
@@ -678,6 +914,15 @@ export async function upsertMatchRecord(level, record) {
     { merge: true }
   );
 
+  logActivity({
+    actorRole,
+    type: 'Match Record Saved',
+    details: `Saved the ${record.sportName || 'match'} result for ${record.teamA?.name || '?'} vs ${record.teamB?.name || '?'}`,
+    targetType: 'matchRecord',
+    targetId: record.id,
+    targetLabel: record.sportName,
+  });
+
   return merged;
 }
 
@@ -685,10 +930,11 @@ export async function upsertMatchRecord(level, record) {
  * Removes a single confirmed match record by id — e.g. to clear out a
  * test entry from the Moderator's "Updated match summary" table.
  */
-export async function deleteMatchRecord(level, recordId) {
+export async function deleteMatchRecord(level, recordId, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getMatchRecords(level);
+  const removed = existing.find(r => r.id === recordId);
   const remaining = existing.filter(r => r.id !== recordId);
 
   const configRef = doc(db, 'matchRecords', level);
@@ -697,6 +943,15 @@ export async function deleteMatchRecord(level, recordId) {
     { records: remaining, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  logActivity({
+    actorRole,
+    type: 'Match Record Deleted',
+    details: `Deleted the ${removed?.sportName || 'match'} result for ${removed?.teamA?.name || '?'} vs ${removed?.teamB?.name || '?'}`,
+    targetType: 'matchRecord',
+    targetId: recordId,
+    targetLabel: removed?.sportName,
+  });
 
   return remaining;
 }

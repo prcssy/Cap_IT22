@@ -1692,7 +1692,7 @@ export default function ModeratorPage() {
         reason: requestReason.trim(),
         requestedByEmail: currentUser?.email || '',
         requestedByName: userProfile?.name || '',
-      });
+      }, userProfile?.role);
       setRequestModalOpen(false);
       setRequestToast({ text: 'Request sent — the admin has been notified.' });
     } catch (err) {
@@ -2213,7 +2213,7 @@ export default function ModeratorPage() {
     };
 
     try {
-      const merged = await upsertMatchRecord(level, record);
+      const merged = await upsertMatchRecord(level, record, userProfile?.role);
       setRecords(merged);
 
       const confirmScopeKey = rankingScopeKey(pending.sportName, pending.category);
@@ -2307,7 +2307,7 @@ export default function ModeratorPage() {
       updatedAt: Date.now(),
     };
 
-    const merged = await upsertMatchRecord(level, updated);
+    const merged = await upsertMatchRecord(level, updated, userProfile?.role);
     setRecords(merged);
 
     const editScopeKey = rankingScopeKey(updated.sportName, updated.category);

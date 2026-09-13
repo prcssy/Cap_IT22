@@ -1,7 +1,8 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect, useCallback, useRef, useContext } from 'react';
 import { FaMapMarkerAlt, FaEdit, FaTrash, FaTimes, FaPlus, FaCheck } from 'react-icons/fa';
 import './VenuesManager.css';
 import { getVenues, saveVenues, getAllMatchSchedules } from '../services/firestoreService';
+import { AuthContext } from '../components/AuthContext';
 
 const LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -28,6 +29,7 @@ function TeamBadge({ name, logo, size = 34 }) {
    that feeds the Venue dropdown on Add/Edit Match Schedule, and (2) a
    per-venue lookup of what's already booked there — click a card. */
 export default function VenuesManager() {
+  const { userProfile } = useContext(AuthContext);
   const [venues, setVenues] = useState([]);
   const [allSchedules, setAllSchedules] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -84,7 +86,7 @@ export default function VenuesManager() {
     setAdding(true);
     try {
       const next = [...venues, { id: uid(), name }];
-      await saveVenues(next);
+      await saveVenues(next, userProfile?.role);
       setVenues(next);
       setNewVenueName('');
       setToast({ text: 'Venue added.' });
@@ -113,7 +115,7 @@ export default function VenuesManager() {
     }
     const next = venues.map(v => (v.id === venue.id ? { ...v, name } : v));
     try {
-      await saveVenues(next);
+      await saveVenues(next, userProfile?.role);
       setVenues(next);
       setToast({ text: 'Venue renamed.' });
     } catch (e) {
@@ -128,7 +130,7 @@ export default function VenuesManager() {
     if (!confirmDeleteVenue) return;
     const next = venues.filter(v => v.id !== confirmDeleteVenue.id);
     try {
-      await saveVenues(next);
+      await saveVenues(next, userProfile?.role);
       setVenues(next);
       setToast({ text: 'Venue deleted.' });
     } catch (e) {

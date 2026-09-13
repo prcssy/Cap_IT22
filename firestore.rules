@@ -19,18 +19,40 @@ service cloud.firestore {
       );
     }
 
+    function isSuperAdmin() {
+      return signedIn() && exists(/databases/$(database)/documents/superadmins/$(staffEmail()));
+    }
+
     // ── User profiles ──────────────────────────────────────────
     match /users/{uid} {
       allow read, write: if signedIn() && request.auth.uid == uid;
       allow read: if isStaff();
+      // A Super Admin assigning/removing a staff role (Roles & Permissions
+      // tab) mirrors that change onto the TARGET user's own profile doc —
+      // a different uid than the Super Admin's own, so the rule above
+      // never covers it. Without this, assignStaffRole/removeStaffRole's
+      // users/{uid} write silently failed (caught, non-fatal), so the
+      // real access (admins/moderators/superadmins) updated correctly but
+      // the profile doc's `role` field kept its old value — meaning a
+      // reload of the Users list showed the change as having reverted.
+      allow write: if isSuperAdmin();
     }
 
     // ── Staff allowlists (doc id = lowercase email) ────────────
-    // Read-only from the client: AuthContext/sign-up need to look these
-    // up, but only the console/admin SDK should ever write to them.
-    match /admins/{email}      { allow read: if signedIn(); }
-    match /moderators/{email}  { allow read: if signedIn(); }
-    match /superadmins/{email} { allow read: if signedIn(); }
+    // Writable only by a verified Super Admin (via the Roles & Permissions
+    // panel's assignStaffRole/removeStaffRole) — checked here server-side
+    // with `isSuperAdmin()`, not just hidden client-side, so a direct API
+    // request from a non-superadmin is rejected the same as a UI click
+    // would be. A superadmin can never delete their OWN superadmins doc
+    // (self-lockout guard — the UI also refuses this, this is the second
+    // layer of the same protection).
+    match /admins/{email}      { allow read: if signedIn(); allow write: if isSuperAdmin(); }
+    match /moderators/{email}  { allow read: if signedIn(); allow write: if isSuperAdmin(); }
+    match /superadmins/{email} {
+      allow read: if signedIn();
+      allow create, update: if isSuperAdmin();
+      allow delete: if isSuperAdmin() && email != staffEmail();
+    }
 
     // ── Player registrations ───────────────────────────────────
     // Students may create their own registration but never read the
@@ -67,6 +89,20 @@ service cloud.firestore {
     // doc above.
     match /scheduleRequests/{docId} {
       allow read, write: if isStaff();
+    }
+
+    // ── Activity logs ───────────────────────────────────────────
+    // Append-only audit trail: anyone signed in may CREATE a log entry
+    // (login/logout, submitting a registration, etc. are logged by every
+    // role, not just staff), but only as themselves — actorUid must match
+    // the caller, so nobody can forge an entry attributed to someone else.
+    // Only a Super Admin may read the log (the Roles & Permissions tab is
+    // superadmin-only), and nobody may edit or delete an entry from the
+    // client once written.
+    match /activityLogs/{logId} {
+      allow read: if isSuperAdmin();
+      allow create: if signedIn() && request.resource.data.actorUid == request.auth.uid;
+      allow update, delete: if false;
     }
   }
 }

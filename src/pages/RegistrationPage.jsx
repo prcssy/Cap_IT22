@@ -160,7 +160,7 @@ const CONTACT_ITEMS = [
 
 export default function RegistrationPage() {
 
-  const { currentUser } = useContext(AuthContext);
+  const { currentUser, userProfile } = useContext(AuthContext);
   const [form, setForm] = useState(INITIAL);
   const [addr, setAddr] = useState(ADDR_INITIAL);
   const [photo, setPhoto]         = useState(null);
@@ -643,7 +643,8 @@ export default function RegistrationPage() {
             currentUser.email,
             form,
             photo,
-            waiver
+            waiver,
+            userProfile?.role || 'student'
         );
 
         setSubmitted(true);

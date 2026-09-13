@@ -2,8 +2,9 @@ import React, { useState, useEffect, useCallback, useContext, useMemo } from 're
 import { AuthContext } from '../components/AuthContext';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getSportsTeamsConfig, getMatchSchedules } from '../services/firestoreService';
+import { getSportsTeamsConfig, getMatchSchedules, getActivityLogs } from '../services/firestoreService';
 import LevelTabs from '../components/LevelTabs';
+import ActivityLogsAndRoles from './ActivityLogsAndRoles';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
@@ -425,7 +426,34 @@ export default function SuperAdminPage() {
   const [rangeKey, setRangeKey]           = useState('12m');
   const [levelKey, setLevelKey]           = useState('all');
 
+  // Which top-level tab is showing — Data Analytics (existing) or the new
+  // Roles & Permissions section. Logs are fetched lazily, the first time
+  // that tab is opened, rather than on every page load.
+  const [sectionTab, setSectionTab]       = useState('analytics');
+  const [logs, setLogs]                   = useState([]);
+  const [logsLoading, setLogsLoading]     = useState(false);
+  const [logsError, setLogsError]         = useState('');
+  const [logsLoaded, setLogsLoaded]       = useState(false);
+
   const range = RANGES.find(r => r.key === rangeKey) || RANGES[3];
+
+  const fetchLogs = useCallback(async () => {
+    setLogsLoading(true);
+    setLogsError('');
+    try {
+      setLogs(await getActivityLogs());
+    } catch (err) {
+      console.error(err);
+      setLogsError('Failed to load activity logs.');
+    } finally {
+      setLogsLoading(false);
+      setLogsLoaded(true);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (sectionTab === 'roles' && !logsLoaded) fetchLogs();
+  }, [sectionTab, logsLoaded, fetchLogs]);
 
   const fetchAnalytics = useCallback(async () => {
     if (!db) {
@@ -638,13 +666,43 @@ export default function SuperAdminPage() {
       <nav className="sa-crumbs">
         <span>Home</span>
         <FaChevronRight />
-        <span className="sa-crumbs__current">Data Analytics</span>
+        <span className="sa-crumbs__current">{sectionTab === 'roles' ? 'Roles & Permissions' : 'Data Analytics'}</span>
         <FaChevronRight />
       </nav>
 
       <div className="sa-body">
         <div className="sa-panel">
 
+          <LevelTabs
+            levels={[{ key: 'analytics', label: 'Data Analytics' }, { key: 'roles', label: 'Roles & Permissions' }]}
+            value={sectionTab}
+            onChange={setSectionTab}
+            containerClassName="sa-lvltabs"
+            tabClassName="sa-lvltab"
+            activeClassName="sa-lvltab--active"
+          />
+
+          {sectionTab === 'roles' ? (
+            <>
+              <div className="sa-panel__head">
+                <div>
+                  <h2 className="sa-panel__title">Activity Logs &amp; Roles Management</h2>
+                  <p className="sa-panel__sub">
+                    Manage user roles, permissions, account status, and review activity logs to monitor actions performed throughout the system.
+                  </p>
+                </div>
+              </div>
+              <ActivityLogsAndRoles
+                users={users}
+                logs={logs}
+                loading={logsLoading}
+                error={logsError}
+                onRefresh={fetchLogs}
+                actorRole={userProfile?.role}
+              />
+            </>
+          ) : (
+          <>
           {/* ── Panel head ── */}
           <div className="sa-panel__head">
             <div>
@@ -780,6 +838,8 @@ export default function SuperAdminPage() {
             Sports, Teams and Matches show current totals — they're configuration rather than
             dated events, so the date range doesn't apply to them.
           </p>
+          </>
+          )}
 
         </div>
       </div>
