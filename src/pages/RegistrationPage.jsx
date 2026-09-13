@@ -45,11 +45,6 @@ function getSchoolLevel(gradeLevel) {
   return null;
 }
 
-const POSITIONS = [
-  'Forward', 'Guard', 'Center', 'Pitcher', 'Catcher', 'Shortstop',
-  'Outfield', 'Midfielder', 'Goalkeeper', 'Sprinter', 'Other',
-];
-
 const MAX_FILE_SIZE_BYTES = 5 * 1024 * 1024; // 5 MB — keep in sync with storage.rules
 
 const PHOTO_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
@@ -115,8 +110,12 @@ export default function RegistrationPage() {
 
   // Sport / Team options, sourced live from the admin's Sports & Teams
   // config for whichever school level the selected Grade/Year falls in.
-  const [sportOptions, setSportOptions] = useState([]);
-  const [teamOptions, setTeamOptions]   = useState([]);
+  // Full objects are kept (not just names) so Team Name, Sport/Event, and
+  // Position can be cross-filtered: a team only offers the sports in its
+  // own sportIds, a sport only offers the teams that list it, and the
+  // Position choices come from that sport's own configured position list.
+  const [sportsConfig, setSportsConfig] = useState([]);
+  const [teamsConfig, setTeamsConfig]   = useState([]);
   const [loadingOptions, setLoadingOptions] = useState(false);
 
   // How many players have registered per event so far. Read from the
@@ -237,8 +236,8 @@ export default function RegistrationPage() {
     let cancelled = false;
 
     if (!schoolLevel) {
-      setSportOptions([]);
-      setTeamOptions([]);
+      setSportsConfig([]);
+      setTeamsConfig([]);
       return;
     }
 
@@ -246,26 +245,93 @@ export default function RegistrationPage() {
     getSportsTeamsConfig(schoolLevel)
       .then(({ sports, teams }) => {
         if (cancelled) return;
-        const sportNames = [...new Set((sports || []).map(s => s.name).filter(Boolean))].sort();
-        const teamNames  = [...new Set((teams  || []).map(t => t.name).filter(Boolean))].sort();
-        setSportOptions(sportNames);
-        setTeamOptions(teamNames);
+        setSportsConfig((sports || []).filter(s => s.name).slice().sort((a, b) => a.name.localeCompare(b.name)));
+        setTeamsConfig((teams || []).filter(t => t.name).slice().sort((a, b) => a.name.localeCompare(b.name)));
       })
       .catch((error) => {
         console.error('Failed to load sports/teams config:', error);
-        if (!cancelled) { setSportOptions([]); setTeamOptions([]); }
+        if (!cancelled) { setSportsConfig([]); setTeamsConfig([]); }
       })
       .finally(() => { if (!cancelled) setLoadingOptions(false); });
 
     return () => { cancelled = true; };
   }, [schoolLevel]);
 
-  // Selected grade level changed school levels — clear any team/sport
-  // pick that no longer belongs to the newly loaded options.
+  // Selected grade level changed school levels — clear any team/sport/
+  // position pick that no longer belongs to the newly loaded options.
   useEffect(() => {
-    setForm(prev => ({ ...prev, teamName: '', sport: '' }));
+    setForm(prev => ({ ...prev, teamName: '', sport: '', position: '' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolLevel]);
+
+  const selectedTeamConfig = useMemo(
+    () => teamsConfig.find(t => t.name === form.teamName) || null,
+    [teamsConfig, form.teamName]
+  );
+  const selectedSportConfig = useMemo(
+    () => sportsConfig.find(s => s.name === form.sport) || null,
+    [sportsConfig, form.sport]
+  );
+
+  // Team Name and Sport / Event cross-filter each other via each team's
+  // sportIds (the sports that team actually plays, set by the admin in
+  // Sports & Teams): picking one narrows the other down to a compatible
+  // pick instead of letting the two disagree.
+  const sportOptions = useMemo(() => {
+    const names = sportsConfig.map(s => s.name);
+    if (!selectedTeamConfig || !(selectedTeamConfig.sportIds || []).length) return names;
+    const allowed = new Set(selectedTeamConfig.sportIds);
+    return names.filter(n => allowed.has(n));
+  }, [sportsConfig, selectedTeamConfig]);
+
+  const teamOptions = useMemo(() => {
+    const names = teamsConfig.map(t => t.name);
+    if (!selectedSportConfig) return names;
+    return names.filter(n => {
+      const team = teamsConfig.find(t => t.name === n);
+      return !(team?.sportIds || []).length || team.sportIds.includes(selectedSportConfig.name);
+    });
+  }, [teamsConfig, selectedSportConfig]);
+
+  // Positions come entirely from the selected sport's own admin-configured
+  // list (Sports & Teams -> edit sport -> Positions, or the Positions
+  // column when adding a new sport) — no generic fallback, so a sport the
+  // admin hasn't set positions for correctly offers none instead of an
+  // unrelated hardcoded list.
+  const positionOptions = useMemo(
+    () => selectedSportConfig?.positions || [],
+    [selectedSportConfig]
+  );
+
+  const handleTeamChange = (e) => {
+    const teamName = e.target.value;
+    const team = teamsConfig.find(t => t.name === teamName);
+    setForm(prev => {
+      const sportStillValid = !team || !(team.sportIds || []).length || !prev.sport || team.sportIds.includes(prev.sport);
+      return { ...prev, teamName, sport: sportStillValid ? prev.sport : '' };
+    });
+    setErrors(prev => {
+      if (!prev.teamName) return prev;
+      const next = { ...prev };
+      delete next.teamName;
+      return next;
+    });
+  };
+
+  const handleSportChange = (e) => {
+    const sportName = e.target.value;
+    setForm(prev => {
+      const team = teamsConfig.find(t => t.name === prev.teamName);
+      const teamStillValid = !team || !(team.sportIds || []).length || !sportName || team.sportIds.includes(sportName);
+      return { ...prev, sport: sportName, teamName: teamStillValid ? prev.teamName : '', position: '' };
+    });
+    setErrors(prev => {
+      if (!prev.sport) return prev;
+      const next = { ...prev };
+      delete next.sport;
+      return next;
+    });
+  };
 
   const handleFile = (setter, key, allowedTypes) => (e) => {
     const file = e.target.files?.[0];
@@ -618,7 +684,7 @@ export default function RegistrationPage() {
                 <select
                   className="reg-select"
                   value={form.teamName}
-                  onChange={set('teamName')}
+                  onChange={handleTeamChange}
                   disabled={!schoolLevel || loadingOptions}
                   required
                 >
@@ -638,7 +704,7 @@ export default function RegistrationPage() {
                 <select
                   className="reg-select"
                   value={form.sport}
-                  onChange={set('sport')}
+                  onChange={handleSportChange}
                   disabled={!schoolLevel || loadingOptions}
                   required
                 >
@@ -655,9 +721,21 @@ export default function RegistrationPage() {
                 </select>
               </Field>
               <Field label="Position" required error={errors.position}>
-                <select className="reg-select" value={form.position} onChange={set('position')} required>
-                  <option value="">Select Position</option>
-                  {POSITIONS.map(p => <option key={p}>{p}</option>)}
+                <select
+                  className="reg-select"
+                  value={form.position}
+                  onChange={set('position')}
+                  disabled={!form.sport || positionOptions.length === 0}
+                  required
+                >
+                  <option value="">
+                    {!form.sport
+                      ? 'Select Sport / Event first'
+                      : positionOptions.length === 0
+                        ? 'No positions configured for this sport yet'
+                        : 'Select Position'}
+                  </option>
+                  {positionOptions.map(p => <option key={p}>{p}</option>)}
                 </select>
               </Field>
             </div>
