@@ -7,7 +7,7 @@ import { jsPDF } from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, getEventLabel, EVENT_TYPES, getVenues, getAllMatchSchedules, subscribeScheduleRequests, updateScheduleRequest } from '../services/firestoreService';
+import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, getEventLabel, EVENT_TYPES, getVenues, getAllMatchSchedules, subscribeScheduleRequests, updateScheduleRequest, deleteScheduleRequest } from '../services/firestoreService';
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../components/LevelTabs';
@@ -1075,6 +1075,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill }
         matchLabel: addForm.matchLabel.trim() || null,
         status: 'scheduled',
         source: 'manual',
+        requestId: fulfillingRequestId || null,
       };
       merged = await upsertMatchSchedule(level, match);
     }
@@ -2238,6 +2239,18 @@ export default function AdminSchedulePage() {
     }
   };
 
+  // Manual cleanup for a resolved (scheduled/declined) request — e.g. one
+  // left over from before matches carried a `requestId` link, so deleting
+  // the fixture couldn't auto-remove it.
+  const handleDeleteRequest = async (requestId) => {
+    try {
+      await deleteScheduleRequest(requestId);
+    } catch (err) {
+      console.error('Failed to delete schedule request:', err);
+      setRequestActionToast({ text: friendlyFirestoreError(err, 'Could not delete the request') });
+    }
+  };
+
   useEffect(() => { if (!isAdmin) navigate('/dashboard'); }, [isAdmin, navigate]);
 
 const fetchSummary = useCallback(async () => {
@@ -2743,6 +2756,14 @@ const fetchSummary = useCallback(async () => {
                         <p style={{ margin: '6px 0 0', fontSize: '0.8rem', color: '#a83218' }}>
                           <b>Decline reason:</b> {r.declineReason}
                         </p>
+                      )}
+
+                      {r.status !== 'pending' && (
+                        <div style={{ marginTop: 10 }}>
+                          <button type="button" className="asp-btn asp-btn--danger" onClick={() => handleDeleteRequest(r.id)}>
+                            <FaTrash /> Remove
+                          </button>
+                        </div>
                       )}
 
                       {r.status === 'pending' && (

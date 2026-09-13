@@ -311,6 +311,9 @@ export async function saveTeamsConfig(level, teams) {
      teamALogo, teamBLogo,   // base64 or URL, copied from Sports & Teams
      date, time, location,   // filled in later via Edit / Add Schedule
      status: 'scheduled',
+     requestId,              // set when this match was created via "Open
+                              // Match Schedules" from a moderator's schedule
+                              // request — see deleteMatchSchedule below.
    }
 ───────────────────────────────────────────── */
 export async function getMatchSchedules(level) {
@@ -424,6 +427,7 @@ export async function deleteScheduleSet(level, sport, category) {
   );
 
   await deleteMatchRecordsByScheduleIds(level, removed.map(m => m.id));
+  await deleteScheduleRequestsByIds(removed.map(m => m.requestId).filter(Boolean));
 
   return remaining;
 }
@@ -452,12 +456,18 @@ export async function upsertMatchSchedule(level, match) {
 }
 
 /**
- * Removes a single match from a level's schedule by id.
+ * Removes a single match from a level's schedule by id. If this match
+ * was created to fulfill a moderator's schedule request (tagged with
+ * `requestId` when the admin used "Open Match Schedules" from the
+ * Schedule Requests tab — see handleConfirmAdd in AdminSchedulePage),
+ * that request is deleted too, so it doesn't linger showing "Scheduled"
+ * for a fixture that no longer exists.
  */
 export async function deleteMatchSchedule(level, matchId) {
   if (!db) throw new Error('Firestore not initialized.');
 
   const existing = await getMatchSchedules(level);
+  const removed = existing.find(m => m.id === matchId);
   const remaining = existing.filter(m => m.id !== matchId);
 
   const configRef = doc(db, 'matchSchedules', level);
@@ -468,6 +478,9 @@ export async function deleteMatchSchedule(level, matchId) {
   );
 
   await deleteMatchRecordsByScheduleIds(level, [matchId]);
+  if (removed?.requestId) {
+    await deleteScheduleRequestsByIds([removed.requestId]);
+  }
 
   return remaining;
 }
@@ -572,6 +585,39 @@ export async function updateScheduleRequest(requestId, patch) {
   );
 
   return merged;
+}
+
+/**
+ * Deletes one schedule request outright (as opposed to updateScheduleRequest,
+ * which just patches `status`) — the admin's manual "Remove" action on the
+ * Schedule Requests tab, for clearing out a resolved (scheduled/declined)
+ * request that's no longer relevant, including ones left over from before
+ * matches carried a `requestId` link.
+ */
+export async function deleteScheduleRequest(requestId) {
+  return deleteScheduleRequestsByIds([requestId]);
+}
+
+/**
+ * Deletes schedule request docs outright (as opposed to updateScheduleRequest,
+ * which just patches `status`) — used when the fixture created to fulfill a
+ * request is later deleted by the admin, so the request doesn't linger
+ * showing "Scheduled" for a match that no longer exists. Also backs the
+ * public deleteScheduleRequest above, for manual cleanup from the UI.
+ */
+async function deleteScheduleRequestsByIds(requestIds) {
+  if (!requestIds.length) return;
+  const ids = new Set(requestIds.map(String));
+  const existing = await getScheduleRequests();
+  const remaining = existing.filter(r => !ids.has(String(r.id)));
+  if (remaining.length === existing.length) return;
+
+  const configRef = doc(db, 'scheduleRequests', 'all');
+  await setDoc(
+    configRef,
+    { requests: remaining, updatedAt: serverTimestamp() },
+    { merge: true }
+  );
 }
 
 /* ─────────────────────────────────────────────
