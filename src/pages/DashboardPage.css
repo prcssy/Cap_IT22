@@ -127,12 +127,20 @@
   color: rgba(255, 255, 255, 0.65);
 }
 
-.dash-sport-filter__select {
+.dash-sport-filter__dd {
+  position: relative;
+}
+
+.dash-sport-filter__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 150px;
   font-family: "Inter", sans-serif;
-  appearance: auto;
-  background: #FCBF19;
-  color: #001529;
-  border: none;
+  background: #001529;
+  border: 1.5px solid #33507a;
+  color: #fff;
   border-radius: 10px;
   padding: 8px 14px;
   font-size: 13px;
@@ -140,6 +148,93 @@
   letter-spacing: 0.03em;
   cursor: pointer;
   max-width: 100%;
+  transition: border-color 0.15s ease, transform 0.12s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dash-sport-filter__trigger:hover {
+    border-color: #f5a623;
+  }
+}
+
+.dash-sport-filter__trigger:active {
+  transform: scale(0.98);
+}
+
+.dash-sport-filter__arrow {
+  transition: transform 0.2s ease;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.dash-sport-filter__arrow--open {
+  transform: rotate(180deg);
+}
+
+.dash-sport-filter__panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  margin-top: 8px;
+  background: #001529;
+  border-radius: 14px;
+  padding: 10px;
+  width: 220px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.dash-sport-filter__panel--open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.dash-sport-filter__panel-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: #7a93b8;
+  text-transform: uppercase;
+  margin: 2px 6px 8px;
+  font-weight: 700;
+}
+
+.dash-sport-filter__option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-family: "Inter", sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #0b2447;
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.1s ease;
+}
+
+.dash-sport-filter__option + .dash-sport-filter__option {
+  margin-top: 8px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dash-sport-filter__option:hover {
+    background: #e3ecff;
+  }
+}
+
+.dash-sport-filter__option:active {
+  transform: scale(0.98);
+}
+
+.dash-sport-filter__option--active {
+  background: #e3ecff;
 }
 
 .dash-body {
@@ -841,9 +936,15 @@
     width: 100%;
   }
 
-  .dash-sport-filter__select {
+  .dash-sport-filter__trigger {
     padding: 7px 12px;
     font-size: 12px;
+    min-width: 0;
+  }
+
+  .dash-sport-filter__panel {
+    right: auto;
+    left: 0;
   }
 
   .dash-section {

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { FiAward, FiAlertTriangle, FiChevronLeft, FiChevronRight, FiTrendingUp, FiClock, FiMapPin } from 'react-icons/fi';
+import { FiAward, FiAlertTriangle, FiChevronLeft, FiChevronRight, FiChevronDown, FiTrendingUp, FiClock, FiMapPin } from 'react-icons/fi';
 import './DashboardPage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import LevelTabs from '../components/LevelTabs';
@@ -382,21 +382,54 @@ function ScrollRow({ children, label, variant, isEmpty, emptyText }) {
    header so it reads as "this controls the whole page", not just one
    section. Every section below (Ongoing/Upcoming/Finished) filters off
    the same `value`, so switching sports here can never leave one section
-   showing a different sport than the others. */
+   showing a different sport than the others.
+   Styled to match the Moderator page's sport-picker dropdown (navy
+   trigger, navy panel holding white option pills) instead of a native
+   <select>, so the same control reads the same way across both pages. */
 function SportFilter({ sports, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    const onClick = (event) => {
+      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClick);
+    return () => document.removeEventListener('mousedown', onClick);
+  }, []);
+
+  const options = [{ key: 'ALL SPORTS', label: 'All Sports' }, ...sports.map((sport) => ({ key: sport, label: sport }))];
+  const selected = options.find((o) => o.key === value);
+
   return (
-    <label className="dash-sport-filter">
+    <div className="dash-sport-filter" ref={wrapRef}>
       <span className="dash-sport-filter__label">Sport</span>
-      <select
-        className="dash-sport-filter__select"
-        value={value}
-        onChange={(event) => onChange(event.target.value)}
-        aria-label="Filter the whole dashboard by sport"
-      >
-        <option value="ALL SPORTS">All Sports</option>
-        {sports.map((sport) => <option key={sport} value={sport}>{sport}</option>)}
-      </select>
-    </label>
+      <div className="dash-sport-filter__dd">
+        <button
+          type="button"
+          className="dash-sport-filter__trigger"
+          onClick={() => setOpen((p) => !p)}
+          aria-label="Filter the whole dashboard by sport"
+        >
+          <span>{selected ? selected.label : 'All Sports'}</span>
+          <FiChevronDown className={`dash-sport-filter__arrow ${open ? 'dash-sport-filter__arrow--open' : ''}`} />
+        </button>
+
+        <div className={`dash-sport-filter__panel ${open ? 'dash-sport-filter__panel--open' : ''}`}>
+          <div className="dash-sport-filter__panel-label">Sports option</div>
+          {options.map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              className={`dash-sport-filter__option ${o.key === value ? 'dash-sport-filter__option--active' : ''}`}
+              onClick={() => { onChange(o.key); setOpen(false); }}
+            >
+              {o.label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
   );
 }
 
