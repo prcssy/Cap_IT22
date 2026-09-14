@@ -1175,6 +1175,19 @@ export const DEFAULT_BRANDING = {
   copyrightText: `© ${new Date().getFullYear()} Santa Rita College of Pampanga, Inc. All Rights Reserved.`,
   logoURL: null,
   events: EVENT_TYPES,
+  // Contact footer shown on the public landing page (Contact.jsx). Icons
+  // for these 4 fixed rows (address/phone/email/facebook) are chosen by
+  // the component, not stored here — only the display text and link are
+  // editable, same shape LandingPage.jsx's old hardcoded CONTACT_ITEMS used.
+  contact: {
+    address: {
+      text: 'San Jose, Santa Rita Pampanga, Philippines',
+      href: 'https://www.google.com/maps/place/Santa+Rita+College/@14.9989285,120.6178094,18.6z/data=!4m14!1m7!3m6!1s0x339658b934844e19:0x7ba727f39f0709df!2sSanta+Rita+College+Of+Pampanga,Inc.+Annex-1!8m2!3d14.9763355!4d120.6370981!16s%2Fg%2F11h0mw9qvh!3m5!1s0x3396f5ffca98627b:0xd9691231b874272b!8m2!3d14.9993667!4d120.6182403!16s%2Fg%2F1q5bm6dg_?entry=ttu&g_ep=EgoyMDI2MDYxNi4wIKXMDSoASAFQAw%3D%3D',
+    },
+    phone: { text: '(045) 900 0557', href: 'tel:+0459000557' },
+    email: { text: 'src_educ_ph@yahoo.com', href: 'mailto:src_educ_ph@yahoo.com' },
+    facebook: { text: 'facebook.com/santaritacollege', href: 'https://facebook.com/santaritacollege' },
+  },
 };
 
 export function subscribeBrandingConfig(callback) {

@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useMemo } from 'react';
 import './ProfilePage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import { BrandingContext } from '../components/BrandingContext';
@@ -20,12 +20,16 @@ import { AuthContext } from '../components/AuthContext';
 // never sees the Events / Awards / Registrations stat cards at all.
 const STAFF_ROLES = ['admin', 'moderator', 'superadmin'];
 
-const CONTACT_ITEMS = [
-  { icon: FaMapMarkerAlt, text: 'San Jose, Santa Rita Pampanga, Philippines', href: 'https://www.google.com/maps/place/Santa+Rita+College/@14.9989285,120.6178094,18.6z' },
-  { icon: FaPhoneAlt,     text: '(045) 900 0557',                             href: 'tel:+0459000557' },
-  { icon: FaEnvelope,     text: 'src_educ_ph@yahoo.com',                      href: 'mailto:src_educ_ph@yahoo.com' },
-  { icon: FaFacebookF,    text: 'facebook.com/santaritacollege',               href: 'https://facebook.com/santaritacollege' },
-];
+// Icons are fixed here; text/link come live from BrandingContext's
+// `contact` field (Super Admin → Web Customization → Branding → Contact
+// Information) — same source the public landing page's footer uses, so
+// an edit there is reflected everywhere Contact.jsx is rendered.
+const CONTACT_ICONS = {
+  address: FaMapMarkerAlt,
+  phone: FaPhoneAlt,
+  email: FaEnvelope,
+  facebook: FaFacebookF,
+};
 
 function InfoRow({ icon: Icon, label, value }) {
   return (
@@ -63,7 +67,16 @@ function StatCard({ icon, count, label, arrow, onClick }) {
 
 export default function ProfilePage() {
   const { currentUser, userProfile, updatePassword } = useContext(AuthContext);
-  const { schoolName } = useContext(BrandingContext);
+  const { schoolName, contact } = useContext(BrandingContext);
+  const contactItems = useMemo(() => (
+    Object.keys(CONTACT_ICONS)
+      .map((key) => ({
+        icon: CONTACT_ICONS[key],
+        text: contact?.[key]?.text || '',
+        href: contact?.[key]?.href || '',
+      }))
+      .filter((item) => item.text)
+  ), [contact]);
 
   /* ── All modal states ── */
   const [eventsModalOpen,        setEventsModalOpen]        = useState(false);
@@ -233,7 +246,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <Contact items={CONTACT_ITEMS} contactFooterRef={contactFooterRef} />
+        <Contact items={contactItems} contactFooterRef={contactFooterRef} />
       </div>
 
       {/* ── All modals ── */}

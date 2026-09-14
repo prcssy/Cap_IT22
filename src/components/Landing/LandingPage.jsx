@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useRef } from "react";
+import React, { useState, useEffect, useContext, useMemo, useRef } from "react";
 import { FaCalendarAlt, FaTrophy, FaPaperPlane, FaChevronLeft, FaChevronRight, FaChevronDown } from "react-icons/fa";
 import "./LandingPage.css";
 import HeaderWithLines from './HeaderWithLines';
@@ -31,31 +31,15 @@ import {
 } from "react-icons/fa";
 import { GiShuttlecock, GiPingPongBat } from "react-icons/gi";
 
-/* ── NEW — contact details shown in the footer strip ── */
-const CONTACT_ITEMS = [
-  {
-    icon: FaMapMarkerAlt,
-    text: "San Jose, Santa Rita Pampanga, Philippines",
-    href: "https://www.google.com/maps/place/Santa+Rita+College/@14.9989285,120.6178094,18.6z/data=!4m14!1m7!3m6!1s0x339658b934844e19:0x7ba727f39f0709df!2sSanta+Rita+College+Of+Pampanga,Inc.+Annex-1!8m2!3d14.9763355!4d120.6370981!16s%2Fg%2F11h0mw9qvh!3m5!1s0x3396f5ffca98627b:0xd9691231b874272b!8m2!3d14.9993667!4d120.6182403!16s%2Fg%2F1q5bm6dg_?entry=ttu&g_ep=EgoyMDI2MDYxNi4wIKXMDSoASAFQAw%3D%3D",
-  },
-  {
-    icon: FaPhoneAlt,
-    text: "(045) 900 0557",
-    href: "tel:+0459000557",
-  },
-  {
-    icon: FaEnvelope,
-    text: "src_educ_ph@yahoo.com",
-    href: "mailto:src_educ_ph@yahoo.com",
-  },
-  {
-    icon: FaFacebookF,
-    text: "facebook.com/santaritacollege",
-    href: "https://facebook.com/santaritacollege",
-  },
-];
-
-
+/* ── Contact footer — icons are fixed here, text/link come from
+   BrandingContext's `contact` field (Super Admin → Web Customization →
+   Branding → Contact Information), not hardcoded. ── */
+const CONTACT_ICONS = {
+  address: FaMapMarkerAlt,
+  phone: FaPhoneAlt,
+  email: FaEnvelope,
+  facebook: FaFacebookF,
+};
 
 const LEVELS = ["Elementary", "High School", "College"];
 
@@ -281,11 +265,19 @@ function LandingPage() {
   const [sports, setSports] = useState(SPORTS);
   const [matches, setMatches] = useState(MATCHES);
   const [landingContent, setLandingContent] = useState(DEFAULT_LANDING_PAGE);
-  const [contactItems, setContactItems] = useState(CONTACT_ITEMS);
   const [hoveredSportKey, setHoveredSportKey] = useState(null);
 
   const { openAuthModal = () => {} } = useContext(AuthContext);
-  const { schoolName, tagline, motto, logo } = useContext(BrandingContext);
+  const { schoolName, tagline, motto, logo, contact } = useContext(BrandingContext);
+  const contactItems = useMemo(() => (
+    Object.keys(CONTACT_ICONS)
+      .map((key) => ({
+        icon: CONTACT_ICONS[key],
+        text: contact?.[key]?.text || '',
+        href: contact?.[key]?.href || '',
+      }))
+      .filter((item) => item.text)
+  ), [contact]);
   const contactFooterRef = useRef(null);
   const levelDropdownRef = useRef(null);
 
@@ -309,10 +301,7 @@ function LandingPage() {
   useEffect(() => {
     const loadFirestoreData = async () => {
       try {
-        const [fireStats, fireContacts] = await Promise.all([
-          fetchCollectionData('stats').catch(() => null),
-          fetchCollectionData('contactItems').catch(() => null),
-        ]);
+        const fireStats = await fetchCollectionData('stats').catch(() => null);
 
         // Only accept `stats` docs shaped like the cards this section
         // actually renders (icon + label) — a stray/malformed document
@@ -322,7 +311,6 @@ function LandingPage() {
           const validStats = fireStats.filter((s) => s && typeof s.label === 'string' && typeof s.icon === 'function');
           if (validStats.length) setStats(validStats);
         }
-        if (Array.isArray(fireContacts) && fireContacts.length) setContactItems(fireContacts);
       } catch (error) {
         console.log('Firestore not available, using default data.');
       }
