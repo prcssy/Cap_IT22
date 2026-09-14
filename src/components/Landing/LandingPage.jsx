@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useContext, useMemo, useRef } from "react";
+import React, { useState, useEffect, useContext, useRef } from "react";
 import { FaCalendarAlt, FaTrophy, FaPaperPlane, FaChevronLeft, FaChevronRight, FaChevronDown } from "react-icons/fa";
 import "./LandingPage.css";
 import HeaderWithLines from './HeaderWithLines';
@@ -24,22 +24,8 @@ import {
   FaClipboardList,
   FaFileSignature,
   FaCheckCircle,
-  FaMapMarkerAlt,
-  FaPhoneAlt,
-  FaEnvelope,
-  FaFacebookF,
 } from "react-icons/fa";
 import { GiShuttlecock, GiPingPongBat } from "react-icons/gi";
-
-/* ── Contact footer — icons are fixed here, text/link come from
-   BrandingContext's `contact` field (Super Admin → Web Customization →
-   Branding → Contact Information), not hardcoded. ── */
-const CONTACT_ICONS = {
-  address: FaMapMarkerAlt,
-  phone: FaPhoneAlt,
-  email: FaEnvelope,
-  facebook: FaFacebookF,
-};
 
 const LEVELS = ["Elementary", "High School", "College"];
 
@@ -268,16 +254,7 @@ function LandingPage() {
   const [hoveredSportKey, setHoveredSportKey] = useState(null);
 
   const { openAuthModal = () => {} } = useContext(AuthContext);
-  const { schoolName, tagline, motto, logo, contact } = useContext(BrandingContext);
-  const contactItems = useMemo(() => (
-    Object.keys(CONTACT_ICONS)
-      .map((key) => ({
-        icon: CONTACT_ICONS[key],
-        text: contact?.[key]?.text || '',
-        href: contact?.[key]?.href || '',
-      }))
-      .filter((item) => item.text)
-  ), [contact]);
+  const { schoolName, tagline, motto, logo } = useContext(BrandingContext);
   const contactFooterRef = useRef(null);
   const levelDropdownRef = useRef(null);
 
@@ -757,7 +734,7 @@ function LandingPage() {
         </div>
 
         {/* ── Contact us footer strip ── */}
-  <Contact items={contactItems} contactFooterRef={contactFooterRef} />
+  <Contact contactFooterRef={contactFooterRef} />
 
       </div>
     </div>

@@ -23,12 +23,6 @@ import {
 } from '@aivangogh/ph-address';
 import './RegistrationPage.css';
 import Contact from '../components/Landing/Contact/Contact';
-import {
-  FaMapMarkerAlt,
-  FaPhoneAlt,
-  FaEnvelope,
-  FaFacebookF,
-} from 'react-icons/fa';
 
 const GRADE_LEVELS = ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6',
   'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12',
@@ -152,30 +146,10 @@ const ADDR_INITIAL = {
 const METRO_MANILA_CODE = '1300000000';
 const METRO_MANILA_PSEUDO_PROVINCE = { name: 'Metro Manila', psgcCode: METRO_MANILA_CODE };
 
-// Icons are fixed here; text/link come live from BrandingContext's
-// `contact` field (Super Admin → Web Customization → Branding → Contact
-// Information) — same source the public landing page's footer uses, so
-// an edit there is reflected everywhere Contact.jsx is rendered.
-const CONTACT_ICONS = {
-  address: FaMapMarkerAlt,
-  phone: FaPhoneAlt,
-  email: FaEnvelope,
-  facebook: FaFacebookF,
-};
-
 export default function RegistrationPage() {
 
   const { currentUser, userProfile } = useContext(AuthContext);
-  const { schoolName, events, contact } = useContext(BrandingContext);
-  const contactItems = useMemo(() => (
-    Object.keys(CONTACT_ICONS)
-      .map((key) => ({
-        icon: CONTACT_ICONS[key],
-        text: contact?.[key]?.text || '',
-        href: contact?.[key]?.href || '',
-      }))
-      .filter((item) => item.text)
-  ), [contact]);
+  const { schoolName, events } = useContext(BrandingContext);
   const [form, setForm] = useState(INITIAL);
   const [addr, setAddr] = useState(ADDR_INITIAL);
   const [photo, setPhoto]         = useState(null);
@@ -722,7 +696,7 @@ export default function RegistrationPage() {
               Register Another Player
             </button>
           </div>
-          <Contact items={contactItems} contactFooterRef={contactFooterRef} />
+          <Contact contactFooterRef={contactFooterRef} />
         </div>
       </div>
     );
@@ -1059,7 +1033,7 @@ export default function RegistrationPage() {
           </form>
         </div>
 
-        <Contact items={contactItems} contactFooterRef={contactFooterRef} />
+        <Contact contactFooterRef={contactFooterRef} />
 
       </div>
     </div>

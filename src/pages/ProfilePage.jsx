@@ -1,4 +1,4 @@
-import React, { useState, useContext, useMemo } from 'react';
+import React, { useState, useContext } from 'react';
 import './ProfilePage.css';
 import Contact from '../components/Landing/Contact/Contact';
 import { BrandingContext } from '../components/BrandingContext';
@@ -8,7 +8,7 @@ import SubmittedRegistrationsModal from '../components/SubmittedRegistrationsMod
 import ChangePasswordModal from '../components/ChangePasswordModal/ChangePasswordModal';
 import {
   FaUserCircle, FaTrophy, FaMedal, FaClipboardList, FaChevronRight,
-  FaMapMarkerAlt, FaPhoneAlt, FaEnvelope, FaFacebookF,
+  FaEnvelope,
   FaUserGraduate, FaUsers, FaBasketballBall, FaUserTag,
   FaKey, FaClock, FaHashtag, FaEdit,
 } from 'react-icons/fa';
@@ -19,17 +19,6 @@ import { AuthContext } from '../components/AuthContext';
 // to student/player accounts. Anyone whose resolved role falls in here
 // never sees the Events / Awards / Registrations stat cards at all.
 const STAFF_ROLES = ['admin', 'moderator', 'superadmin'];
-
-// Icons are fixed here; text/link come live from BrandingContext's
-// `contact` field (Super Admin → Web Customization → Branding → Contact
-// Information) — same source the public landing page's footer uses, so
-// an edit there is reflected everywhere Contact.jsx is rendered.
-const CONTACT_ICONS = {
-  address: FaMapMarkerAlt,
-  phone: FaPhoneAlt,
-  email: FaEnvelope,
-  facebook: FaFacebookF,
-};
 
 function InfoRow({ icon: Icon, label, value }) {
   return (
@@ -67,16 +56,7 @@ function StatCard({ icon, count, label, arrow, onClick }) {
 
 export default function ProfilePage() {
   const { currentUser, userProfile, updatePassword } = useContext(AuthContext);
-  const { schoolName, contact } = useContext(BrandingContext);
-  const contactItems = useMemo(() => (
-    Object.keys(CONTACT_ICONS)
-      .map((key) => ({
-        icon: CONTACT_ICONS[key],
-        text: contact?.[key]?.text || '',
-        href: contact?.[key]?.href || '',
-      }))
-      .filter((item) => item.text)
-  ), [contact]);
+  const { schoolName } = useContext(BrandingContext);
 
   /* ── All modal states ── */
   const [eventsModalOpen,        setEventsModalOpen]        = useState(false);
@@ -246,7 +226,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <Contact items={contactItems} contactFooterRef={contactFooterRef} />
+        <Contact contactFooterRef={contactFooterRef} />
       </div>
 
       {/* ── All modals ── */}
