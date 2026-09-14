@@ -1233,16 +1233,12 @@ export async function saveSchoolEvents(events, actorEmail, actorRole = 'superadm
   return updateBrandingInfo({ events }, actorEmail, actorRole);
 }
 
-/* Uploads a new logo to Storage and returns its download URL — same
-   `uploadFile` helper (and same silent-null-on-failure behavior while
-   Storage/Blaze isn't provisioned) used for registration photo/waiver
-   uploads. Does not itself write the Firestore doc — callers should
-   follow up with updateBrandingInfo({ logoURL }). */
-export async function uploadBrandingLogo(file) {
-  const timestamp = Date.now();
-  const ext = (file?.type || '').split('/')[1] || 'png';
-  return uploadFile(file, `branding/logo_${timestamp}.${ext}`);
-}
+// Logo upload no longer goes through Firebase Storage (uploadBrandingLogo
+// used to call uploadFile('branding/...') here, silently returning null
+// whenever Storage wasn't provisioned — which is why it never worked).
+// BrandingSettings.jsx now resizes the file client-side to a base64 data
+// URL (src/utils/resizeImage.js, same approach SportsTeamsManager.jsx's
+// LogoUpload uses) and passes that straight to updateBrandingInfo({ logoURL }).
 
 /* ─────────────────────────────────────────────
    Landing Page CMS — one document (siteConfig/landingPage) is the single
@@ -1337,13 +1333,8 @@ export async function updateLandingPageConfig(fields, actorEmail, actorRole = 's
   });
 }
 
-/* Uploads a hero background or gallery image to Storage and returns its
-   download URL — same `uploadFile` helper as uploadBrandingLogo. `kind`
-   is just a filename prefix ('hero' | 'gallery') so the two are easy to
-   tell apart in the Storage console. Does not itself write the Firestore
-   doc — callers follow up with updateLandingPageConfig(...). */
-export async function uploadLandingPageImage(file, kind = 'gallery') {
-  const timestamp = Date.now();
-  const ext = (file?.type || '').split('/')[1] || 'png';
-  return uploadFile(file, `landingPage/${kind}_${timestamp}.${ext}`);
-}
+// Same story as the branding logo above — hero/gallery image uploads no
+// longer go through Firebase Storage. LandingPageSettings.jsx resizes
+// each file client-side to a base64 data URL (src/utils/resizeImage.js)
+// and passes it straight into updateLandingPageConfig({ hero }) /
+// ({ gallery }).

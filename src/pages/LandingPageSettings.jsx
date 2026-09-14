@@ -7,12 +7,15 @@ import { BrandingContext } from '../components/BrandingContext';
 import {
   subscribeLandingPageConfig,
   updateLandingPageConfig,
-  uploadLandingPageImage,
   DEFAULT_LANDING_PAGE,
 } from '../services/firestoreService';
+import { resizeImageToDataUrl } from '../utils/resizeImage';
 import './LandingPageSettings.css';
 
-const MAX_IMAGE_BYTES = 2 * 1024 * 1024; // 2MB, matches storage.rules' landingPage/ cap
+// Source-file gate before resizing — generous, since the canvas resize
+// below (not this raw size) determines what actually gets stored on the
+// Firestore doc (which has a hard 1MB-per-document ceiling).
+const MAX_IMAGE_SOURCE_BYTES = 8 * 1024 * 1024; // 8MB
 const ALLOWED_IMAGE_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 const MAX_GALLERY_IMAGES = 12;
 const STEP_ICONS = [FaFileSignature, FaClipboardList, FaCheckCircle];
@@ -119,8 +122,8 @@ export default function LandingPageSettings({ actorEmail, actorRole }) {
       setMsg({ tone: 'error', text: 'Please choose a PNG, JPEG, or WEBP image.' });
       return false;
     }
-    if (file.size > MAX_IMAGE_BYTES) {
-      setMsg({ tone: 'error', text: 'That image is larger than 2MB — please choose a smaller file.' });
+    if (file.size > MAX_IMAGE_SOURCE_BYTES) {
+      setMsg({ tone: 'error', text: 'That image is larger than 8MB — please choose a smaller file.' });
       return false;
     }
     return true;
@@ -137,16 +140,18 @@ export default function LandingPageSettings({ actorEmail, actorRole }) {
     setHeroImgBusy(true);
     setHeroMsg(null);
     try {
-      const url = await uploadLandingPageImage(file, 'hero');
-      if (!url) {
-        setHeroMsg({ tone: 'error', text: 'Upload failed — Cloud Storage may not be set up for this project yet.' });
-        return;
-      }
-      setDraftHero((prev) => ({ ...prev, backgroundImageURL: url }));
+      // Resized client-side to a base64 data URL and stored directly on
+      // siteConfig/landingPage — same approach as the Sports & Teams logo
+      // upload, no Firebase Storage required (which is what made this
+      // silently fail before).
+      const dataUrl = await resizeImageToDataUrl(file, {
+        maxWidth: 1280, maxHeight: 720, mode: 'contain', format: 'jpeg', quality: 0.7,
+      });
+      setDraftHero((prev) => ({ ...prev, backgroundImageURL: dataUrl }));
       setHeroMsg({ tone: 'success', text: 'Background image ready — click Save to publish it.' });
     } catch (err) {
-      console.error('Failed to upload hero background:', err);
-      setHeroMsg({ tone: 'error', text: friendlyError(err, 'Could not upload this image') });
+      console.error('Failed to process hero background:', err);
+      setHeroMsg({ tone: 'error', text: friendlyError(err, 'Could not use this image') });
     } finally {
       setHeroImgBusy(false);
     }
@@ -218,16 +223,18 @@ export default function LandingPageSettings({ actorEmail, actorRole }) {
     setGalleryImgBusy(true);
     setGalleryMsg(null);
     try {
-      const url = await uploadLandingPageImage(file, 'gallery');
-      if (!url) {
-        setGalleryMsg({ tone: 'error', text: 'Upload failed — Cloud Storage may not be set up for this project yet.' });
-        return;
-      }
-      setDraftGallery((prev) => ({ ...prev, images: [...prev.images, url] }));
+      // Kept smaller than the hero image (500×500 max) since up to 12 of
+      // these live in the same Firestore document, which has a hard 1MB
+      // total-size ceiling — same base64-on-Firestore approach as the
+      // logo/hero above, no Firebase Storage involved.
+      const dataUrl = await resizeImageToDataUrl(file, {
+        maxWidth: 500, maxHeight: 500, mode: 'contain', format: 'jpeg', quality: 0.6,
+      });
+      setDraftGallery((prev) => ({ ...prev, images: [...prev.images, dataUrl] }));
       setGalleryMsg({ tone: 'success', text: 'Image added — click Save to publish it.' });
     } catch (err) {
-      console.error('Failed to upload gallery image:', err);
-      setGalleryMsg({ tone: 'error', text: friendlyError(err, 'Could not upload this image') });
+      console.error('Failed to process gallery image:', err);
+      setGalleryMsg({ tone: 'error', text: friendlyError(err, 'Could not use this image') });
     } finally {
       setGalleryImgBusy(false);
     }
@@ -348,7 +355,7 @@ export default function LandingPageSettings({ actorEmail, actorRole }) {
                     style={{ display: 'none' }}
                     onChange={handleHeroBgChange}
                   />
-                  <span className="ws-card-hint">Recommended size 1920 × 1080px (PNG, JPEG). Max file size: 2MB.</span>
+                  <span className="ws-card-hint">Any size or format works — it's resized automatically. Source file up to 8MB.</span>
                 </div>
               </div>
             </div>

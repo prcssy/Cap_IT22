@@ -3,10 +3,13 @@ import {
   FaUpload, FaTrash, FaArrowUp, FaArrowDown, FaPlus, FaSync,
 } from 'react-icons/fa';
 import { BrandingContext } from '../components/BrandingContext';
-import { updateBrandingInfo, saveSchoolEvents, uploadBrandingLogo } from '../services/firestoreService';
+import { updateBrandingInfo, saveSchoolEvents } from '../services/firestoreService';
+import { resizeImageToDataUrl } from '../utils/resizeImage';
 import './BrandingSettings.css';
 
-const MAX_LOGO_BYTES = 1 * 1024 * 1024; // 1MB, matches the storage.rules limit
+// Source-file gate before resizing — generous, since the canvas resize
+// below (not this raw size) determines what actually gets stored.
+const MAX_LOGO_SOURCE_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 function friendlyBrandingError(err, fallback) {
@@ -80,23 +83,26 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
       setLogoMsg({ tone: 'error', text: 'Please choose a PNG, JPEG, or WEBP image.' });
       return;
     }
-    if (file.size > MAX_LOGO_BYTES) {
-      setLogoMsg({ tone: 'error', text: 'That image is larger than 1MB — please choose a smaller file.' });
+    if (file.size > MAX_LOGO_SOURCE_BYTES) {
+      setLogoMsg({ tone: 'error', text: 'That image is larger than 5MB — please choose a smaller file.' });
       return;
     }
 
     setLogoBusy(true);
     setLogoMsg(null);
     try {
-      const url = await uploadBrandingLogo(file);
-      if (!url) {
-        setLogoMsg({ tone: 'error', text: 'Upload failed — Cloud Storage may not be set up for this project yet.' });
-        return;
-      }
-      await updateBrandingInfo({ logoURL: url }, actorEmail, actorRole);
+      // Resized client-side to a base64 data URL and stored directly on
+      // siteConfig/branding — same approach as the Sports & Teams logo
+      // upload, no Firebase Storage required (which is what made this
+      // silently fail before: uploadBytes/getDownloadURL need Storage
+      // provisioned on the Firebase project, which this one doesn't have).
+      const dataUrl = await resizeImageToDataUrl(file, {
+        maxWidth: 300, maxHeight: 300, mode: 'contain', format: 'png',
+      });
+      await updateBrandingInfo({ logoURL: dataUrl }, actorEmail, actorRole);
       setLogoMsg({ tone: 'success', text: 'Logo updated.' });
     } catch (err) {
-      console.error('Failed to upload logo:', err);
+      console.error('Failed to update logo:', err);
       setLogoMsg({ tone: 'error', text: friendlyBrandingError(err, 'Could not update the logo') });
     } finally {
       setLogoBusy(false);
@@ -253,7 +259,7 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
                   style={{ display: 'none' }}
                   onChange={handleLogoChange}
                 />
-                <span className="ws-card-hint">Recommended size 300 × 300px (PNG, JPEG). Max file size: 1MB.</span>
+                <span className="ws-card-hint">Any size or format works — it's resized automatically. Source file up to 5MB.</span>
               </div>
             </div>
             {logoMsg && <p className={`ws-msg ws-msg--${logoMsg.tone}`}>{logoMsg.text}</p>}
