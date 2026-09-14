@@ -456,10 +456,10 @@ function generateBracket(teamNames) {
    average of its two children's y, which is what naturally produces
    the classic elbow-merge bracket look with plain straight lines. ── */
 function BracketTree({ stages, leaves, teamByName }) {
-  const ROW_H = 60;
-  const TEAM_W = 168;
-  const TEAM_H = 40;
-  const COL_GAP = 130;
+  const ROW_H = 64;
+  const TEAM_W = 190;
+  const TEAM_H = 44;
+  const COL_GAP = 150;
 
   if (!stages.length) return null;
   const totalRounds = stages.length;
@@ -541,13 +541,21 @@ function BracketTree({ stages, leaves, teamByName }) {
 /* ═══════════════════════════════════════════
    DOUBLE BRACKET (double elimination) GENERATOR
    Reuses the single-elim generator for the Upper (Winner's) Bracket.
-   Lower (Loser's) Bracket: Round 1 pairs the Upper Bracket's first-round
-   losers against each other; every later Upper Bracket round drops its
-   losers into the Lower Bracket against that round's Lower Bracket
-   survivors (cross-paired one slot over, so nobody instantly replays
-   the team that just eliminated them), followed by a consolidation
-   match that halves the Lower Bracket field again. The Lower Bracket's
-   last team meets the Upper Bracket's last team in the Grand Final.
+
+   Lower (Loser's) Bracket format — verified match-for-match against a
+   real published double-elim bracket (MLBB M7 Worlds, 8-team knockout
+   stage): Round 1 pairs the Upper Bracket's round-1 losers against each
+   other (Match 7/8 there). Every later Upper Bracket round's fresh
+   losers are IMMEDIATELY cross-paired against the Lower Bracket's
+   current survivors — one slot rotated over (Match 10 there pairs
+   "Loser of Match 6" against "Winner of Match 7", not "Winner of Match
+   5" — the group whose own bracket didn't just eliminate them), so
+   nobody instantly replays the team that just knocked them down a
+   bracket. That drop-in round's winners then play each other in a
+   consolidation round (Match 12 there) to halve the Lower Bracket field
+   again. The Lower Bracket's last survivor meets the Upper Bracket
+   Final's loser one last time (the actual "Losers Final" / Match 13),
+   and that winner meets the Upper Bracket champion in the Grand Final.
    Standard tournament rule: if the Lower Bracket team wins the Grand
    Final, the Upper Bracket team only has ONE loss so far (double
    elimination requires two) — a single reset match is then needed to
@@ -563,47 +571,69 @@ function generateDoubleBracket(teamNames) {
   const R = wbStages.length;
 
   const wbLoserLabel = (stageIdx, matchIdx) => {
-    const code = stageIdx === R - 1 ? 'F' : stageCodeFor(wbStages[stageIdx].name);
-    return `Loser UB-${code}${matchIdx + 1}`;
+    const isFinal = stageIdx === R - 1;
+    const code = isFinal ? 'F' : stageCodeFor(wbStages[stageIdx].name);
+    return isFinal ? 'Loser UB-F' : `Loser UB-${code}${matchIdx + 1}`;
   };
 
   const lbRounds = [];
   let lbCounter = 1;
 
-  // LB Round 1 — pairs of Upper Bracket round-1 losers
-  const r0 = wbStages[0].matches;
+  // LB Round 1 — sequential pairs of Upper Bracket round-1 losers,
+  // skipping byes (a bye auto-advances — no real loser to place here).
+  const r1Losers = wbStages[0].matches
+    .map((m, i) => (m.isBye ? null : wbLoserLabel(0, i)))
+    .filter(Boolean);
   const round1 = [];
-  for (let i = 0; i < r0.length; i += 2) {
-    round1.push({ label: `LB${lbCounter++}`, a: wbLoserLabel(0, i), b: r0[i + 1] ? wbLoserLabel(0, i + 1) : null });
+  for (let i = 0; i < r1Losers.length; i += 2) {
+    round1.push({ label: `LB${lbCounter++}`, a: r1Losers[i], b: r1Losers[i + 1] ?? null });
   }
-  lbRounds.push({ name: 'Round 1', matches: round1 });
-  let currentWinners = round1.map(m => `Winner ${m.label}`);
+  if (round1.length) lbRounds.push({ name: 'Round 1', matches: round1 });
+  let currentWinners = round1.length
+    ? round1.map(m => (m.b ? `Winner ${m.label}` : m.a)) // an unpaired leftover just carries forward as itself
+    : r1Losers; // degenerate: fewer than 2 real round-1 losers (heavy byes)
 
   for (let wr = 1; wr < R; wr++) {
     const isLastWBRound = wr === R - 1;
-    const wbLosers = wbStages[wr].matches.map((_, i) => wbLoserLabel(wr, i));
+    // Skip byes here too — heavy padding (e.g. 10 teams into a 16-slot
+    // bracket) can leave a bye this deep, and a bye has no real loser.
+    const wbLosers = wbStages[wr].matches
+      .map((m, i) => (m.isBye ? null : wbLoserLabel(wr, i)))
+      .filter(Boolean);
 
     if (isLastWBRound) {
-      lbRounds.push({ name: "Losers Final", matches: [{ label: 'LB-F', a: currentWinners[0], b: wbLosers[0] }] });
+      lbRounds.push({ name: 'Losers Final', matches: [{ label: 'LB-F', a: currentWinners[0], b: wbLosers[0] }] });
       currentWinners = ['Winner LB-F'];
     } else {
-      const dropIn = currentWinners.map((w, i) => ({
-        label: `LB${lbCounter++}`,
-        a: w,
-        b: wbLosers[(i + 1) % wbLosers.length],
-      }));
+      // Cross-pair each Lower Bracket survivor against a DIFFERENT
+      // Upper Bracket loser than the one from their own group's round
+      // (rotated one slot over), so nobody instantly replays the team
+      // that just eliminated them. The two groups are normally the same
+      // size, but heavy byes can leave an odd leftover on either side —
+      // anything that doesn't get a drop-in match this round just joins
+      // the consolidation pool below instead of being silently dropped.
+      const pairCount = Math.min(currentWinners.length, wbLosers.length);
+      const dropIn = [];
+      for (let i = 0; i < pairCount; i++) {
+        dropIn.push({ label: `LB${lbCounter++}`, a: currentWinners[i], b: wbLosers[(i + 1) % pairCount] });
+      }
       lbRounds.push({ name: `Round ${lbRounds.length + 1}`, matches: dropIn });
-      let winners = dropIn.map(m => `Winner ${m.label}`);
+      let pool = dropIn.map(m => `Winner ${m.label}`)
+        .concat(currentWinners.slice(pairCount), wbLosers.slice(pairCount));
 
-      if (winners.length > 1) {
+      if (pool.length > 1) {
         const consolidation = [];
-        for (let i = 0; i < winners.length; i += 2) {
-          consolidation.push({ label: `LB${lbCounter++}`, a: winners[i], b: winners[i + 1] });
+        const survivors = [];
+        for (let i = 0; i < pool.length; i += 2) {
+          if (i + 1 >= pool.length) { survivors.push(pool[i]); continue; }
+          const label = `LB${lbCounter++}`;
+          consolidation.push({ label, a: pool[i], b: pool[i + 1] });
+          survivors.push(`Winner ${label}`);
         }
         lbRounds.push({ name: `Round ${lbRounds.length + 1}`, matches: consolidation });
-        currentWinners = consolidation.map(m => `Winner ${m.label}`);
+        currentWinners = survivors;
       } else {
-        currentWinners = winners;
+        currentWinners = pool;
       }
     }
   }
@@ -623,76 +653,251 @@ function generateDoubleBracket(teamNames) {
   };
 }
 
-/* ── Compact label-only bracket tree — used for both the Upper Bracket
-   (minus its champion box, since the winner heads to the Grand Final
-   instead) and the Lower Bracket (which has no real team names at all,
-   only "Loser UB-QF1" / "Winner LB1" style placeholders). ── */
-function LabelBracketTree({ roundNames, roundsMatches, leafLabels }) {
-  const ROW_H = 44;
-  const LEAF_W = 168;
-  const LEAF_H = 32;
-  const COL_GAP = 118;
+/* Renumbers every real match (skipping byes) sequentially — Upper Bracket
+   rounds, then Lower Bracket rounds — as "Match N", and rewrites every
+   reference to it ("Winner QF1", "Loser UB-SF2", …) into "Winner of
+   Match N" / "Loser of Match N". Matches how published brackets (e.g.
+   the MLBB M7 Worlds knockout stage) label nodes, so it's immediately
+   clear which match feeds which — instead of internal codes like
+   "QF1"/"LB3" that only make sense to someone who knows the generator.
+   This only reshapes what the PREVIEW tree displays; it returns new
+   objects rather than mutating wbStages/lbRounds, so the actual match
+   records used to save/schedule the tournament are untouched. */
+function withMatchNumbers(wbStages, lbRounds) {
+  let n = 0;
+  const rename = {};
 
-  const totalRounds = roundsMatches.length;
-  if (!totalRounds) return null;
-
-  const leafCount = leafLabels ? leafLabels.length : roundsMatches[0].length * 2;
-  const leafY = Array.from({ length: leafCount }, (_, i) => i * ROW_H + ROW_H / 2);
-
-  const matchY = [];
-  roundsMatches.forEach((matches, r) => {
-    matchY.push(matches.map((_, m) => (
-      r === 0
-        ? ((leafY[2 * m] ?? leafY[2 * m + 1]) + (leafY[2 * m + 1] ?? leafY[2 * m])) / 2
-        : ((matchY[r - 1][2 * m] ?? matchY[r - 1][2 * m + 1]) + (matchY[r - 1][2 * m + 1] ?? matchY[r - 1][2 * m])) / 2
-    )));
-  });
-
-  const colX = (r) => LEAF_W + (r + 1) * COL_GAP;
-  const height = Math.max(leafCount * ROW_H, matchY[totalRounds - 1][0] + ROW_H);
-  const width = colX(totalRounds - 1) + 30;
-
-  const elbow = (childX, y1, y2, parentX, parentY) => {
-    const midX = (childX + parentX) / 2;
-    return `M ${childX} ${y1} H ${midX} M ${childX} ${y2} H ${midX} M ${midX} ${y1} V ${y2} M ${midX} ${parentY} H ${parentX}`;
-  };
-
-  const connectors = [];
-  roundsMatches.forEach((matches, r) => {
-    const childX = r === 0 ? LEAF_W : colX(r - 1);
-    matches.forEach((m, i) => {
-      const hasTwoChildren = r > 0 || (m.a && m.b);
-      if (!hasTwoChildren) return;
-      const y1 = r === 0 ? leafY[2 * i] : matchY[r - 1][2 * i];
-      const y2 = r === 0 ? (leafY[2 * i + 1] ?? leafY[2 * i]) : (matchY[r - 1][2 * i + 1] ?? matchY[r - 1][2 * i]);
-      connectors.push(elbow(childX, y1, y2, colX(r), matchY[r][i]));
+  const ubNumbers = wbStages.map((stage, stageIdx) => {
+    const isFinal = stageIdx === wbStages.length - 1;
+    return stage.matches.map((m, i) => {
+      if (m.isBye) return null;
+      n += 1;
+      rename[`Winner ${m.label}`] = `Winner of Match ${n}`;
+      const code = isFinal ? 'F' : stageCodeFor(stage.name);
+      rename[isFinal ? 'Loser UB-F' : `Loser UB-${code}${i + 1}`] = `Loser of Match ${n}`;
+      return n;
     });
   });
+  const lbNumbers = lbRounds.map(round => round.matches.map((m) => {
+    n += 1;
+    rename[`Winner ${m.label}`] = `Winner of Match ${n}`;
+    return n;
+  }));
+
+  const apply = (s) => (s != null && rename[s]) || s;
+  return {
+    wbStages: wbStages.map((stage, stageIdx) => ({
+      ...stage,
+      matches: stage.matches.map((m, i) => ({
+        ...m,
+        label: m.isBye ? m.label : `Match ${ubNumbers[stageIdx][i]}`,
+        a: apply(m.a),
+        b: apply(m.b),
+      })),
+    })),
+    lbRounds: lbRounds.map((round, roundIdx) => ({
+      ...round,
+      matches: round.matches.map((m, i) => ({
+        ...m,
+        label: `Match ${lbNumbers[roundIdx][i]}`,
+        a: apply(m.a),
+        b: apply(m.b),
+      })),
+    })),
+  };
+}
+
+/* ── Double Bracket tree: Upper (Winner's) and Lower (Loser's) brackets
+   drawn on ONE shared canvas so their final-round winners can converge
+   with real connector lines into a single "GC" node and Champion box —
+   matching the double-elimination bracket look (two feeder trees
+   merging into one final) instead of two disconnected mini-trees. ── */
+function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw }) {
+  const ROW_H = 56;
+  const LEAF_W = 190;
+  const LEAF_H = 40;
+  const COL_GAP = 250;
+
+  if (!wbStagesRaw.length || !lbRoundsRaw.length) return null;
+
+  const { wbStages, lbRounds } = withMatchNumbers(wbStagesRaw, lbRoundsRaw);
+
+  const colX = (r) => LEAF_W + (r + 1) * COL_GAP;
+
+  /* Merges two inputs (each with its own origin x, since a "fresh" drop-in
+     box's line has to start at its right edge, not a bare column x) into
+     one parent point. Reduces to a plain single-origin elbow when the two
+     origins share an x, which covers every normal (non-drop-in) merge. */
+  const mergeLines = (x1, y1, x2, y2, parentX, parentY) => {
+    const midX = (Math.max(x1, x2) + parentX) / 2;
+    return `M ${x1} ${y1} H ${midX} M ${x2} ${y2} H ${midX} M ${midX} ${y1} V ${y2} M ${midX} ${parentY} H ${parentX}`;
+  };
+
+  /* Lays out one bracket's rounds on top of a fixed row of round-0 leaves.
+     Every match's winner is now rendered as a boxed row exactly like a
+     leaf, not a bare dot, so a box's usable connector point is its RIGHT
+     edge (boxX + LEAF_W) rather than the column x it starts at — that's
+     what `lineX` tracks below.
+
+     Each match's a/b inputs are resolved BY NAME against previously
+     produced winners rather than by row index — a normal elimination
+     round halves the match count, but the Lower Bracket's "drop-in"
+     rounds carry the SAME match count as the round before (each match
+     pairs one LB survivor with a brand-new Upper Bracket loser), which
+     breaks any layout that assumes round r always has half as many rows
+     as round r-1. A name not seen before gets its own fresh boxed row —
+     placed right next to its actual match partner when that partner's
+     already known, so paired inputs read as one grouped unit — and only
+     falls back to a sequential counter when neither side is known yet. */
+  const layoutRounds = (roundsMatches, rootLeaves, top, nodeLabel) => {
+    const known = {};
+    rootLeaves.forEach((name, i) => {
+      if (name) known[name] = { y: top + i * ROW_H + ROW_H / 2, lineX: LEAF_W };
+    });
+    let cursorY = top + rootLeaves.length * ROW_H;
+    const freshBoxes = [];
+    const matchY = [];
+    const connectors = [];
+    const captions = []; // "Match N" label shown right above its own two input boxes
+
+    roundsMatches.forEach((matches, r) => {
+      const childX = r === 0 ? LEAF_W : colX(r - 1);
+      const inputBoxX = r === 0 ? 0 : colX(r - 1);
+      const isFinalRound = r === roundsMatches.length - 1;
+      matchY.push(matches.map((m, i) => {
+        const place = (label, hintY) => {
+          const y = hintY != null ? hintY + ROW_H : cursorY + ROW_H / 2;
+          cursorY = Math.max(cursorY, y + ROW_H / 2);
+          const entry = { y, lineX: childX + LEAF_W };
+          known[label] = entry;
+          if (r > 0) freshBoxes.push({ label, x: childX, y });
+          return entry;
+        };
+        const aKnown = m.a != null ? known[m.a] : null;
+        const bKnown = m.b != null ? known[m.b] : null;
+        const a = aKnown ?? (m.a != null ? place(m.a, bKnown ? bKnown.y : null) : null);
+        const b = bKnown ?? (m.b != null ? place(m.b, a ? a.y : null) : null);
+        const y = a && b ? (a.y + b.y) / 2 : (a ?? b).y;
+        if (a && b) connectors.push(mergeLines(a.lineX, a.y, b.lineX, b.y, colX(r), y));
+        if (m.label) known[`Winner of ${m.label}`] = { y, lineX: colX(r) + LEAF_W };
+        if (m.label && a && b) captions.push({ label: m.label, x: inputBoxX, y: Math.min(a.y, b.y) - LEAF_H / 2 - 14 });
+        return { y, label: nodeLabel(m, i, r, isFinalRound) };
+      }));
+    });
+
+    const bottom = Math.max(cursorY, top + rootLeaves.length * ROW_H);
+    return { matchY, connectors, freshBoxes, captions, bottom, finalY: matchY[matchY.length - 1][0].y };
+  };
+
+  const UB_TOP = 56;
+  const ub = layoutRounds(
+    wbStages.map(s => s.matches), leaves, UB_TOP,
+    (m) => `Winner of ${m.label}`
+  );
+  const ubRoundsCount = wbStages.length;
+  const ubFinalX = colX(ubRoundsCount - 1) + LEAF_W;
+  const ubFinalY = ub.finalY;
+
+  const lbLeafLabels = lbRounds[0].matches.flatMap(m => [m.a || 'Bye', m.b || 'Bye']);
+  const LB_LABEL_Y = ub.bottom + 34;
+  const LB_TOP = LB_LABEL_Y + 54;
+  const lb = layoutRounds(
+    lbRounds.map(r => r.matches), lbLeafLabels, LB_TOP,
+    (m) => `Winner of ${m.label}`
+  );
+  const lbRoundsCount = lbRounds.length;
+  const lbFinalX = colX(lbRoundsCount - 1) + LEAF_W;
+  const lbFinalY = lb.finalY;
+
+  const gcX = Math.max(ubFinalX, lbFinalX) + 140;
+  const gcY = (ubFinalY + lbFinalY) / 2;
+  const championX = gcX + 90;
+
+  const totalHeight = lb.bottom + 30;
+  const totalWidth = Math.max(colX(ubRoundsCount - 1) + LEAF_W, colX(lbRoundsCount - 1) + LEAF_W, championX + 130);
+
+  const connectors = [
+    ...ub.connectors,
+    ...lb.connectors,
+    mergeLines(ubFinalX, ubFinalY, lbFinalX, lbFinalY, gcX, gcY),
+    `M ${gcX} ${gcY} H ${championX}`,
+  ];
 
   return (
-    <div className="msf-lbracket" style={{ height: height + 34 }}>
-      <div className="msf-lbracket-headers">
-        {leafLabels && <div style={{ width: colX(0) }}>{roundNames[0]}</div>}
-        {roundNames.slice(leafLabels ? 1 : 0).map((n, i) => <div key={i} style={{ width: COL_GAP }}>{n}</div>)}
+    <div className="msf-dbracket2" style={{ height: totalHeight, width: totalWidth }}>
+      <svg width={totalWidth} height={totalHeight} className="msf-bracket-lines">
+        {connectors.map((d, i) => <path key={i} d={d} />)}
+      </svg>
+
+      <p className="msf-dbracket__label" style={{ top: 0 }}>Upper Bracket (Winner's Bracket)</p>
+      <div className="msf-dbracket2-headers" style={{ top: 30 }}>
+        <div style={{ width: colX(0) }}>{wbStages[0].name}</div>
+        {wbStages.slice(1).map((s, i) => <div key={i} style={{ width: COL_GAP }}>{s.name === 'Finals' ? "Winner's Finals" : s.name}</div>)}
+        <div style={{ width: COL_GAP }}>Grand Finals</div>
       </div>
-      <div className="msf-lbracket-canvas" style={{ height, width }}>
-        <svg width={width} height={height} className="msf-bracket-lines">
-          {connectors.map((d, i) => <path key={i} d={d} />)}
-        </svg>
 
-        {leafLabels && leafLabels.map((label, i) => (
-          <div key={i} className="msf-lbracket-leaf" style={{ top: leafY[i] - LEAF_H / 2, height: LEAF_H, width: LEAF_W }}>
+      {leaves.map((name, i) => (
+        name ? (
+          <div key={`ub-${i}`} className="msf-bracket-team" style={{ top: UB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
             <span className="msf-lbracket-leaf__dot" />
-            <span>{label}</span>
+            <span>{name}</span>
           </div>
-        ))}
+        ) : (
+          <div key={`ub-${i}`} className="msf-bracket-team msf-bracket-team--bye" style={{ top: UB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
+            <span>Bye</span>
+          </div>
+        )
+      ))}
 
-        {roundsMatches.map((matches, r) => matches.map((m, i) => (
-          <div key={`${r}-${i}`} className="msf-bracket-node" style={{ left: colX(r), top: matchY[r][i] }}>
-            <span className="msf-bracket-node__dot" />
-            <span className="msf-bracket-node__label">{m.label}</span>
-          </div>
-        )))}
+      {ub.matchY.map((round, r) => round.map((node, i) => (
+        <div key={`ub-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
+          <span className="msf-lbracket-leaf__dot" />
+          <span>{node.label}</span>
+        </div>
+      )))}
+
+      {ub.captions.map((c, i) => (
+        <span key={`ub-cap-${i}`} className="msf-dbracket__matchcap" style={{ left: c.x, top: c.y, width: LEAF_W }}>{c.label}</span>
+      ))}
+
+      <p className="msf-dbracket__label msf-dbracket__label--lower" style={{ top: LB_LABEL_Y }}>Lower Bracket (Loser's Bracket)</p>
+      <div className="msf-dbracket2-headers" style={{ top: LB_LABEL_Y + 30 }}>
+        {lbRounds.map((r, i) => <div key={i} style={{ width: i === 0 ? colX(0) : COL_GAP }}>{r.name}</div>)}
+      </div>
+
+      {lbLeafLabels.map((label, i) => (
+        <div key={`lb-${i}`} className="msf-lbracket-leaf" style={{ top: LB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
+          <span className="msf-lbracket-leaf__dot" />
+          <span>{label}</span>
+        </div>
+      ))}
+
+      {lb.freshBoxes.map((box, i) => (
+        <div key={`lb-fresh-${i}`} className="msf-lbracket-leaf" style={{ top: box.y - LEAF_H / 2, left: box.x, height: LEAF_H, width: LEAF_W }}>
+          <span className="msf-lbracket-leaf__dot" />
+          <span>{box.label}</span>
+        </div>
+      ))}
+
+      {lb.matchY.map((round, r) => round.map((node, i) => (
+        <div key={`lb-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
+          <span className="msf-lbracket-leaf__dot" />
+          <span>{node.label}</span>
+        </div>
+      )))}
+
+      {lb.captions.map((c, i) => (
+        <span key={`lb-cap-${i}`} className="msf-dbracket__matchcap" style={{ left: c.x, top: c.y, width: LEAF_W }}>{c.label}</span>
+      ))}
+
+      <div className="msf-bracket-node" style={{ left: gcX, top: gcY }}>
+        <span className="msf-bracket-node__dot" />
+        <span className="msf-bracket-node__label">GC</span>
+      </div>
+
+      <div className="msf-bracket-champion" style={{ left: championX, top: gcY }}>
+        <FaTrophy />
+        <span>Champion</span>
       </div>
     </div>
   );
@@ -1343,34 +1548,16 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
             {isDoubleBracket ? (
               <div className="msf-dbracket">
-                <p className="msf-dbracket__label">Upper Bracket (Winner's Bracket)</p>
-                <LabelBracketTree
-                  roundNames={doubleBracket.wbStages.map(s => s.name === 'Finals' ? "Winner's Finals" : s.name)}
-                  roundsMatches={doubleBracket.wbStages.map(stage => stage.matches.map(m => ({ label: m.label, a: m.a, b: m.b })))}
-                  leafLabels={doubleBracket.leaves.map(name => name || 'Bye')}
+                <DoubleBracketTree
+                  wbStages={doubleBracket.wbStages}
+                  leaves={doubleBracket.leaves}
+                  lbRounds={doubleBracket.lbRounds}
                 />
 
-                <p className="msf-dbracket__label msf-dbracket__label--lower">Lower Bracket (Loser's Bracket)</p>
-                <LabelBracketTree
-                  roundNames={doubleBracket.lbRounds.map(r => r.name)}
-                  roundsMatches={doubleBracket.lbRounds.map(round => round.matches.map(m => ({ label: m.label, a: m.a, b: m.b })))}
-                  leafLabels={doubleBracket.lbRounds[0].matches.flatMap(m => [m.a || 'Bye', m.b || 'Bye'])}
-                />
-
-                <div className="msf-dbracket__final">
-                  <div className="msf-dbracket__final-row">
-                    <span className="msf-lbracket-leaf__dot" /> Winner UB-F
-                  </div>
-                  <div className="msf-dbracket__final-row">
-                    <span className="msf-lbracket-leaf__dot" /> Winner LB-F
-                  </div>
-                  <FaTrophy className="msf-dbracket__trophy" />
-                  <span className="msf-dbracket__champion-label">Grand Final Champion</span>
-                  <p className="msf-dbracket__note">
-                    If the Lower Bracket team wins the Grand Final, a single reset match decides the title —
-                    that's the "up to {totalMatches + 1}" match.
-                  </p>
-                </div>
+                <p className="msf-dbracket__note">
+                  If the Lower Bracket team wins the Grand Final, a single reset match decides the title —
+                  that's the "up to {totalMatches + 1}" match.
+                </p>
               </div>
             ) : isBracket ? (
               <BracketTree stages={bracket.stages} leaves={bracket.leaves} teamByName={teamByName} />
