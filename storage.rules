@@ -39,6 +39,20 @@ service firebase.storage {
                     && firestore.exists(/databases/(default)/documents/superadmins/$(request.auth.token.email.lower()));
     }
 
+    // Landing Page CMS images: landingPage/hero_{timestamp}.{ext} and
+    // landingPage/gallery_{timestamp}.{ext}. Same public-read/superadmin-write
+    // shape as branding/ above, just a larger cap (hero backgrounds and
+    // gallery photos run bigger than a logo).
+    match /landingPage/{fileName} {
+      allow read: if true;
+      allow write: if request.auth != null
+                   && firestore.exists(/databases/(default)/documents/superadmins/$(request.auth.token.email.lower()))
+                   && request.resource.size <= 2 * 1024 * 1024
+                   && request.resource.contentType in ['image/jpeg', 'image/png', 'image/webp'];
+      allow delete: if request.auth != null
+                    && firestore.exists(/databases/(default)/documents/superadmins/$(request.auth.token.email.lower()));
+    }
+
     // Deny everything else by default.
     match /{allPaths=**} {
       allow read, write: if false;

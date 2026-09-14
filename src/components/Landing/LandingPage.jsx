@@ -7,7 +7,7 @@ import ImageCarousel from './ImageCarousel';
 import { AuthContext } from '../AuthContext';
 import { BrandingContext } from '../BrandingContext';
 import { FaArrowRightLong } from "react-icons/fa6";
-import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeMatchSchedules, subscribeLiveStatsCounters } from '../../services/firestoreService';
+import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeMatchSchedules, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../services/firestoreService';
 import Contact from './Contact/Contact';
 
 /* ── NEW — additional icons for the scrollable content sections ── */
@@ -149,22 +149,12 @@ function mapScheduleToCardMatch(schedule) {
   };
 }
 
-/* ── NEW — data for the scrollable content sections ── */
-const INFO_CARDS = [
-  {
-    title: "Choose Your Sport",
-    desc: "Pick the sport that you love the most. Start your journey and join the competition by registering to secure your spot and showcase your talent.",
-  },
-  {
-    title: "Browse Schedules",
-    desc: "Check upcoming matches, ongoing matches, finished matches, and event details. Don't miss a game — stay informed.",
-    featured: true,
-  },
-  {
-    title: "Browse Rankings",
-    desc: "Explore the latest rankings and see the teams' medal tally standing. Track performance and stay updated with the ultimate showcase of talents.",
-  },
-];
+/* ── NEW — data for the scrollable content sections ──
+   Feature cards, "How to Join" steps, the hero subtitle, the highlights
+   gallery, and the bottom CTA are all editable from Super Admin's Web
+   Customization → Landing Page tab (siteConfig/landingPage, subscribed
+   live below) — DEFAULT_LANDING_PAGE is only the fallback shape before
+   that first snapshot arrives / while Firestore is unavailable. */
 
 const STATS = [
   { icon: FaTrophy, value: 120, label: "Total Matches" },
@@ -206,10 +196,21 @@ function iconForSportName(name) {
   return SPORT_ICON_MAP[norm(name)] || DEFAULT_SPORT_ICON;
 }
 
-const STEPS = [
-  { number: 1, title: "Register", desc: "Fill out the registration form online.", icon: FaFileSignature },
-  { number: 2, title: "Approval", desc: "Wait for the approval of your registration.", icon: FaClipboardList },
-  { number: 3, title: "Compete", desc: "Participate, enjoy, and give your best!", icon: FaCheckCircle },
+/* Icons/order for the 3 "How to Join" steps are fixed — only each step's
+   title/description text is editable in the CMS. */
+const STEP_ICONS = [FaFileSignature, FaClipboardList, FaCheckCircle];
+
+/* Bundled fallback gallery images, used until a Super Admin uploads real
+   highlight photos via the CMS (siteConfig/landingPage.gallery.images). */
+const DEFAULT_GALLERY_IMAGES = [
+  'src/components/img/hi-1.jpg',
+  'src/components/img/hi-2.jpg',
+  'src/components/img/hi-3.jpg',
+  'src/components/img/hi-4.jpg',
+  'src/components/img/hi-5.jpg',
+  'src/components/img/hi-6.jpg',
+  'src/components/img/hi-7.jpg',
+  'src/components/img/hi-8.jpg',
 ];
 
 const MATCHES = [
@@ -276,11 +277,10 @@ function LandingPage() {
   const [matchIndex, setMatchIndex] = useState(0);
   const [matchDirection, setMatchDirection] = useState("next");
   const [matchAnimKey, setMatchAnimKey] = useState(0);
-  const [infoCards, setInfoCards] = useState(INFO_CARDS);
   const [stats, setStats] = useState(STATS);
   const [sports, setSports] = useState(SPORTS);
-  const [steps, setSteps] = useState(STEPS);
   const [matches, setMatches] = useState(MATCHES);
+  const [landingContent, setLandingContent] = useState(DEFAULT_LANDING_PAGE);
   const [contactItems, setContactItems] = useState(CONTACT_ITEMS);
   const [hoveredSportKey, setHoveredSportKey] = useState(null);
 
@@ -309,14 +309,11 @@ function LandingPage() {
   useEffect(() => {
     const loadFirestoreData = async () => {
       try {
-        const [fireInfo, fireStats, fireSteps, fireContacts] = await Promise.all([
-          fetchCollectionData('infoCards').catch(() => null),
+        const [fireStats, fireContacts] = await Promise.all([
           fetchCollectionData('stats').catch(() => null),
-          fetchCollectionData('steps').catch(() => null),
           fetchCollectionData('contactItems').catch(() => null),
         ]);
 
-        if (Array.isArray(fireInfo) && fireInfo.length) setInfoCards(fireInfo);
         // Only accept `stats` docs shaped like the cards this section
         // actually renders (icon + label) — a stray/malformed document
         // in that collection (wrong shape) used to crash the whole page
@@ -325,7 +322,6 @@ function LandingPage() {
           const validStats = fireStats.filter((s) => s && typeof s.label === 'string' && typeof s.icon === 'function');
           if (validStats.length) setStats(validStats);
         }
-        if (Array.isArray(fireSteps) && fireSteps.length) setSteps(fireSteps);
         if (Array.isArray(fireContacts) && fireContacts.length) setContactItems(fireContacts);
       } catch (error) {
         console.log('Firestore not available, using default data.');
@@ -333,6 +329,16 @@ function LandingPage() {
     };
 
     loadFirestoreData();
+  }, []);
+
+  /* Hero subtitle / feature cards / "How to Join" steps / highlights
+     gallery / bottom CTA — all editable from Super Admin's Landing Page
+     CMS. Subscribed (not fetched once) so an edit reaches every open
+     tab of this page immediately, same as the sports/schedules/counters
+     subscriptions above. */
+  useEffect(() => {
+    const unsubscribe = subscribeLandingPageConfig(setLandingContent);
+    return unsubscribe;
   }, []);
 
   /* Sports Statistics row + Sports Available cards — both driven by the
@@ -484,7 +490,14 @@ function LandingPage() {
     <div className="landing-wrapper">
 
       {/* ── Hero — full viewport, no separate navbar ── */}
-      <section className="hero">
+      <section
+        className="hero"
+        style={landingContent.hero.backgroundImageURL ? {
+          backgroundImage: `url(${landingContent.hero.backgroundImageURL})`,
+          backgroundSize: 'cover',
+          backgroundPosition: 'center top',
+        } : undefined}
+      >
         <div className="hero-overlay" />
 
         {/* ── Top bar — floats inside hero ── */}
@@ -522,10 +535,12 @@ function LandingPage() {
             <div className="line"></div>
             <p className="hero-tagline">{motto}</p>
             <p className="hero-copy">
-              Sports is not just a GAME;<br />
-              it is a PASSION.<br />
-              it is not just a SPORT;<br />
-              it is a way of LIFE.
+              {landingContent.hero.subtitle.split('\n').map((line, i, arr) => (
+                <React.Fragment key={i}>
+                  {line}
+                  {i < arr.length - 1 && <br />}
+                </React.Fragment>
+              ))}
             </p>
             <div className="hero-cta-row">
               <button className="cta-btn cta-primary" onClick={handleCtaButtonClick}>
@@ -625,13 +640,10 @@ function LandingPage() {
 
         {/* ── Info cards ── */}
         <div className="info-cards-row">
-          {INFO_CARDS.map((card) => (
-            <div
-              key={card.title}
-              className={`info-card ${card.featured ? "featured" : ""}`}
-            >
+          {landingContent.featureCards.map((card, i) => (
+            <div key={i} className="info-card">
               <h3 className="info-card-title">{card.title}</h3>
-              <p className="info-card-desc">{card.desc}</p>
+              <p className="info-card-desc">{card.description}</p>
               <button className="info-card-arrow" aria-label={`Go to ${card.title}`} onClick={handleInfoCardArrowClick}>
                 <FaArrowRight />
               </button>
@@ -703,21 +715,24 @@ function LandingPage() {
         </div>
 
         <div className="steps-row">
-          {steps.map((step, i) => (
-            <React.Fragment key={step.number}>
-              <div className="step-item">
-                <div className="step-icon-circle">
-                  <span className="step-number">{step.number}</span>
-                  <step.icon className="step-icon" />
+          {landingContent.howToJoin.map((step, i) => {
+            const StepIcon = STEP_ICONS[i] || FaCheckCircle;
+            return (
+              <React.Fragment key={i}>
+                <div className="step-item">
+                  <div className="step-icon-circle">
+                    <span className="step-number">{i + 1}</span>
+                    <StepIcon className="step-icon" />
+                  </div>
+                  <span className="step-title">{(step.title || '').toUpperCase()}</span>
+                  <p className="step-desc">{step.description}</p>
                 </div>
-                <span className="step-title">{step.title.toUpperCase()}</span>
-                <p className="step-desc">{step.desc}</p>
-              </div>
-              {i < STEPS.length - 1 && (
-                <FaArrowRightLong className="step-arrow" aria-hidden="true" />
-              )}
-            </React.Fragment>
-          ))}
+                {i < landingContent.howToJoin.length - 1 && (
+                  <FaArrowRightLong className="step-arrow" aria-hidden="true" />
+                )}
+              </React.Fragment>
+            );
+          })}
         </div>
 
         {/* ── Sports Moments — highlights carousel ── */}
@@ -728,7 +743,7 @@ function LandingPage() {
             <div className="line2"></div>
             <div className="line5"></div>
             </div>
-            <HeaderWithLines text="SPORTS MOMENTS" />
+            <HeaderWithLines text={landingContent.gallery.title} />
             <div className="linegroup2">
               <div className="line3"></div>
               <div className="line4"></div>
@@ -738,22 +753,19 @@ function LandingPage() {
           <div className="carousel-stage">
             <HighlightsBanner />
             <ImageCarousel
-              // Add your actual carousel images by placing them in public/images.
-              // For example: public/images/highlight1.jpg, highlight2.jpg, ... highlight8.jpg
-              // Then use those file names here as the image array.
-              images={[
-                'src/components/img/hi-1.jpg',
-                'src/components/img/hi-2.jpg',
-                'src/components/img/hi-3.jpg',
-                'src/components/img/hi-4.jpg',
-                'src/components/img/hi-5.jpg',
-                'src/components/img/hi-6.jpg',
-                'src/components/img/hi-7.jpg',
-                'src/components/img/hi-8.jpg'
-              ]}
+              images={landingContent.gallery.images.length ? landingContent.gallery.images : DEFAULT_GALLERY_IMAGES}
               duration={20} // loop duration in seconds (smaller = faster)
             />
           </div>
+        </div>
+
+        {/* ── Bottom CTA banner — editable in Web Customization → Landing Page ── */}
+        <div className="landing-cta">
+          <h2 className="landing-cta-title">{landingContent.bottomSection.title}</h2>
+          <p className="landing-cta-desc">{landingContent.bottomSection.description}</p>
+          <button className="landing-cta-btn" onClick={handleCtaButtonClick}>
+            <FaCalendarAlt /> {landingContent.bottomSection.buttonText}
+          </button>
         </div>
 
         {/* ── Contact us footer strip ── */}

@@ -1230,3 +1230,107 @@ export async function uploadBrandingLogo(file) {
   const ext = (file?.type || '').split('/')[1] || 'png';
   return uploadFile(file, `branding/logo_${timestamp}.${ext}`);
 }
+
+/* ─────────────────────────────────────────────
+   Landing Page CMS — one document (siteConfig/landingPage) is the single
+   source of truth for the public homepage's editable content: the hero
+   subtitle/background, the 3 feature cards, the 3 "How to Join as a
+   Player" steps, the highlights gallery, and the bottom CTA banner.
+   Same read-publicly/write-superadmin-only rule as siteConfig/branding
+   (see firestore.rules), and read live via onSnapshot so an edit here
+   reaches every open tab of the public landing page immediately.
+───────────────────────────────────────────── */
+export const DEFAULT_LANDING_PAGE = {
+  hero: {
+    subtitle: 'Sport is not just a GAME;\nit is a PASSION.\nit is not just a SPORT;\nit is a way of LIFE.',
+    backgroundImageURL: null,
+  },
+  featureCards: [
+    { title: 'Choose Your Sport', description: 'Pick the sport that you love the most. Start your journey and join the competition by registering to secure your spot and showcase your talent.' },
+    { title: 'Browse Schedules', description: "Check upcoming matches, ongoing matches, finished matches, and event details. Don't miss a game — stay informed." },
+    { title: 'Browse Rankings', description: "Explore the latest rankings and see the teams' medal tally standing. Track performance and stay updated with the ultimate showcase of talents." },
+  ],
+  howToJoin: [
+    { title: 'Register', description: 'Fill out the registration form online.' },
+    { title: 'Approval', description: 'Wait for the approval of your registration.' },
+    { title: 'Compete', description: 'Participate, enjoy, and give your best!' },
+  ],
+  gallery: {
+    title: 'SPORTS MOMENTS',
+    images: [],
+  },
+  bottomSection: {
+    title: 'Game On!',
+    description: 'The arena awaits—never miss a moment, explore now, and track every game.',
+    buttonText: 'Explore Now',
+  },
+};
+
+/* Deep-ish merge: every top-level key falls back to its own default
+   individually, and the two nested-object keys (hero, gallery,
+   bottomSection) fall back field-by-field too, so a doc that only ever
+   had `hero` written to it still has usable `gallery`/`bottomSection`
+   defaults instead of `undefined`. Arrays (featureCards, howToJoin,
+   gallery.images) are taken whole from the doc when present, per the
+   read-modify-write-whole-array convention used everywhere else. */
+function mergeLandingPage(data) {
+  const d = data || {};
+  return {
+    ...DEFAULT_LANDING_PAGE,
+    ...d,
+    hero: { ...DEFAULT_LANDING_PAGE.hero, ...(d.hero || {}) },
+    gallery: { ...DEFAULT_LANDING_PAGE.gallery, ...(d.gallery || {}) },
+    bottomSection: { ...DEFAULT_LANDING_PAGE.bottomSection, ...(d.bottomSection || {}) },
+    featureCards: Array.isArray(d.featureCards) && d.featureCards.length ? d.featureCards : DEFAULT_LANDING_PAGE.featureCards,
+    howToJoin: Array.isArray(d.howToJoin) && d.howToJoin.length ? d.howToJoin : DEFAULT_LANDING_PAGE.howToJoin,
+  };
+}
+
+export function subscribeLandingPageConfig(callback) {
+  if (!db) {
+    callback(DEFAULT_LANDING_PAGE);
+    return () => {};
+  }
+  return onSnapshot(
+    doc(db, 'siteConfig', 'landingPage'),
+    (snap) => {
+      callback(snap.exists() ? mergeLandingPage(snap.data()) : DEFAULT_LANDING_PAGE);
+    },
+    (error) => {
+      console.warn('Landing page config listener failed:', error);
+      callback(DEFAULT_LANDING_PAGE);
+    },
+  );
+}
+
+/* `fields` is whichever section(s) changed — e.g. just { hero } from the
+   Hero Section card's own Save, or all five keys at once from the
+   top-level "Save Changes" button. Firestore's `merge: true` deep-merges
+   nested map fields, so writing `{ hero: { subtitle } }` alone doesn't
+   clobber `hero.backgroundImageURL` already on the doc. */
+export async function updateLandingPageConfig(fields, actorEmail, actorRole = 'superadmin') {
+  if (!db) throw new Error('Firestore not initialized.');
+  await setDoc(
+    doc(db, 'siteConfig', 'landingPage'),
+    { ...fields, updatedAt: serverTimestamp(), updatedBy: actorEmail || '' },
+    { merge: true },
+  );
+  logActivity({
+    actorRole,
+    type: 'Landing Page Updated',
+    details: `Updated landing page content (${Object.keys(fields).join(', ')})`,
+    targetType: 'landingPage',
+    targetId: 'siteConfig/landingPage',
+  });
+}
+
+/* Uploads a hero background or gallery image to Storage and returns its
+   download URL — same `uploadFile` helper as uploadBrandingLogo. `kind`
+   is just a filename prefix ('hero' | 'gallery') so the two are easy to
+   tell apart in the Storage console. Does not itself write the Firestore
+   doc — callers follow up with updateLandingPageConfig(...). */
+export async function uploadLandingPageImage(file, kind = 'gallery') {
+  const timestamp = Date.now();
+  const ext = (file?.type || '').split('/')[1] || 'png';
+  return uploadFile(file, `landingPage/${kind}_${timestamp}.${ext}`);
+}

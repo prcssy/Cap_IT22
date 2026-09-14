@@ -8,6 +8,7 @@ import LevelTabs from '../components/LevelTabs';
 import ActivityLogsAndRoles from './ActivityLogsAndRoles';
 import StudentRegistrationDetails from './StudentRegistrationDetails';
 import BrandingSettings from './BrandingSettings';
+import LandingPageSettings from './LandingPageSettings';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
@@ -431,6 +432,8 @@ export default function SuperAdminPage() {
   // Roles & Permissions section. Logs are fetched lazily, the first time
   // that tab is opened, rather than on every page load.
   const [sectionTab, setSectionTab]       = useState('analytics');
+  // Sub-tab within "Web Customization" — School (branding) or Landing Page.
+  const [webTab, setWebTab]               = useState('branding');
   const [logs, setLogs]                   = useState([]);
   const [logsLoading, setLogsLoading]     = useState(false);
   const [logsError, setLogsError]         = useState('');
@@ -654,7 +657,11 @@ export default function SuperAdminPage() {
           </>
         )}
         <span className="sa-crumbs__current">
-          {sectionTab === 'roles' ? 'Roles & Permissions' : sectionTab === 'branding' ? 'Branding' : 'Data Analytics'}
+          {sectionTab === 'roles'
+            ? 'Roles & Permissions'
+            : sectionTab === 'branding'
+              ? (webTab === 'landingPage' ? 'Landing Page' : 'Branding')
+              : 'Data Analytics'}
         </span>
         <FaChevronRight />
       </nav>
@@ -695,7 +702,22 @@ export default function SuperAdminPage() {
               />
             </>
           ) : sectionTab === 'branding' ? (
-            <BrandingSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
+            <>
+              <LevelTabs
+                levels={[
+                  { key: 'branding', label: 'Branding' },
+                  { key: 'landingPage', label: 'Landing Page' },
+                ]}
+                value={webTab}
+                onChange={setWebTab}
+                containerClassName="sa-lvltabs"
+                tabClassName="sa-lvltab"
+                activeClassName="sa-lvltab--active"
+              />
+              {webTab === 'landingPage'
+                ? <LandingPageSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
+                : <BrandingSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />}
+            </>
           ) : (
           <>
           {/* ── Panel head ── */}

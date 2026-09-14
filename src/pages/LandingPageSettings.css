@@ -1,0 +1,395 @@
+/* ═══════════════════════════════════════════
+   LandingPageSettings.css — Super Admin "Web Customization → Landing Page"
+   Reuses SuperAdminPage.css (.sa-card, .sa-export, .sa-icon-btn, .sa-spin)
+   and BrandingSettings.css (.ws-*) tokens/classes for visual consistency.
+   Only new, feature-specific classes live here (prefixed `lp-`).
+   ═══════════════════════════════════════════ */
+
+.lp-headactions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.lp-grid {
+  align-items: start;
+}
+
+/* ── Accordion sections ── */
+.lp-section {
+  padding: 0;
+  overflow: hidden;
+}
+
+.lp-section__head {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  text-align: left;
+  color: #001529;
+  font-family: 'Inter', sans-serif;
+}
+
+.lp-section__badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #16337a;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.lp-section--open .lp-section__badge {
+  background: #f5a623;
+  color: #001529;
+}
+
+.lp-section__headtext {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+.lp-section__title {
+  font-size: 0.85rem;
+  font-weight: 900;
+}
+
+.lp-section__subtitle {
+  font-size: 10.5px;
+  font-weight: 500;
+  color: #94a3b8;
+}
+
+.lp-section__head svg {
+  flex-shrink: 0;
+  color: #94a3b8;
+}
+
+.lp-section__body {
+  padding: 0 18px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  border-top: 1px solid #eef1f6;
+  padding-top: 16px;
+}
+
+.lp-section__body textarea {
+  padding: 10px 12px;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: #001529;
+  box-sizing: border-box;
+  outline: none;
+  resize: vertical;
+}
+
+.lp-section__body textarea:focus {
+  border-color: #16337a;
+}
+
+/* ── Hero background image ── */
+.lp-image-upload-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.lp-image-preview {
+  width: 96px;
+  height: 96px;
+  flex-shrink: 0;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 10px;
+  background: #f7f9fc;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+
+.lp-image-preview--wide {
+  width: 160px;
+  height: 96px;
+}
+
+.lp-image-preview img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.lp-image-preview__empty {
+  font-size: 10px;
+  color: #94a3b8;
+  font-weight: 600;
+  text-align: center;
+  padding: 0 8px;
+}
+
+/* ── Feature cards / steps mini-cards ── */
+.lp-cards-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.lp-mini-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 12px;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 10px;
+  background: #f7f9fc;
+}
+
+.lp-mini-card input {
+  height: 32px;
+  padding: 0 10px;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 7px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: #001529;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.lp-mini-card input:focus {
+  border-color: #16337a;
+}
+
+/* ── Highlights gallery ── */
+.lp-gallery-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.lp-gallery-thumb {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 1.5px solid #dbe3ee;
+}
+
+.lp-gallery-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+.lp-gallery-thumb__remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 50%;
+  background: rgba(0, 21, 41, 0.75);
+  color: #fff;
+  font-size: 10px;
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .lp-gallery-thumb__remove:hover {
+    background: #b91c1c;
+  }
+}
+
+.sa-export--small {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 10.5px;
+}
+
+/* ── Live preview ── */
+.lp-preview {
+  gap: 14px;
+}
+
+.lp-preview-hero {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 22px 16px;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #001529 0%, #16337a 100%);
+  background-size: cover;
+  background-position: center;
+}
+
+.lp-preview-hero__line {
+  font-size: 9.5px;
+  color: #e2e8f0;
+  line-height: 1.4;
+}
+
+.lp-preview-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lp-preview-card {
+  padding: 10px;
+  border-radius: 8px;
+  border: 1px solid #eef1f6;
+  background: #fff;
+}
+
+.lp-preview-card strong {
+  display: block;
+  font-size: 11px;
+  color: #001529;
+  margin-bottom: 3px;
+}
+
+.lp-preview-card p,
+.lp-preview-step p,
+.lp-preview-bottom p {
+  font-size: 10px;
+  color: #64748b;
+  margin: 0;
+  line-height: 1.4;
+}
+
+.lp-preview-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.lp-preview-step {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 10px;
+  border-radius: 8px;
+  background: #f7f9fc;
+}
+
+.lp-preview-step strong {
+  font-size: 11px;
+  color: #001529;
+}
+
+.lp-preview-step__icon {
+  color: #16337a;
+  font-size: 13px;
+}
+
+.lp-preview-gallery {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.lp-preview-gallery__title {
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  color: #16337a;
+  text-align: center;
+}
+
+.lp-preview-gallery__grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.lp-preview-gallery__grid img {
+  width: 100%;
+  aspect-ratio: 1;
+  object-fit: cover;
+  border-radius: 6px;
+}
+
+.lp-preview-bottom {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 6px;
+  padding: 16px;
+  border-radius: 10px;
+  background: #001529;
+}
+
+.lp-preview-bottom__title {
+  font-family: 'Lalezar', sans-serif;
+  font-size: 1rem;
+  color: #f5a623;
+}
+
+.lp-preview-bottom p {
+  color: #cbd5e1;
+}
+
+.lp-preview-bottom__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 4px;
+  padding: 6px 14px;
+  border-radius: 20px;
+  background: #f5a623;
+  color: #001529;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
+/* ── Responsive ── */
+@media (max-width: 1000px) {
+  .lp-cards-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 620px) {
+  .lp-image-upload-row {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+
+  .lp-headactions {
+    width: 100%;
+    justify-content: stretch;
+  }
+
+  .lp-headactions .sa-export {
+    width: 100%;
+    justify-content: center;
+  }
+}

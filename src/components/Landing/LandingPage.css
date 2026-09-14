@@ -1084,6 +1084,60 @@
   background: radial-gradient(circle, rgba(186, 186, 186, 1) 1%, rgba(10, 29, 82, 1) 100%);
 }
 
+/* ── Bottom CTA banner (Web Customization → Landing Page → Bottom Text Section) ── */
+.landing-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.9rem;
+  margin-top: 2.5rem;
+  padding: 2.75rem 1.5rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0A1D52 0%, #001529 100%);
+}
+
+.landing-cta-title {
+  font-family: "Lalezar", sans-serif;
+  font-size: 2rem;
+  color: #FCBF19;
+  margin: 0;
+}
+
+.landing-cta-desc {
+  font-family: "Inter", sans-serif;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 32rem;
+  margin: 0;
+}
+
+.landing-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.4rem;
+  padding: 0.75rem 1.75rem;
+  border: none;
+  border-radius: 999px;
+  background: #FCBF19;
+  color: #0A1D52;
+  font-family: "Inter", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .landing-cta-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(252, 191, 25, 0.35);
+  }
+}
+
 /* ── Contact us footer strip ── */
 .contact-footer {
   display: flex;
