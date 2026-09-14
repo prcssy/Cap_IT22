@@ -125,15 +125,15 @@ function Sidebar() {
               </button>
             )}
 
-            {/* Data Analytics icon — super admins only. The slide-out
+            {/* Super Admin icon — super admins only. The slide-out
                 panel already links here, but the rail is what's visible
                 without opening anything, so super admins can reach their
                 own dashboard in one click. */}
             {userProfile?.role === 'superadmin' && (
               <button
                 className={`sidebar-btn ${location.pathname === "/superadmin" ? "active" : ""}`}
-                aria-label="Data Analytics"
-                data-label="Analytics"
+                aria-label="SuperAdmin"
+                data-label="SuperAdmin"
                 onClick={() => navigate('/superadmin')}
               >
                 <FaChartPie />
@@ -212,7 +212,7 @@ function Sidebar() {
           {userProfile?.role === 'superadmin' && (
             <Link to="/superadmin" className={`panel-nav-item ${location.pathname === "/superadmin" ? "active" : ""}`}>
               <FaChartPie className="panel-nav-icon" />
-              <span>Data Analytics</span>
+              <span>SuperAdmin</span>
             </Link>
           )}
         </nav>
