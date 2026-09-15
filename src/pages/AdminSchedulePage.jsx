@@ -1105,10 +1105,15 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [resettingSchedule, setResettingSchedule] = useState(false);
+  const [clearConfirmOpen, setClearConfirmOpen] = useState(false);
+
+  const hasUnsavedPicks = !!(selSport || selCategory || selFormat || scheduleStartDate || scheduleStartTime);
 
   const handleResetClick = () => {
     if (isLocked) {
       setResetConfirmOpen(true);
+    } else if (hasUnsavedPicks) {
+      setClearConfirmOpen(true);
     } else {
       handleReset();
     }
@@ -1988,6 +1993,29 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
           </div>
         )}
       </div>
+
+      {/* ── Clear selections confirmation — no saved data at stake here (isLocked is
+         false in this branch), just the in-progress sport/category/format/date picks ── */}
+      {clearConfirmOpen && (
+        <div className="msf-overlay" onClick={() => setClearConfirmOpen(false)}>
+          <div className="msf-confirm-delete" onClick={e => e.stopPropagation()}>
+            <h3>Clear these selections?</h3>
+            <p>This will clear the sport, category, format, and date/time you've picked so far.</p>
+            <div className="msf-confirm-delete__actions">
+              <button type="button" className="msf-btn-ghost" onClick={() => setClearConfirmOpen(false)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="msf-btn-danger"
+                onClick={() => { handleReset(); setClearConfirmOpen(false); }}
+              >
+                Reset
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Reset Schedule confirmation — deletes the whole locked (sport, category)
          set at once, unlike the per-match "Delete Schedule" in the Edit modal ── */}
