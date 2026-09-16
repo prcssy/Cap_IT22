@@ -3,7 +3,7 @@ import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../shared/firebase';
-import { getSportsTeamsConfig, getMatchSchedules, getActivityLogs } from '../shared/services/firestoreService';
+import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, getActivityLogs } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
 import ActivityLogsAndRoles from './ActivityLogsAndRoles';
 import StudentRegistrationDetails from './StudentRegistrationDetails';
@@ -137,18 +137,78 @@ function RangeDropdown({ value, options, onChange }) {
   );
 }
 
-/* Match statuses in the data are free-form-ish, so fold the ones that
-   actually occur into the three buckets this card reports. */
+/* A saved match only ever gets `status: 'scheduled'` at creation time —
+   nothing in the app ever patches it to "ongoing"/"finished" afterwards
+   (that only happens implicitly, via date/time + a matching matchRecords
+   entry). Bucketing on the raw `status` field made this donut permanently
+   report 100% Upcoming. Classify matches the same way DashboardPage.jsx
+   already does — by assumed match window vs. the current time, and by
+   whether a moderator-confirmed record exists for the fixture — so this
+   summary agrees with what students actually see on the Dashboard. */
 const STATUS_BUCKETS = [
-  { key: 'finished', label: 'Finished', color: '#7c3aed', matches: ['finished', 'completed', 'done', 'final'] },
-  { key: 'ongoing',  label: 'Ongoing',  color: '#16a34a', matches: ['ongoing', 'live', 'in-progress', 'playing'] },
-  { key: 'upcoming', label: 'Upcoming', color: '#f5a623', matches: ['upcoming', 'scheduled', 'pending'] },
+  { key: 'finished', label: 'Finished', color: '#7c3aed' },
+  { key: 'ongoing',  label: 'Ongoing',  color: '#16a34a' },
+  { key: 'upcoming', label: 'Upcoming', color: '#f5a623' },
 ];
 
-function bucketMatchStatus(status) {
-  const value = (status || 'scheduled').toLowerCase();
-  const found = STATUS_BUCKETS.find(b => b.matches.includes(value));
-  return found ? found.key : 'upcoming';
+const ASSUMED_MATCH_MINUTES = 120; // same assumption as DashboardPage.jsx
+
+function normText(value) {
+  return (value || '').trim().toLowerCase();
+}
+
+function sameTeamName(a, b) {
+  return !!a && !!b && normText(a) === normText(b);
+}
+
+/* Categories used to be saved as values such as "MEN 5v5" — strip the
+   child match format so a record's category still lines up with its
+   schedule's, same trimming DashboardPage.jsx applies. */
+function displayCategory(category) {
+  return (category || '')
+    .trim()
+    .replace(/\s+\d+\s*[v×x]\s*\d+\s*$/i, '')
+    .replace(/\s+$/, '')
+    .trim();
+}
+
+function matchWindow(match) {
+  if (!match.date || !match.time) return null;
+  const start = new Date(`${match.date}T${match.time}`);
+  if (Number.isNaN(start.getTime())) return null;
+  const end = new Date(start.getTime() + ASSUMED_MATCH_MINUTES * 60000);
+  return { start, end };
+}
+
+/* Same matching rule as DashboardPage.jsx's recordMatchesSchedule: prefer
+   the explicit scheduleId link, falling back to sport/category/team-name
+   matching for older records saved before that link existed. */
+function recordMatchesSchedule(record, schedule) {
+  if (!record || !schedule) return false;
+  if (record.scheduleId) return String(record.scheduleId) === String(schedule.id);
+  if (normText(record.sportName) !== normText(schedule.sport)) return false;
+  const recordCategory = normText(displayCategory(record.category));
+  const scheduleCategory = normText(displayCategory(schedule.category));
+  if (recordCategory && scheduleCategory && recordCategory !== scheduleCategory
+      && !recordCategory.endsWith(` ${scheduleCategory}`)
+      && !scheduleCategory.endsWith(` ${recordCategory}`)) return false;
+  const participants = record.participants?.length ? record.participants : [record.teamA, record.teamB];
+  const names = participants.map(p => p?.name).filter(Boolean);
+  return names.length >= 2
+    && names.some(name => sameTeamName(name, schedule.teamA))
+    && names.some(name => sameTeamName(name, schedule.teamB));
+}
+
+/* finished (has a confirmed record) beats ongoing/upcoming; otherwise a
+   match not yet at its start time is upcoming, and anything else
+   (currently in its assumed window, OR past it with no result recorded
+   yet) reads as ongoing — closer to reality than silently vanishing. */
+function classifyMatch(match, records, now) {
+  const hasRecord = records.some(r => recordMatchesSchedule(r, match));
+  if (hasRecord) return 'finished';
+  const window = matchWindow(match);
+  if (window && now < window.start) return 'upcoming';
+  return 'ongoing';
 }
 
 /* ── SVG chart primitives ────────────────────────────────────── */
@@ -503,6 +563,11 @@ export default function SuperAdminPage() {
   const [registrations, setRegistrations] = useState([]);
   const [configsByLevel, setConfigsByLevel]     = useState({});
   const [schedulesByLevel, setSchedulesByLevel] = useState({});
+  const [recordsByLevel, setRecordsByLevel]     = useState({});
+  // Re-render periodically so a match's bucket (ongoing -> finished, or
+  // upcoming -> ongoing) updates on its own while this page stays open,
+  // same idea as DashboardPage.jsx's own clock tick.
+  const [now, setNow] = useState(() => new Date());
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState('');
   const [rangeKey, setRangeKey]           = useState('12m');
@@ -539,6 +604,11 @@ export default function SuperAdminPage() {
     if (sectionTab === 'roles' && !logsLoaded) fetchLogs();
   }, [sectionTab, logsLoaded, fetchLogs]);
 
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 60000);
+    return () => clearInterval(t);
+  }, []);
+
   const fetchAnalytics = useCallback(async () => {
     if (!db) {
       setError('Firestore not connected.');
@@ -549,11 +619,12 @@ export default function SuperAdminPage() {
     setError('');
 
     try {
-      const [userSnap, regSnap, configs, schedules] = await Promise.all([
+      const [userSnap, regSnap, configs, schedules, records] = await Promise.all([
         getDocs(collection(db, 'users')),
         getDocs(collection(db, 'registrations')),
         Promise.all(LEVELS.map(l => getSportsTeamsConfig(l).catch(() => ({ sports: [], teams: [] })))),
         Promise.all(LEVELS.map(l => getMatchSchedules(l).catch(() => []))),
+        Promise.all(LEVELS.map(l => getMatchRecords(l).catch(() => []))),
       ]);
 
       setUsers(userSnap.docs.map(d => ({ id: d.id, ...d.data() })));
@@ -561,12 +632,16 @@ export default function SuperAdminPage() {
 
       const configMap = {};
       const scheduleMap = {};
+      const recordMap = {};
       LEVELS.forEach((l, i) => {
         configMap[l] = configs[i];
         scheduleMap[l] = schedules[i];
+        recordMap[l] = records[i];
       });
       setConfigsByLevel(configMap);
       setSchedulesByLevel(scheduleMap);
+      setRecordsByLevel(recordMap);
+      setNow(new Date());
     } catch (err) {
       console.error(err);
       setError('Failed to load analytics data.');
@@ -601,6 +676,18 @@ export default function SuperAdminPage() {
   const matches = useMemo(
     () => levelsForConfig.flatMap(l => schedulesByLevel[l] || []),
     [schedulesByLevel, levelsForConfig],
+  );
+
+  /* Classified per-level (a schedule only ever matches records from its
+     OWN level's matchRecords doc) then flattened, so "All Levels" can't
+     accidentally cross-match a college fixture against an elementary
+     record that happens to share a sport/team name. */
+  const matchBuckets = useMemo(
+    () => levelsForConfig.flatMap(l => {
+      const records = recordsByLevel[l] || [];
+      return (schedulesByLevel[l] || []).map(m => classifyMatch(m, records, now));
+    }),
+    [schedulesByLevel, recordsByLevel, levelsForConfig, now],
   );
 
   /* Users and registrations carry createdAt and a grade level, so they
@@ -676,9 +763,9 @@ export default function SuperAdminPage() {
   /* ── Donuts ── */
   const statusSegments = useMemo(() => {
     const counts = { finished: 0, ongoing: 0, upcoming: 0 };
-    matches.forEach((m) => { counts[bucketMatchStatus(m.status)]++; });
+    matchBuckets.forEach((bucket) => { counts[bucket]++; });
     return STATUS_BUCKETS.map(b => ({ label: b.label, value: counts[b.key], color: b.color }));
-  }, [matches]);
+  }, [matchBuckets]);
 
   const roleSegments = useMemo(() => {
     const counts = { audience: 0, player: 0, moderator: 0, admin: 0, superadmin: 0 };
