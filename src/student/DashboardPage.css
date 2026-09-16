@@ -1,0 +1,1056 @@
+/* ═══════════════════════════════════════════
+   DashboardPage.css — Santa Rita College
+   ═══════════════════════════════════════════ */
+.user-dashboard {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #001529;
+  color: #fff;
+  font-family: 'Lalezar';
+  overflow: hidden;
+}
+
+.dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 25px;
+  height: 48px;
+  flex-shrink: 0;
+  width: 100%;
+  background-color: #001529;
+  border-bottom: 3px solid #fff;
+  margin-top: 3.6px;
+  box-sizing: border-box;
+}
+
+.dash-header__title {
+  font-size: 20px;
+  font-family: 'Lalezar', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fff;
+  margin: 0;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.profile-page-intro {
+  padding: 18px 25px 10px;
+  flex-shrink: 0;
+}
+
+/* Intro row on Home now also carries the level switcher, so it needs to
+   lay the title block and the tabs side by side instead of stacking. */
+.dash-intro-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* ── Level tabs — moved out of the small header dropdown (easy to miss)
+   and into a segmented control right beside the page title. ── */
+.dash-lvltabs {
+  display: inline-flex;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 14px;
+  padding: 5px;
+  flex-shrink: 0;
+}
+
+.dash-lvltab {
+  font-family: "Inter", sans-serif;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.65);
+  border-radius: 10px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.dash-lvltab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+}
+
+.dash-lvltab--active {
+  color: #001529;
+  background: #FCBF19;
+}
+
+/* Groups the level tabs and the sport filter so they wrap together as one
+   unit on narrower screens instead of the sport filter jumping to its own
+   line awkwardly between the tabs and the section content below. */
+.dash-filters-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* ── Sport filter — global, page-wide control that sits right beside the
+   level tabs so it reads as part of the same "what am I viewing" header,
+   not a setting tucked inside one section further down the page. Mirrors
+   the level tabs' pill styling to stay visually consistent with the rest
+   of the Dashboard. ── */
+.dash-sport-filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 14px;
+  padding: 5px 5px 5px 14px;
+  flex-shrink: 0;
+}
+
+.dash-sport-filter__label {
+  font-family: "Inter", sans-serif;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.dash-sport-filter__dd {
+  position: relative;
+}
+
+.dash-sport-filter__trigger {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 150px;
+  font-family: "Inter", sans-serif;
+  background: #001529;
+  border: 1.5px solid #33507a;
+  color: #fff;
+  border-radius: 10px;
+  padding: 8px 14px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  max-width: 100%;
+  transition: border-color 0.15s ease, transform 0.12s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dash-sport-filter__trigger:hover {
+    border-color: #f5a623;
+  }
+}
+
+.dash-sport-filter__trigger:active {
+  transform: scale(0.98);
+}
+
+.dash-sport-filter__arrow {
+  transition: transform 0.2s ease;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.dash-sport-filter__arrow--open {
+  transform: rotate(180deg);
+}
+
+.dash-sport-filter__panel {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 50;
+  margin-top: 8px;
+  background: #001529;
+  border-radius: 14px;
+  padding: 10px;
+  width: 220px;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  transform: translateY(-8px) scale(0.97);
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.16s ease;
+}
+
+.dash-sport-filter__panel--open {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.dash-sport-filter__panel-label {
+  font-size: 0.62rem;
+  letter-spacing: 0.12em;
+  color: #7a93b8;
+  text-transform: uppercase;
+  margin: 2px 6px 8px;
+  font-weight: 700;
+}
+
+.dash-sport-filter__option {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: none;
+  border-radius: 10px;
+  padding: 12px 16px;
+  font-family: "Inter", sans-serif;
+  font-weight: 700;
+  font-size: 0.9rem;
+  color: #0b2447;
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.1s ease;
+}
+
+.dash-sport-filter__option + .dash-sport-filter__option {
+  margin-top: 8px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .dash-sport-filter__option:hover {
+    background: #e3ecff;
+  }
+}
+
+.dash-sport-filter__option:active {
+  transform: scale(0.98);
+}
+
+.dash-sport-filter__option--active {
+  background: #e3ecff;
+}
+
+.dash-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  width: 100%;
+}
+
+.dash-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dash-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+.dash-section {
+  padding: 14px 14px 10px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.dash-section--ongoing {
+  background-color: #0A1D52;
+}
+
+.dash-section--upcoming {
+  background-color: #fff;
+  height: 35.04813rem;
+}
+
+.section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+}
+
+.section-title {
+  font-family: 'Inter', sans-serif;
+  font-size: 14px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  color: #fff;
+  margin: 0;
+  text-transform: uppercase;
+}
+
+.scroll-arrows {
+  display: flex;
+  gap: 4px;
+}
+
+.arrow-btn {
+  font-family: "Inter", sans-serif;
+  width: 24px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 4px;
+  color: #fff;
+  font-size: 17px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  transition: background 0.2s ease, transform 0.2s ease, border-color 0.2s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.arrow-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+  transform: translateY(-1px);
+}
+}
+
+.dash-section--upcoming .section-title {
+  color: #001529;
+}
+
+.dash-section--upcoming .arrow-btn {
+  background: rgba(0, 21, 41, 0.06);
+  border-color: rgba(0, 21, 41, 0.18);
+  color: #001529;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.dash-section--upcoming .arrow-btn:hover {
+  background: rgba(0, 21, 41, 0.14);
+}
+}
+
+.scroll-row {
+  display: flex;
+  gap: 8px;
+  overflow-x: auto;
+  overflow-y: visible;
+  width: 100%;
+  box-sizing: border-box;
+  padding-bottom: 6px;
+}
+
+.dash-empty {
+  font-family: "Inter", sans-serif;
+  color: rgba(255, 255, 255, 0.6);
+  font-size: 13px;
+  padding: 18px 4px;
+  margin: 0;
+}
+
+.dash-section--upcoming .dash-empty {
+  color: rgba(0, 21, 41, 0.55);
+}
+
+.scroll-row::-webkit-scrollbar {
+  height: 3px;
+}
+
+.scroll-row::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.1);
+  border-radius: 2px;
+}
+
+/* ══════════════════════════════════════════
+   TEAM BANNER
+   ══════════════════════════════════════════ */
+.team-banner {
+  flex: 1;
+  min-height: 11.38981rem;
+  min-width: 8.59375rem;
+  overflow: hidden;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #fff;
+  padding: 14px;
+  box-sizing: border-box;
+}
+
+.team-banner--oc {
+  flex: 1;
+  height: 21.375rem;
+}
+
+.team-banner--uc {
+  margin-top: 2rem;
+  height: 20.62075rem;
+  border-radius: 8px;
+}
+
+.team-banner--fc {
+  width: 90px;
+  height: 90px;
+  border-radius: 10px;
+  padding: 8px;
+}
+
+.team-banner--fc-small {
+  width: 60px;
+  height: 60px;
+  border-radius: 8px;
+  padding: 6px;
+}
+
+.team-banner__img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: center;
+  display: block;
+}
+
+.team-banner--placeholder {
+  border: 1.5px dashed #b8cce4;
+  background: #dce8f6;
+}
+
+.team-banner__label {
+  font-size: 7.5px;
+  font-weight: 800;
+  color: #001529;
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 4px;
+  line-height: 1.3;
+}
+
+/* ══════════════════════════════════════════
+   SHARED LABELS / PILLS
+   ══════════════════════════════════════════ */
+.date-pill {
+  font-size: 10px;
+  font-weight: 700;
+  color: #0A1D52;
+  background: #D4DCEF;
+  border-radius: 4px;
+  padding: 2px 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  display: inline-block;
+}
+
+.sport-pill {
+  background: #fff;
+  color: #0A1D52;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 18px;
+  border-radius: 20px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: inline-block;
+}
+
+/* Ribbon/pennant shape (flat left edge, notched right tip) instead of a
+   plain rounded pill. The clip-path polygon pulls the right edge in to
+   ~88% width at vertical center, leaving both right corners at full
+   width — that's what creates the forked tip. Generous right padding
+   keeps the label text clear of that notch. The ::after triangle is the
+   small darker "fold" shadow tucked into the bottom-left corner that
+   ribbon graphics like this usually have.
+   The top-left corner is rounded (it's the corner that sits closest to
+   the card's own rounded corner, now that the label is left-aligned) —
+   `clip-path` ignores `border-radius`, so the curve is approximated with
+   a few extra polygon points along a small arc instead. */
+.match-label-pill {
+  position: relative;
+  background: #FFC72C;
+  color: #6b3f00;
+  font-size: 10px;
+  font-weight: 800;
+  padding: 5px 22px 5px 14px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  clip-path: polygon(
+    6px 0, 100% 0, 88% 50%, 100% 100%, 0 100%,
+    0 6px, 0.4px 3.5px, 1.8px 1.8px, 3.5px 0.4px
+  );
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  max-width: calc(100% - 16px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.match-label-pill::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  width: 8px;
+  height: 8px;
+  background: rgba(0, 0, 0, 0.28);
+  clip-path: polygon(0 0, 100% 100%, 0 100%);
+}
+
+/* Overlaid on the banners themselves (which are already `position:
+   relative`) rather than inserted as its own row — the card's overall
+   height is fixed, so adding a row would push the date/teams/sport pills
+   further down and clip them against the card's `overflow: hidden`. This
+   way every card lines up identically whether or not it has a label.
+   Sits right at the very top of the card (inside its own 10px padding,
+   above where the banners themselves start) rather than overlapping
+   down onto the banners. Left-aligned at left:0 so its own left edge
+   matches the left edge of the banners below it, instead of centered. */
+.match-label-row {
+  position: absolute;
+  top: -6px;
+  left: 0;
+  z-index: 2;
+}
+
+.ft-label {
+  font-size: 12px;
+  font-family: 'Inter', sans-serif;
+  font-weight: 800;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.ft-vs {
+  font-size: 11px;
+  font-weight: 800;
+  color: #b9c6e8;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  margin: 0 2px;
+}
+
+.ft-venue {
+  font-family: 'Lalezar', sans-serif;
+  font-size: 10.35px;
+  background: #fff;
+  color: #0A1D52;
+  font-weight: 900;
+  padding: 3px 15px;
+  text-align: center;
+  border-radius: 5.17px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  display: inline-block;
+  width: 10.57269rem;
+  height: 1.16394rem;
+  flex-shrink: 0;
+}
+
+/* ══════════════════════════════════════════
+   ONGOING CARD
+   ══════════════════════════════════════════ */
+.ongoing-card {
+  flex: 1;
+  min-width: 0;
+  background: #0A1D52;
+  border-radius: 10px;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  box-sizing: border-box;
+  position: relative;
+  overflow: hidden;
+}
+
+.oc-banners {
+  display: flex;
+  gap: 4px;
+  position: relative;
+  padding-bottom: 12px;
+}
+
+.oc-footer {
+  justify-content: center;
+  align-items: center;
+  padding-top: 5px;
+  margin-top: 2px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: hidden;
+}
+
+.oc-date-row {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  margin-bottom: 2px;
+}
+
+.oc-teams-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  column-gap: 4px;
+  row-gap: 2px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+/* ══════════════════════════════════════════
+   UPCOMING CARD
+   ══════════════════════════════════════════ */
+.upcoming-card {
+  flex: 1;
+  min-width: 0;
+  background: #0A1D52;
+  border-radius: 12px;
+  padding: 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  box-sizing: border-box;
+  height: 30.821rem;
+  position: relative;
+  overflow: hidden;
+}
+
+.uc-banners {
+  display: flex;
+  gap: 10px;
+  position: relative;
+  padding-bottom: 16px;
+}
+
+.tbd-slot {
+  flex: 1;
+  height: 130px;
+  border: 1.5px dashed #b8cce4;
+  border-radius: 8px;
+  background: #dce8f6;
+}
+
+.uc-date-row {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+/* Centered as a single block, sized to its actual content — not a
+   fixed-width grid. A grid with equal-width team-name columns keeps
+   "VS" pixel-perfect centered, but when one team's name is much shorter
+   than the other's, its column ends up mostly empty navy space, which
+   reads as more obviously "wrong" than VS sitting a few px off-center.
+   This trades a little positional precision on VS for a layout that
+   never has dead space next to a short team name. */
+.uc-teams-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: center;
+  column-gap: 6px;
+  row-gap: 2px;
+  flex-wrap: wrap;
+  width: 100%;
+}
+
+.uc-sport-row {
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  padding-bottom: 2px;
+  margin-top: 2px;
+}
+
+/* Hover overlay — full match info, revealed on hover/focus */
+.uc-hover-info {
+  position: absolute;
+  inset: 0;
+  background: rgba(10, 29, 82, 0.96);
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 20px;
+  text-align: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.2s ease;
+}
+
+.upcoming-card:focus-within .uc-hover-info,
+.ongoing-card:focus-within .uc-hover-info {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.upcoming-card:hover .uc-hover-info,
+.ongoing-card:hover .uc-hover-info {
+  opacity: 1;
+  pointer-events: auto;
+}
+}
+
+.uc-hover-info__teams {
+  font-family: 'Inter', sans-serif;
+  font-size: 13px;
+  font-weight: 800;
+  color: #fff;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  line-height: 1.4;
+}
+
+.uc-hover-info__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #D4DCEF;
+  letter-spacing: 0.03em;
+}
+
+.uc-hover-info__sport {
+  margin-top: 4px;
+  background: #fff;
+  color: #0A1D52;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 4px 18px;
+  border-radius: 20px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* ══════════════════════════════════════════
+   FINISHED MATCHES CAROUSEL
+   ══════════════════════════════════════════ */
+.dash-section--finished {
+  background-color: #0A1D52;
+  padding-bottom: 24px;
+  overflow: hidden;
+}
+
+.dash-section--finished .section-title {
+  color: #fff;
+}
+
+.dash-section--finished .arrow-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.dash-section--finished .arrow-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+}
+
+/* Outer container clips cards that slide off-screen */
+.finished-carousel {
+  width: 100%;
+  overflow: hidden;
+  display: flex;
+  justify-content: center;
+}
+
+/* Track is a fixed-size anchor; slides are positioned absolutely inside it */
+.finished-carousel__track {
+  position: relative;
+  /* wide enough so all 5 slots fit without clipping inside the track itself */
+  width: 400px;
+  height: 480px;
+}
+
+/* Each slide transitions its own transform/opacity/filter every render */
+.finished-carousel__slide {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 400px;
+  transition:
+    transform 0.40s cubic-bezier(0.4, 0, 0.2, 1),
+    opacity 0.40s cubic-bezier(0.4, 0, 0.2, 1),
+    filter 0.40s cubic-bezier(0.4, 0, 0.2, 1);
+  will-change: transform, opacity, filter;
+}
+
+/* ── Finished Card ── */
+.finished-card {
+  width: 400px;
+  background: #fff;
+  border-radius: 16px;
+  padding: 18px 22px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  box-sizing: border-box;
+  color: #001529;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
+}
+
+.finished-card--active {
+  opacity: 1;
+}
+
+.finished-card--side {
+  opacity: 1;
+  pointer-events: none;
+}
+
+.fc-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.fc-sport {
+  font-size: 12px;
+  font-weight: 900;
+  color: #001529;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.fc-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #1a9457;
+  background: rgba(26, 148, 87, 0.1);
+  padding: 4px 9px;
+  border-radius: 999px;
+}
+
+.fc-status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #1a9457;
+  flex-shrink: 0;
+}
+
+.fc-datetime {
+  font-size: 11px;
+  color: #8899aa;
+  letter-spacing: 0.02em;
+  text-align: center;
+  margin-top: -6px;
+}
+
+.fc-match {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0 8px;
+  border-bottom: 1px solid #eef1f6;
+}
+
+.fc-team {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.fc-team-name {
+  font-size: 11px;
+  font-weight: 800;
+  color: #001529;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  text-align: center;
+}
+
+.fc-result {
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+}
+
+.fc-result--win {
+  color: #1a9457;
+}
+
+.fc-result--lose {
+  color: #c0392b;
+}
+
+.fc-result--draw {
+  color: #8899aa;
+}
+
+.fc-score {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  flex-shrink: 0;
+  font-weight: 900;
+  color: #0A1D52;
+  font-variant-numeric: tabular-nums;
+}
+
+.fc-score-val {
+  font-size: 26px;
+  line-height: 1;
+  min-width: 24px;
+  text-align: center;
+}
+
+.fc-score-sep {
+  font-size: 16px;
+  color: #c3cbd6;
+}
+
+.fc-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.fc-stat-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+}
+
+.fc-stat-val {
+  font-weight: 700;
+  color: #667788;
+  min-width: 50px;
+  text-align: center;
+}
+
+.fc-stat-val--win {
+  color: #0A1D52;
+  font-weight: 900;
+}
+
+.fc-stat-label {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: #556677;
+  font-weight: 600;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.fc-stat-icon {
+  font-size: 11px;
+}
+
+/* ══════════════════════════════════════════
+   RESPONSIVE — the level tabs and intro row were sized for desktop
+   (fixed padding, no wrap on the tabs themselves), so on a phone
+   "College" ran past the edge of the screen and got clipped by
+   .user-dashboard's overflow: hidden instead of wrapping. Match cards
+   also had no min-width, so flex:1 squeezed all of them down to an
+   unreadably tiny size instead of scrolling.
+   ══════════════════════════════════════════ */
+@media (max-width: 600px) {
+  .user-dashboard .dash-header {
+    padding: 0 16px;
+  }
+
+  .user-dashboard .profile-page-intro {
+    padding: 14px 16px 8px;
+  }
+
+  .dash-intro-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .dash-lvltabs {
+    flex-wrap: wrap;
+  }
+
+  .dash-lvltab {
+    padding: 7px 12px;
+    font-size: 12px;
+  }
+
+  .dash-filters-row {
+    width: 100%;
+  }
+
+  .dash-sport-filter__trigger {
+    padding: 7px 12px;
+    font-size: 12px;
+    min-width: 0;
+  }
+
+  .dash-sport-filter__panel {
+    right: auto;
+    left: 0;
+  }
+
+  .dash-section {
+    padding: 12px 10px 8px;
+  }
+
+  .upcoming-card,
+  .ongoing-card {
+    min-width: 260px;
+    height: auto;
+  }
+
+  /* .team-banner--uc/--oc are a fixed ~330px tall on desktop, sized for
+     a card several times wider than the mobile floor above — at that
+     width each banner (half of .uc-banners/.oc-banners, minus the gap)
+     is only ~110px wide, so the same fixed height turned it into a tall
+     skinny tower instead of a card-proportioned box. Its base min-width
+     (8.59375rem, ~137px) is also wider than that ~110px slot — a flex
+     item won't shrink past its own min-width, so with two side by side
+     the row demanded more space than the card had and the right-hand
+     banner just got clipped by the card's overflow: hidden. */
+  .team-banner {
+    min-height: 90px;
+    min-width: 0;
+  }
+
+  .team-banner--uc {
+    margin-top: 0.5rem;
+    height: 110px;
+  }
+
+  .team-banner--oc {
+    height: 110px;
+  }
+
+  .dash-section--upcoming {
+    height: auto;
+  }
+}
+/* ── Mobile: leaves room for the floating hamburger button (Sidebar.css
+   takes the icon rail out of flow below 768px), which would otherwise
+   sit on top of this title. The `body` prefix bumps specificity past
+   .user-dashboard .dash-header above (and ProfilePage.css's own
+   .profile-page .dash-header, which reuses this same header) — both are
+   2-class selectors that would otherwise win this tug-of-war over a
+   plain .dash-header rule regardless of which file loads last. ── */
+@media (max-width: 768px) {
+  body .dash-header,
+  body .user-dashboard .dash-header,
+  body .profile-page .dash-header {
+    padding-left: 64px;
+  }
+}

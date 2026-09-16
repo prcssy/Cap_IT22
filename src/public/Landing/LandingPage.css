@@ -1,0 +1,1300 @@
+/* ── Wrapper ── */
+.landing-wrapper * {
+  user-select: none;
+}
+
+.landing-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+}
+
+.landing-wrapper::-webkit-scrollbar {
+  width: 8px;
+}
+
+.landing-wrapper::-webkit-scrollbar-track {
+  background: #001529;
+}
+
+.landing-wrapper::-webkit-scrollbar-thumb {
+  background: #1a3a6e;
+  border-radius: 999px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.landing-wrapper::-webkit-scrollbar-thumb:hover {
+  background: #2a4f8e;
+}
+}
+
+/* ── Hero — full height, no navbar above it ── */
+.hero {
+  position: relative;
+  width: 100%;
+  height: 100vh;
+  height: 100dvh;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-bottom: 1px solid #000;
+  background: url("../../shared/img/SRCBackground.png") lightgray 0px -0.223px / 115.497% 115.549% no-repeat;
+  background-size: cover;
+  background-position: center top;
+  overflow: hidden;
+}
+
+/* Darkening gradient so text stays readable over the photo */
+.hero-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to right,
+      rgba(255, 255, 255, 0.9) 0%,
+      rgba(255, 255, 255, 0.6) 30%,
+      rgba(255, 255, 255, 0) 60%);
+  pointer-events: none;
+  z-index: 1;
+}
+
+/* ── Top bar — floats at top of hero ── */
+.hero-topbar {
+  position: relative;
+  z-index: 30;
+  display: flex;
+  align-items: flex-start;
+  justify-content: flex-end;
+  padding: 1.125rem 1.8rem;
+}
+
+.school-identity {
+  display: flex;
+  align-items: center;
+  gap: 12.6px;
+}
+
+
+.school-logo {
+  width: 6.504525rem;
+  height: 6.504525rem;
+  line-height: normal;
+  letter-spacing: 0.063396rem;
+  grid-area: 1 / 1 / 2 / 2;
+}
+
+.school-name {
+  color: #0A1D52;
+  font-family: "Inter", sans-serif;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.school-name-main {
+  color: #0A1D52;
+  font-family: "Inter", sans-serif;
+  font-size: 1.89rem;
+  font-weight: 900;
+  line-height: 1.1;
+  white-space: nowrap;
+}
+
+/* Right controls */
+.header-controls {
+  display: flex;
+  align-items: center;
+  gap: 0.675rem;
+}
+
+.icon-btn {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: #001a3a;
+  color: #fff;
+  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.icon-btn:hover {
+  background: #1a3a6e;
+}
+}
+
+/* Level dropdown */
+.level-dropdown {
+  position: relative;
+}
+
+.level-btn {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 0.405rem 0.99rem;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  margin-right: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+  font-size: 0.81rem;
+  font-weight: 600;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.level-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+}
+
+.level-chevron {
+  font-size: 0.648rem;
+  transition: transform 0.25s ease;
+}
+
+.level-chevron.open {
+  transform: rotate(180deg);
+}
+
+.level-menu {
+  position: absolute;
+  top: calc(100% + 7.2px);
+  right: 0;
+  min-width: 144px;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 9px;
+  list-style: none;
+  box-shadow: 0 7.2px 21.6px rgba(0, 0, 0, 0.3);
+  z-index: 500;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scaleY(0.95);
+  transform-origin: top;
+  transition: opacity 0.2s ease, transform 0.2s ease, visibility 0.2s ease;
+  overflow: hidden;
+}
+
+.level-menu.open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scaleY(1);
+}
+
+.level-item {
+  padding: 0.765rem 1.125rem;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 0.828rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.level-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+}
+}
+
+.level-item.active {
+  background: rgba(255, 255, 255, 0.22);
+  color: #fff;
+  font-weight: 700;
+}
+
+/* ── Hero body — headline left, match card right ── */
+.hero-body {
+  position: relative;
+  z-index: 10;
+  flex: 1;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 0 4.5rem;
+  max-width: 1320px;
+  width: 100%;
+  margin: 0 auto;
+}
+
+/* Left */
+.hero-left {
+  margin-left: -3rem;
+  max-width: 486px;
+}
+
+.hero-headline {
+  color: #0A1D52;
+  font-family: "Poppins", sans-serif;
+  font-size: 2.964942rem;
+  font-style: normal;
+  font-weight: 800;
+  line-height: normal;
+}
+
+.hero-tagline {
+  font-size: 1.461492rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: rgba(10, 29, 82, 0.53);
+  margin-bottom: 0.99rem;
+  text-transform: uppercase;
+}
+
+.line {
+  width: 22.87675rem;
+  height: 0.38031rem;
+  background: #FCBF19;
+  margin-bottom: 0.99rem;
+}
+
+.hero-copy {
+  font-size: 1.536525rem;
+  color: #0A1D52;
+  font-weight: 600;
+  line-height: 1.75;
+  margin-bottom: 1.8rem;
+}
+
+.hero-cta-row {
+  display: flex;
+  gap: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.cta-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.585rem 1.215rem;
+  border-radius: 5.4px;
+  font-size: 0.738rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  cursor: pointer;
+  transition: all 0.2s;
+  text-transform: uppercase;
+}
+
+.cta-primary {
+  border-radius: 0.530271rem;
+  background: #0A1D52;
+  color: #fff;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.cta-primary:hover {
+  background: #fff;
+  color: #001a3a;
+}
+}
+
+.cta-secondary {
+  background: transparent;
+  color: #0A1D52;
+  border: 1.8px solid #0A1D52;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.cta-secondary:hover {
+  border-color: #001a3a;
+  background: rgba(255, 255, 255, 0.5);
+}
+}
+
+/* ── Match card ── */
+.match-card {
+  background: rgba(8, 18, 42, 0.88);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(14px);
+  border-radius: 20px;
+  padding: 1.9rem 2.2rem;
+  width: 27.28413rem;
+  height: 22.63619rem;
+  flex-shrink: 0;
+  max-width: 410px;
+  margin-top: -4.3rem;
+  margin-right: 2rem;
+  aspect-ratio: 6 / 5;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  flex-shrink: 0;
+  color: #fff;
+  align-self: center;
+  overflow: hidden;
+}
+
+/* Houses the "ONGOING MATCHES" label and the Levels dropdown on one row,
+   so the dropdown sits inside the match card instead of the hero topbar,
+   without altering either element's own design. */
+.match-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.match-card-header .match-card-label {
+  margin-bottom: 0;
+}
+
+.match-card-label {
+  font-size: 1.20725rem;
+  font-family: "Inter", sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  color: #fff;
+  text-transform: uppercase;
+  margin-bottom: 0.6rem;
+}
+
+.match-teams {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin-bottom: 2.73rem;
+}
+
+.team-badge {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+}
+
+/* Real logo — shown when team.logo is set in the MATCHES array */
+.team-logo-img {
+  width: 64.8px;
+  height: 64.8px;
+  object-fit: contain;
+  border-radius: 50%;
+}
+
+/*
+  Fallback circle — shown while team.logo is null.
+  To use real logos: set logo: "/src/assets/teams/filename.png" in
+  the MATCHES array inside LandingPage.jsx, and put the image at that path.
+*/
+.team-logo-placeholder {
+  width: 64.8px;
+  height: 64.8px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 800;
+  font-size: 0.945rem;
+  color: #fff;
+  flex-shrink: 0;
+}
+
+.team-name {
+  color: #FFF;
+  font-family: "Inter";
+  font-size: 0.90544rem;
+  font-style: normal;
+  font-weight: 700;
+}
+
+.vs-label {
+  color: #FFF;
+  text-align: center;
+  font-family: "Inter";
+  font-size: 2.89744rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: normal;
+}
+
+.match-info {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  font-size: 0.90544rem;
+  color: #fff;
+  flex-wrap: wrap;
+  font-family: "Inter", sans-serif;
+}
+
+.linespace {
+  stroke-width: 0.966px;
+  background-color: #fff;
+  width: 21.44306rem;
+  height: 1px;
+  margin-bottom: 0.9rem;
+}
+
+.match-info-icon {
+  font-size: 0.648rem;
+}
+
+.dot {
+  opacity: 0.35;
+}
+
+.match-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.match-card-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.65);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  padding: 0 0.5rem;
+}
+
+/* ── Match switch transition ── */
+.match-card-body {
+  animation-duration: 0.32s;
+  animation-timing-function: ease;
+  animation-fill-mode: both;
+}
+
+.match-card-body.match-anim-next {
+  animation-name: match-slide-in-from-right;
+}
+
+.match-card-body.match-anim-prev {
+  animation-name: match-slide-in-from-left;
+}
+
+@keyframes match-slide-in-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes match-slide-in-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-18px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.match-sport {
+  color: #FFF;
+  font-family: "Inter";
+  font-size: 0.90544rem;
+  font-style: normal;
+  font-weight: 600;
+  line-height: normal;
+  display: inline-block;
+  animation-duration: 0.32s;
+  animation-timing-function: ease;
+  animation-fill-mode: both;
+}
+
+.match-sport.match-anim-next {
+  animation-name: match-slide-in-from-right;
+}
+
+.match-sport.match-anim-prev {
+  animation-name: match-slide-in-from-left;
+}
+
+.match-nav-btns {
+  display: flex;
+  gap: 0.36rem;
+}
+
+.nav-btn {
+  width: 27px;
+  height: 27px;
+  border-radius: 5.4px;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  font-size: 0.648rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.nav-btn:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+}
+
+/* ══════════════════════════════════════════════
+   NEW — Content section below the hero (scrollable)
+   ══════════════════════════════════════════════ */
+.content-section {
+  position: relative;
+  background: #001529;
+  padding: 0 2.5rem 4rem;
+  padding-top: 3.5rem
+}
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 3.5rem 0 2rem;
+}
+
+.heading-line {
+  flex: 1;
+  max-width: 80px;
+  height: 1px;
+  background: #FCBF19;
+}
+
+.heading-text {
+  font-family: 'Lalezar', sans-serif;
+  font-size: 2.10438rem;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: #fff;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+/* ── Info cards ── */
+.info-cards-row {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-top: -0.1rem;
+  position: relative;
+  z-index: 20;
+}
+
+.info-card {
+  background: #fff;
+  border-radius: 0px;
+  padding: 1.5rem 1.6rem 1.75rem;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+  border-top: 9px solid transparent;
+}
+
+.info-card:nth-child(1) {
+  border-top-color: #B0B0B0;
+}
+
+.info-card:nth-child(2) {
+  border-top-color: #F5B612;
+}
+
+.info-card:nth-child(3) {
+  border-top-color: #97A2E1;
+}
+
+.info-card-title {
+  font-family: "Poppins", sans-serif;
+  font-size: 1.05rem;
+  font-weight: 800;
+  color: #0A1D52;
+  margin-bottom: 0.6rem;
+}
+
+.info-card-desc {
+  font-family: "Inter", sans-serif;
+  font-size: 0.85rem;
+  line-height: 1.55;
+  color: #5a6472;
+  margin-bottom: 1.25rem;
+}
+
+.info-card-arrow {
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  border: 1.5px solid #0A1D52;
+  background: transparent;
+  color: #0A1D52;
+  font-size: 0.78rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.info-card-arrow:hover {
+  background: #0A1D52;
+  color: #fff;
+}
+}
+
+/* ── Sports statistics ── */
+.stats-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2rem;
+  flex-wrap: wrap;
+}
+
+.stat-item {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.stat-icon-circle {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  background: #001a3a;
+  color: #fff;
+  font-size: 1.1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.stat-text {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.3;
+  font-family: "Inter", sans-serif;
+}
+
+.stat-value {
+  font-size: 1.2rem;
+  font-weight: 800;
+  color: #fff;
+}
+
+.stat-label {
+  font-size: 0.66rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.6);
+}
+
+.stat-divider {
+  width: 1px;
+  height: 38px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+/* ── Sports available ── */
+.sports-row {
+  display: flex;
+  align-items: stretch;
+  justify-content: center;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+
+.sport-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.6rem;
+  width: 110px;
+  padding: 1.25rem 0.75rem;
+  background: #001a3a;
+  border-radius: 10px;
+  transition: background 0.2s, transform 0.2s;
+  cursor: pointer;
+}
+
+/* Hover/tap popover — which levels offer this sport. Purely additive
+   (absolutely positioned, doesn't affect the tile's own box), shown via
+   React state so it also works as a tap-to-toggle on touch devices
+   where CSS :hover never fires. */
+.sport-tile-tooltip {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 50%;
+  transform: translateX(-50%);
+  background: #001a3a;
+  color: #fff;
+  font-family: "Inter", sans-serif;
+  font-size: 0.62rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  padding: 0.5rem 0.75rem;
+  border-radius: 8px;
+  box-shadow: 0 7.2px 21.6px rgba(0, 0, 0, 0.3);
+  z-index: 20;
+  pointer-events: none;
+}
+
+.sport-tile-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  transform: translateX(-50%);
+  border: 6px solid transparent;
+  border-top-color: #001a3a;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.sport-tile:hover {
+  background: #1a3a6e;
+  transform: translateY(-3px);
+}
+}
+
+.sport-tile-icon {
+  font-size: 1.6rem;
+  color: #fff;
+}
+
+.sport-tile-name {
+  font-family: "Inter", sans-serif;
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: rgba(255, 255, 255, 0.85);
+  text-align: center;
+}
+
+/* ── How to join as a player ── */
+.steps-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.step-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  width: 200px;
+}
+
+.step-icon-circle {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  background: #001a3a;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0.9rem;
+}
+
+.step-icon {
+  font-size: 1.6rem;
+  color: #fff;
+}
+
+.step-number {
+  position: absolute;
+  top: -6px;
+  right: -6px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #FCBF19;
+  color: #0A1D52;
+  font-size: 0.75rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.step-title {
+  font-family: "Inter", sans-serif;
+  font-size: 0.78rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #fff;
+  margin-bottom: 0.4rem;
+}
+
+.step-desc {
+  font-family: "Inter", sans-serif;
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+.step-arrow {
+  font-size: 1.2rem;
+  color: #F4A614;
+  margin-top: 1.6rem;
+  flex-shrink: 0;
+}
+
+/* ── Reusable header with editable side lines ── */
+.header-with-lines {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin: 1.25rem 0 0.75rem;
+}
+
+.header-with-lines .header-line {
+  flex: 1;
+  height: 6px;
+  background: #FCBF19;
+  border-radius: 4px;
+  max-width: 160px;
+}
+
+.header-with-lines .header-text {
+  color: #FFF;
+  font-family: "Lalezar";
+  font-size: 3.41669rem;
+  font-style: normal;
+  font-weight: 400;
+  line-height: normal;
+}
+
+/* ── Carousel styles ── */
+.carousel-viewport {
+  width: 100%;
+  overflow: hidden;
+  background: transparent;
+  border-radius: 10px;
+  margin-top: 1rem;
+  padding: 1rem 0;
+}
+
+.carousel-track {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.carousel-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  /* animate the full row leftwards by 50% (we duplicated items) */
+  animation: carousel-scroll linear infinite;
+  animation-duration: var(--carousel-duration, 20s);
+}
+
+.carousel-row--offset {
+  /* offset second row for a staggered effect */
+  animation-delay: calc(var(--carousel-duration, 20s) / -2);
+}
+
+.carousel-slide {
+  flex: 0 0 auto;
+  width: 220px;
+  height: 140px;
+  border-radius: 8px;
+  overflow: hidden;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.35);
+}
+
+.carousel-slide img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+@keyframes carousel-scroll {
+  from {
+    transform: translateX(0);
+  }
+
+  to {
+    transform: translateX(-50%);
+  }
+}
+
+
+/* ── Responsive ── */
+@media (max-width: 900px) {
+  .info-cards-row {
+    grid-template-columns: 1fr;
+    margin-top: -2.5rem;
+  }
+
+  .step-arrow {
+    display: none;
+  }
+
+  .stats-row {
+    gap: 1.25rem;
+  }
+
+  .stat-divider {
+    display: none;
+  }
+
+  /* Hero — the fixed padding/nowrap text/side-by-side layout below was
+     sized for desktop only, so on a phone the headline text and the
+     match card overflowed past the right edge instead of wrapping or
+     stacking. Below this width, let the hero grow with its content
+     (instead of being locked to one viewport-height box) and stack
+     everything in a single centered column. */
+  .hero {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow: visible;
+  }
+
+  .hero-topbar {
+    padding: 1rem 1.25rem;
+  }
+
+  .hero-body {
+    flex-direction: column;
+    align-items: flex-start;
+    padding: 1.5rem 1.25rem 2.5rem;
+    gap: 2rem;
+  }
+
+  .hero-left {
+    margin-left: 0;
+    max-width: 100%;
+    text-align: left;
+  }
+
+  .school-identity {
+    justify-content: flex-start;
+  }
+
+  .school-logo {
+    width: 4rem;
+    height: 4rem;
+  }
+
+  .school-name-main {
+    font-size: 1.2rem;
+    white-space: normal;
+  }
+
+  .hero-headline {
+    font-size: 1.9rem;
+  }
+
+  .line {
+    width: 100%;
+    max-width: 18rem;
+    margin-left: 0;
+    margin-right: 0;
+  }
+
+  .hero-tagline {
+    font-size: 1rem;
+  }
+
+  .hero-copy {
+    font-size: 1.05rem;
+  }
+
+  .hero-cta-row {
+    justify-content: flex-start;
+  }
+
+  .match-card {
+    width: 100%;
+    max-width: 380px;
+    height: auto;
+    aspect-ratio: auto;
+    margin-top: 0;
+    margin-right: 0;
+  }
+}
+
+.sports-moments {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
+
+.sports-moments .linegroup1,
+.sports-moments .linegroup2 {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 0.36rem;
+}
+
+.sports-moments .linegroup1 .line1,
+.sports-moments .linegroup2 .line3 {
+  width: 10.71875rem;
+  height: 0.36rem;
+  background: linear-gradient(93deg, rgba(252, 191, 25, 1) 38%, rgba(186, 186, 186, 1) 100%);
+  ;
+}
+
+.sports-moments .linegroup1 .line5,
+.sports-moments .linegroup2 .line6 {
+  width: 8.71875rem;
+  height: 0.36rem;
+  background: linear-gradient(93deg, rgba(186, 186, 186, 1) 21%, rgba(252, 191, 25, 1) 100%);
+}
+
+.sports-moments .linegroup1 .line2,
+.sports-moments .linegroup2 .line4 {
+  width: 7.125rem;
+  height: 0.36rem;
+  background: radial-gradient(circle, rgba(186, 186, 186, 1) 1%, rgba(10, 29, 82, 1) 100%);
+}
+
+/* ── Bottom CTA banner (Web Customization → Landing Page → Bottom Text Section) ── */
+.landing-cta {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  gap: 0.9rem;
+  margin-top: 2.5rem;
+  padding: 2.75rem 1.5rem;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #0A1D52 0%, #001529 100%);
+}
+
+.landing-cta-title {
+  font-family: "Lalezar", sans-serif;
+  font-size: 2rem;
+  color: #FCBF19;
+  margin: 0;
+}
+
+.landing-cta-desc {
+  font-family: "Inter", sans-serif;
+  font-size: 0.95rem;
+  color: rgba(255, 255, 255, 0.85);
+  max-width: 32rem;
+  margin: 0;
+}
+
+.landing-cta-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  margin-top: 0.4rem;
+  padding: 0.75rem 1.75rem;
+  border: none;
+  border-radius: 999px;
+  background: #FCBF19;
+  color: #0A1D52;
+  font-family: "Inter", sans-serif;
+  font-size: 0.85rem;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: transform 0.15s, box-shadow 0.15s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .landing-cta-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 20px rgba(252, 191, 25, 0.35);
+  }
+}
+
+/* ── Contact us footer strip ── */
+.contact-footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  margin-top: 2.5rem;
+  margin-left: calc(-50vw + 50%);
+  margin-right: calc(-50vw + 50%);
+  width: 100vw;
+  padding: 2.25rem 2.5rem;
+  background-color: #fff;
+}
+
+.contact-footer .header-with-lines.contact-footer-header {
+  margin: 0 0 1rem;
+}
+
+.contact-footer .header-with-lines.contact-footer-header .header-line {
+  background-color: #FCBF19;
+  width: 3rem;
+  height: 0.2rem;
+}
+
+.contact-footer .header-with-lines.contact-footer-header .header-text {
+  color: #0A1D52;
+  font-size: 2.08238rem;
+}
+
+.contact-footer-row {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.contact-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  color: rgba(255, 255, 255, 0.85);
+  text-decoration: none;
+  transition: color 0.2s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.contact-item-link:hover {
+  color: #FCBF19;
+}
+}
+
+@media (hover: hover) and (pointer: fine) {
+.contact-item-link:hover .contact-icon-circle {
+  background: #FCBF19;
+  color: #0A1D52;
+}
+}
+
+.contact-icon-circle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: #001a3a;
+  color: #fff;
+  font-size: 0.78rem;
+  flex-shrink: 0;
+  transition: background 0.2s, color 0.2s;
+}
+
+.contact-text {
+  color: #0A1D52;
+  font-family: "Inter";
+  font-size: 0.82rem;
+  font-style: normal;
+  font-weight: 700;
+  line-height: normal;
+}
+
+.contact-copyright {
+  margin: 1.75rem 0 0;
+  padding-top: 1.25rem;
+  width: 100%;
+  max-width: 60rem;
+  border-top: 1px solid rgba(10, 29, 82, 0.1);
+  text-align: center;
+  color: rgba(10, 29, 82, 0.6);
+  font-family: "Inter";
+  font-size: 0.72rem;
+  font-weight: 500;
+}
+
+.contact-divider {
+  width: 1px;
+  height: 24px;
+  background: rgba(255, 255, 255, 0.18);
+}
+
+@media (max-width: 900px) {
+  .contact-footer-row {
+    gap: 1.1rem;
+  }
+
+  .contact-divider {
+    display: none;
+  }
+
+  .contact-text {
+    white-space: normal;
+  }
+}
+
+/* ── Highlights banner — sits just above the ImageCarousel ── */
+/* ── Stage wrapper — gives the banner something to overlay ── */
+.carousel-stage {
+  position: relative;
+}
+
+/* ── Highlights banner — overlaps the carousel's top-left corner like a sticky note ── */
+.highlights-banner {
+  position: absolute;
+  left: 1rem;
+  z-index: 25;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  background: linear-gradient(90deg, #00153F 0%, #1757B4 99.74%);
+  padding: 0.5rem 1.4rem 0.5rem 0.5rem;
+  box-shadow: 0 10px 24px rgba(0, 0, 0, 0.35);
+}
+
+.highlights-banner-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 6px;
+  background: #FCBF19;
+  color: #0A1D52;
+  font-size: 0.85rem;
+  flex-shrink: 0;
+}
+
+.highlights-banner-text {
+  color: #fff;
+  font-family: "Inter", sans-serif;
+  font-size: 0.95rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+/* Notch / flag tail on the right edge of the banner */
+.highlights-banner-notch {
+  position: absolute;
+  top: 0;
+  right: -10px;
+  width: 0;
+  height: 0;
+  border-bottom: 16.5px solid #FCBF19;
+  border-right: 10px solid transparent;
+}

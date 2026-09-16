@@ -1,21 +1,21 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
-import { AuthProvider } from './components/AuthContext';
-import { BrandingProvider } from './components/BrandingContext';
-import { SidebarProvider } from './components/Sidebar/SidebarContext';
-import PublicLayout from './layouts/PublicLayout';
-import AuthenticatedLayout from './layouts/AuthenticatedLayout';
-import DashboardPage from './pages/DashboardPage';
-import AdminSchedulePage from './pages/AdminSchedulePage';
-import ModeratorPage from './pages/ModeratorPage';
-import SuperAdminPage from './pages/SuperAdminPage';
-import NotFoundPage from './pages/NotFoundPage';
-import ProfilePage from './pages/ProfilePage';
-import ProtectedRoute from './components/ProtectedRoute';
-import LoginModal from './components/LoginModal/LoginModal';
-import RegistrationPage from './pages/RegistrationPage';
-import TeamAndSportsPage from './pages/TeamAndSportsPage';
-import MatchSchedulesPage from './pages/MatchSchedulesPage';
-import RankingPage from './pages/RankingPage';
+import { AuthProvider } from './shared/context/AuthContext';
+import { BrandingProvider } from './shared/context/BrandingContext';
+import { SidebarProvider } from './shared/components/Sidebar/SidebarContext';
+import PublicLayout from './public/PublicLayout';
+import AuthenticatedLayout from './shared/layouts/AuthenticatedLayout';
+import DashboardPage from './student/DashboardPage';
+import AdminSchedulePage from './admin/AdminSchedulePage';
+import ModeratorPage from './moderator/ModeratorPage';
+import SuperAdminPage from './superadmin/SuperAdminPage';
+import NotFoundPage from './shared/NotFoundPage';
+import ProfilePage from './student/ProfilePage';
+import ProtectedRoute from './shared/components/ProtectedRoute';
+import LoginModal from './public/LoginModal/LoginModal';
+import RegistrationPage from './student/RegistrationPage';
+import TeamAndSportsPage from './student/TeamAndSportsPage';
+import MatchSchedulesPage from './student/MatchSchedulesPage';
+import RankingPage from './student/RankingPage';
 
 function App() {
   return (

@@ -1,0 +1,635 @@
+/* ═══════════════════════════════════════════
+   RankingPage.css — Santa Rita College
+   ═══════════════════════════════════════════ */
+
+/* ── Page shell ── */
+.rk-page {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  background-color: #001529;
+  color: #fff;
+  font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+}
+
+/* ── Top header ── */
+.rk-dash-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 25px;
+  height: 48px;
+  flex-shrink: 0;
+  width: 100%;
+  background-color: #001529;
+  border-bottom: 3px solid #fff;
+  margin-top: 3.6px;
+  box-sizing: border-box;
+}
+
+.rk-dash-header__title {
+  font-size: 20px;
+  font-family: 'Lalezar', sans-serif;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: #fff;
+  margin: 0;
+  text-transform: uppercase;
+  line-height: 1;
+}
+
+.rk-search-wrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.rk-search-icon {
+  position: absolute;
+  left: 13px;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.rk-search-input {
+  font-family: "Inter", sans-serif;
+  width: 200px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  padding: 7px 14px 7px 32px;
+  font-size: 12px;
+  color: #fff;
+  box-sizing: border-box;
+  transition: border-color 0.2s, background 0.2s, width 0.2s;
+}
+
+.rk-search-input::placeholder {
+  color: rgba(255, 255, 255, 0.4);
+}
+
+.rk-search-input:focus {
+  outline: none;
+  width: 240px;
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Page intro ── */
+.rk-page-intro {
+  padding: 18px 25px 10px;
+  flex-shrink: 0;
+  margin-left: -15px;
+}
+
+/* Intro row also carries the search bar, laid out beside the title. */
+.rk-top-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+/* Level tabs sit on their own row below the title/search. */
+.rk-lvltabs-row {
+  display: flex;
+  justify-content: flex-end;
+  padding: 0 25px 10px;
+  margin-left: -15px;
+  flex-shrink: 0;
+}
+
+/* ── Level tabs — moved out of the small header dropdown (easy to miss)
+   and into a segmented control right beside the page title. ── */
+.rk-lvltabs {
+  display: inline-flex;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 14px;
+  padding: 5px;
+  flex-shrink: 0;
+}
+
+.rk-lvltab {
+  font-family: "Inter", sans-serif;
+  background: transparent;
+  border: none;
+  color: rgba(255, 255, 255, 0.65);
+  border-radius: 10px;
+  padding: 8px 18px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  transition: background 0.18s ease, color 0.18s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.rk-lvltab:hover {
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
+}
+}
+
+.rk-lvltab--active {
+  color: #001529;
+  background: #FCBF19;
+}
+
+.rk-page-title {
+  font-size: 26px;
+  font-weight: 900;
+  color: #FCBF19;
+  margin: 0 0 4px;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.rk-page-subtitle {
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+
+/* ── Scrollable body ── */
+.rk-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  padding: 0 14px 20px;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.rk-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.rk-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
+}
+
+/* ── Section header ── */
+.rk-section {
+  padding-top: 10px;
+}
+
+.rk-section-header {
+  margin-bottom: 12px;
+}
+
+.rk-section-title {
+  font-family: "Inter", sans-serif;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 19px;
+  font-weight: 800;
+  color: #fff;
+  margin: 0 0 2px;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.rk-section-icon {
+  color: #FCBF19;
+  font-size: 16px;
+}
+
+.rk-section-subtitle {
+  font-family: "Inter", sans-serif;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.55);
+  margin: 0;
+}
+
+/* ── Sport filter tabs ── */
+.rk-sport-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+
+.rk-division-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: -6px 0 14px;
+}
+
+.rk-division-label {
+  font-family: "Inter", sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+/* ── Division dropdown (custom — see DivisionSelect in RankingPage.jsx) ──
+   A native <select>'s open option list is drawn by the OS/browser and
+   ignores nearly all CSS, so it never matched this page's dark navy /
+   gold theme. Rebuilt as a button + absolutely-positioned menu instead,
+   styled entirely by hand like every other control on this page. */
+.rk-division-dropdown {
+  position: relative;
+}
+
+.rk-division-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: "Inter", sans-serif;
+  background: rgba(255, 255, 255, 0.08);
+  color: #fff;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  padding: 6px 14px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.rk-division-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+}
+}
+
+.rk-division-chevron {
+  font-size: 10px;
+  transition: transform 0.2s ease;
+}
+
+.rk-division-chevron--open {
+  transform: rotate(180deg);
+}
+
+.rk-division-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  min-width: 140px;
+  margin: 0;
+  padding: 6px;
+  list-style: none;
+  background: #001529;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
+  z-index: 50;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-6px) scaleY(0.96);
+  transform-origin: top;
+  transition: opacity 0.18s ease, transform 0.18s ease, visibility 0.18s ease;
+}
+
+.rk-division-menu--open {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scaleY(1);
+}
+
+.rk-division-item {
+  font-family: "Inter", sans-serif;
+  color: rgba(255, 255, 255, 0.75);
+  font-size: 12px;
+  font-weight: 700;
+  padding: 8px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.rk-division-item:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #fff;
+}
+}
+
+.rk-division-item--active {
+  background: #FCBF19;
+  color: #001529;
+}
+
+.rk-sport-tab {
+  font-family: "Inter", sans-serif;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.75);
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  border-radius: 20px;
+  padding: 6px 16px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: background 0.2s, border-color 0.2s, color 0.2s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.rk-sport-tab:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+}
+}
+
+.rk-sport-tab--active {
+  background: #FCBF19;
+  border-color: #FCBF19;
+  color: #001529;
+}
+
+/* ── Table card shell ── */
+.rk-card {
+  background: #fff;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.25);
+}
+
+.rk-card--light {
+  background: #fff;
+}
+
+/* ── Table ── */
+.rk-table-wrap {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+.rk-row {
+  display: grid;
+  grid-template-columns: 60px 60px 1fr 100px 100px;
+  align-items: center;
+  padding: 10px 16px;
+  color: #00193F;
+}
+
+.rk-row--medal {
+  grid-template-columns: 60px 60px 1fr 80px 80px 80px 80px;
+}
+
+.rk-row--head {
+  background: #DCE3F0;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  color: #5A6B8C;
+  text-transform: uppercase;
+  padding: 12px 16px;
+}
+
+.rk-row:not(.rk-row--head) {
+  background: #fff;
+}
+
+.rk-row--rank-1 {
+  background: linear-gradient(90deg, #fff 0%, #FCBF19 100%) !important;
+  color: #00193F;
+}
+
+.rk-row--rank-2 {
+  background: linear-gradient(90deg, #fff 0%, #C7CDD6 100%) !important;
+  color: #00193F;
+}
+
+.rk-row--rank-3 {
+  background: linear-gradient(90deg, #fff 0%, #D8A06A 100%) !important;
+  color: #00193F;
+}
+
+.rk-cell {
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.rk-cell-rank {
+  text-align: center;
+  font-weight: 900;
+}
+
+.rk-crown {
+  color: #FCBF19;
+  font-size: 18px;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.2));
+}
+
+.rk-cell-logo {
+  display: flex;
+  justify-content: center;
+}
+
+.rk-team-logo {
+  font-family: "Inter", sans-serif;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 10px;
+  font-weight: 900;
+  color: #fff;
+  letter-spacing: 0.02em;
+  flex-shrink: 0;
+}
+
+.rk-team-logo--img {
+  background: #eef1f8;
+  overflow: hidden;
+}
+
+.rk-team-logo--img img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.rk-table-empty {
+  padding: 30px 16px;
+  text-align: center;
+  font-size: 0.85rem;
+  color: #8593ad;
+  font-weight: 600;
+}
+
+.rk-load-error {
+  margin: 0 0 16px;
+  padding: 12px 16px;
+  background: #fdeeea;
+  border: 1px solid #f2b8a8;
+  border-radius: 10px;
+  color: #7a2c1e;
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.rk-cell-team {
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  font-size: 12.5px;
+}
+
+.rk-cell-num {
+  text-align: center;
+  font-size: 13px;
+}
+
+.rk-cell-total {
+  font-weight: 900;
+}
+
+/* ── Responsive ── */
+@media (max-width: 560px) {
+  .rk-search-input,
+  .rk-search-input:focus {
+    width: 100%;
+  }
+
+  .rk-search-wrap {
+    flex: 1 1 100%;
+  }
+
+  .rk-lvltabs-row {
+    padding: 0 16px 8px;
+    margin-left: 0;
+    justify-content: flex-start;
+  }
+
+  .rk-row,
+  .rk-row--medal {
+    grid-template-columns: 36px 36px 1fr repeat(auto-fit, minmax(48px, 1fr));
+    padding: 8px 10px;
+    column-gap: 4px;
+  }
+
+  .rk-cell {
+    font-size: 11px;
+  }
+
+  .rk-cell-team {
+    font-size: 10.5px;
+  }
+
+  /* Intro row + level tabs were sized for desktop (fixed padding, no
+     wrap on the tabs), so "College" ran off the right edge and got
+     clipped by .rk-body's overflow-x: hidden instead of wrapping. */
+  .rk-page-intro {
+    padding: 14px 16px 8px;
+    margin-left: 0;
+  }
+
+  .rk-top-row {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .rk-lvltabs {
+    flex-wrap: wrap;
+  }
+
+  .rk-lvltab {
+    padding: 7px 12px;
+    font-size: 12px;
+  }
+}
+/* ── Mobile: leaves room for the floating hamburger button (Sidebar.css
+   takes the icon rail out of flow below 768px), which would otherwise
+   sit on top of this title. ── */
+@media (max-width: 768px) {
+  body .rk-dash-header {
+    padding: 0 16px;
+    padding-left: 64px;
+  }
+}
+
+/* ══════════════════════════════════════════
+   RANKING TABLES → STACKED CARDS ON MOBILE
+   .rk-row is a 5-7 column CSS grid (rank/logo/team/rating/win-loss, or
+   rank/logo/team/gold/silver/bronze/total for the medal tally) — the
+   existing 560px query only compressed those columns further, which
+   stayed cramped. Below this width each row becomes a card instead:
+   rank + logo + team name form one header line, and every stat cell
+   (.rk-cell-num, now carrying a data-label — see RankingPage.jsx) drops
+   onto its own full-width label/value line underneath.
+   ══════════════════════════════════════════ */
+@media (max-width: 640px) {
+  .rk-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 4px 10px;
+    background: #fff;
+    border-radius: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+  }
+
+  /* Declared after .rk-row so its display: none wins the tie (both are
+     single-class selectors of equal specificity, and the head row
+     carries both classes) instead of being overridden back to flex. */
+  .rk-row--head {
+    display: none;
+  }
+
+  .rk-table-wrap .rk-row:last-child {
+    margin-bottom: 0;
+  }
+
+  .rk-cell {
+    padding: 0;
+  }
+
+  .rk-cell-rank {
+    order: 1;
+    min-width: 20px;
+  }
+
+  .rk-cell-logo {
+    order: 2;
+    justify-content: flex-start;
+  }
+
+  .rk-cell-team {
+    order: 3;
+    flex: 1;
+    min-width: 0;
+    text-align: left;
+  }
+
+  .rk-cell-num {
+    order: 4;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    width: 100%;
+    padding-top: 8px;
+    margin-top: 6px;
+    border-top: 1px solid #eef1f8;
+    text-align: right;
+  }
+
+  .rk-cell-num::before {
+    content: attr(data-label);
+    font-weight: 700;
+    font-size: 10px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: #5a6a7a;
+  }
+}
