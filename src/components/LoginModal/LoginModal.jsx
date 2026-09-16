@@ -2,7 +2,7 @@ import React, { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../AuthContext';
 import { BrandingContext } from '../BrandingContext';
-import { FaTimes, FaEye, FaEyeSlash } from 'react-icons/fa';
+import { FaTimes, FaEye, FaEyeSlash, FaArrowLeft } from 'react-icons/fa';
 import { findStaffAllowlistEntry } from '../../services/firestoreService';
 import './LoginModal.css';
 
@@ -131,11 +131,20 @@ function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification 
   );
 }
 
-const GRADE_LEVELS = ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6',
-  'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12',
-  '1st Year', '2nd Year', '3rd Year', '4th Year'];
-
-const SECTIONS = ['Section A', 'Section B', 'Section C', 'Section D', 'Section E'];
+const GRADE_LEVEL_GROUPS = [
+  {
+    label: 'Elementary',
+    options: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'],
+  },
+  {
+    label: 'High School',
+    options: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'],
+  },
+  {
+    label: 'College',
+    options: ['1st Year', '2nd Year', '3rd Year', '4th Year'],
+  },
+];
 
 const ROLE_LABELS = {
   student: 'Student',
@@ -235,6 +244,15 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
 
   return (
     <div className="auth-modal-content signup-screen">
+      <button
+        type="button"
+        className="auth-modal-back"
+        onClick={() => onSwitchScreen('login')}
+        aria-label="Back to login"
+      >
+        <FaArrowLeft />
+      </button>
+
       <div className="auth-logo">
         <img src={logo} alt="School logo" />
       </div>
@@ -252,6 +270,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
           </select>
         </div>
 
+        <div className="auth-fields" key={role}>
         {isStaffRole ? (
           <>
             {/* Staff accounts are pre-approved by gmail — no need to
@@ -373,22 +392,25 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
                   required
                 >
                   <option value="">Select</option>
-                  {GRADE_LEVELS.map((g) => <option key={g} value={g}>{g}</option>)}
+                  {GRADE_LEVEL_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.options.map((g) => <option key={g} value={g}>{g}</option>)}
+                    </optgroup>
+                  ))}
                 </select>
               </div>
 
               <div className="form-group">
                 <label htmlFor="section">Section</label>
-                <select
+                <input
+                  type="text"
                   id="section"
                   name="section"
+                  placeholder="Enter your section"
                   value={formData.section}
                   onChange={handleChange}
                   required
-                >
-                  <option value="">Select</option>
-                  {SECTIONS.map((s) => <option key={s} value={s}>{s}</option>)}
-                </select>
+                />
               </div>
             </div>
 
@@ -441,6 +463,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
             </div>
           </>
         )}
+        </div>
 
         <button type="submit" className="auth-btn auth-btn-primary" disabled={submitting}>
           {submitting ? 'Submitting…' : 'Submit'}

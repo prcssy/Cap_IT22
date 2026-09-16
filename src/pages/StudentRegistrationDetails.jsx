@@ -23,6 +23,23 @@ const ALL_GRADES = [
   '1st Year','2nd Year','3rd Year','4th Year',
 ];
 
+// Same grade -> school-level mapping used by AdminSchedulePage.jsx /
+// SuperAdminPage.jsx / RegistrationPage.jsx — level is always derived
+// from gradeLevel on the fly, never stored as its own field.
+const ELEMENTARY_GRADES = new Set(['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6']);
+const HIGH_SCHOOL_GRADES = new Set(['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']);
+const COLLEGE_GRADES = new Set(['1st Year', '2nd Year', '3rd Year', '4th Year']);
+
+function getSchoolLevel(gradeLevel) {
+  if (!gradeLevel) return null;
+  if (ELEMENTARY_GRADES.has(gradeLevel)) return 'elementary';
+  if (HIGH_SCHOOL_GRADES.has(gradeLevel)) return 'highSchool';
+  if (COLLEGE_GRADES.has(gradeLevel)) return 'college';
+  return null;
+}
+
+const LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
+
 /* Which event bucket a registration belongs to — same rule AdminSchedulePage
    uses for its own event filter/chips. */
 function getEventBucket(r, eventList) {
@@ -41,6 +58,7 @@ export default function StudentRegistrationDetails() {
   const [decisionError, setDecisionError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterLevel, setFilterLevel] = useState('');
   const [filterGrade, setFilterGrade] = useState('');
   const [filterSection, setFilterSection] = useState('');
   const [filterSport, setFilterSport] = useState('');
@@ -142,6 +160,7 @@ export default function StudentRegistrationDetails() {
     const q = searchQuery.toLowerCase();
     return (
       (!q             || (r.fullName || '').toLowerCase().includes(q)) &&
+      (!filterLevel   || getSchoolLevel(r.gradeLevel) === filterLevel) &&
       (!filterGrade   || r.gradeLevel === filterGrade) &&
       (!filterSection || r.section    === filterSection) &&
       (!filterSport   || r.sport      === filterSport) &&
@@ -150,8 +169,8 @@ export default function StudentRegistrationDetails() {
     );
   });
 
-  const hasFilters = searchQuery || filterGrade || filterSection || filterSport || filterGender || filterEvent;
-  const clearFilters = () => { setSearchQuery(''); setFilterGrade(''); setFilterSection(''); setFilterSport(''); setFilterGender(''); setFilterEvent(''); };
+  const hasFilters = searchQuery || filterLevel || filterGrade || filterSection || filterSport || filterGender || filterEvent;
+  const clearFilters = () => { setSearchQuery(''); setFilterLevel(''); setFilterGrade(''); setFilterSection(''); setFilterSport(''); setFilterGender(''); setFilterEvent(''); };
 
   return (
     <>
@@ -178,6 +197,12 @@ export default function StudentRegistrationDetails() {
 
         {/* Filter pills */}
         <div className="asp-filters">
+          <select className="asp-filter-pill" value={filterLevel} onChange={e => setFilterLevel(e.target.value)}>
+            <option value="">Level ▾</option>
+            <option value="elementary">Elementary</option>
+            <option value="highSchool">High School</option>
+            <option value="college">College</option>
+          </select>
           <select className="asp-filter-pill" value={filterGrade} onChange={e => setFilterGrade(e.target.value)}>
             <option value="">Grade/Year ▾</option>
             {ALL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
@@ -222,6 +247,7 @@ export default function StudentRegistrationDetails() {
                   <th>Name</th>
                   <th>Gender</th>
                   <th>Grade/Year</th>
+                  <th>Level</th>
                   <th>Section</th>
                   <th>Sport</th>
                   <th>Event</th>
@@ -247,6 +273,7 @@ export default function StudentRegistrationDetails() {
                       </span>
                     </td>
                     <td data-label="Grade/Year">{reg.gradeLevel || '—'}</td>
+                    <td data-label="Level">{LEVEL_LABELS[getSchoolLevel(reg.gradeLevel)] || '—'}</td>
                     <td data-label="Section">{reg.section || '—'}</td>
                     <td className="asp-td--sport" data-label="Sport">{reg.sport || '—'}</td>
                     <td data-label="Event">{reg.event || '—'}</td>
@@ -326,6 +353,10 @@ export default function StudentRegistrationDetails() {
                   <label>Section</label>
                   <p>{selectedStudent.section || '—'}</p>
                 </div>
+              </div>
+              <div className="asp-form-group">
+                <label>Level</label>
+                <p>{LEVEL_LABELS[getSchoolLevel(selectedStudent.gradeLevel)] || '—'}</p>
               </div>
               <div className="asp-form-row">
                 <div className="asp-form-group">

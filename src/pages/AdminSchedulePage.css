@@ -484,16 +484,18 @@
   white-space: nowrap;
 }
 
-/* Gender, Grade/Year, Section and Sport columns should be centered under
-   their headers — Name (with the avatar) and Action stay as-is. */
+/* Gender, Grade/Year, Level, Section and Sport columns should be centered
+   under their headers — Name (with the avatar) and Action stay as-is. */
 .asp-table--students th:nth-child(3),
 .asp-table--students th:nth-child(4),
 .asp-table--students th:nth-child(5),
 .asp-table--students th:nth-child(6),
+.asp-table--students th:nth-child(7),
 .asp-table--students td:nth-child(3),
 .asp-table--students td:nth-child(4),
 .asp-table--students td:nth-child(5),
-.asp-table--students td:nth-child(6) {
+.asp-table--students td:nth-child(6),
+.asp-table--students td:nth-child(7) {
   text-align: center;
 }
 
@@ -2997,7 +2999,8 @@
   .asp-table--students td:nth-child(3),
   .asp-table--students td:nth-child(4),
   .asp-table--students td:nth-child(5),
-  .asp-table--students td:nth-child(6) {
+  .asp-table--students td:nth-child(6),
+  .asp-table--students td:nth-child(7) {
     text-align: right;
   }
 
