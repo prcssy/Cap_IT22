@@ -412,7 +412,12 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
     targetLabel: registrationData.fullName || email,
   });
 
-  return docRef;
+  // Return the URLs alongside the ref (not just the ref) so the caller can
+  // tell whether the photo/waiver actually attached without reading the
+  // doc back — firestore.rules only lets STAFF read `registrations`, so a
+  // student-submitted registration's own getDoc() would always fail with
+  // permission-denied and silently hide a real upload failure from them.
+  return { ref: docRef, photoURL, waiverURL };
 }
 
 /**

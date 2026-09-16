@@ -531,7 +531,7 @@ function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
   );
 }
 
-function NewPasswordScreen({ onSwitchScreen, onUpdatePassword, currentUser }) {
+function NewPasswordScreen({ onSwitchScreen, onUpdatePassword }) {
   const { logo } = useContext(BrandingContext);
   const [passwords, setPasswords] = useState({
     newPassword: '',
@@ -637,8 +637,6 @@ export default function LoginModal() {
     resendVerificationEmail,
     resetPassword,
     updatePassword,
-    currentUser,
-    userProfile,
   } = useContext(AuthContext);
 
   if (!authModal.isOpen) return null;
@@ -706,7 +704,6 @@ export default function LoginModal() {
               <NewPasswordScreen
                 onSwitchScreen={switchScreen}
                 onUpdatePassword={updatePassword}
-                currentUser={currentUser}
               />
             )}
           </div>

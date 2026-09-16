@@ -82,7 +82,7 @@ function StrengthBar({ password }) {
 }
 
 /* ── Success screen ── */
-function SuccessScreen({ onClose }) {
+function SuccessScreen() {
   return (
     <div className="cp-success">
       <div className="cp-success-circle">
@@ -113,17 +113,16 @@ export default function ChangePasswordModal({ isOpen, onClose, onSave }) {
     }
   }, [isOpen]);
 
+  const handleClose = () => {
+    onClose();
+  };
+
   /* Escape key */
   useEffect(() => {
     const handleKey = (e) => { if (e.key === 'Escape') handleClose(); };
     if (isOpen) document.addEventListener('keydown', handleKey);
     return () => document.removeEventListener('keydown', handleKey);
   }, [isOpen]);
-
-  const handleClose = () => {
-    if (success) { onClose(); return; }
-    onClose();
-  };
 
   const handleSave = async () => {
     setError('');
@@ -162,7 +161,7 @@ export default function ChangePasswordModal({ isOpen, onClose, onSave }) {
 
         {/* ── Success view ── */}
         {success ? (
-          <SuccessScreen onClose={handleClose} />
+          <SuccessScreen />
         ) : (
           <>
             <h2 className="cp-title">CHANGE PASSWORD</h2>

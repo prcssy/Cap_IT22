@@ -101,17 +101,6 @@ function buildEventCounts(registrations, eventList = EVENT_TYPES) {
   return counts;
 }
 
-const TEAM_COLORS = {
-  'Black Beetles':   '#1a1a1a',
-  'Purple Jaguars':  '#6d28d9',
-  'Brown Cubs':      '#92400e',
-  'Orange Bulldogs': '#ea580c',
-  'Yellow Vipers':   '#b45309',
-  'Maroon Owls':     '#9f1239',
-  'Green Gators':    '#15803d',
-  'Red Rhinos':      '#dc2626',
-};
-
 const TABS = ['Registration', 'Venues', 'Sports & Teams', 'Match Schedules Format', 'Schedule Requests'];
 const VENUES_TAB_INDEX = TABS.indexOf('Venues');
 const REGISTRATION_TAB_INDEX = TABS.indexOf('Registration');

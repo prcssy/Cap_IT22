@@ -288,7 +288,7 @@ function LandingPage() {
           const validStats = fireStats.filter((s) => s && typeof s.label === 'string' && typeof s.icon === 'function');
           if (validStats.length) setStats(validStats);
         }
-      } catch (error) {
+      } catch {
         console.log('Firestore not available, using default data.');
       }
     };

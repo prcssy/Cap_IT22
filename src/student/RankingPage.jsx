@@ -31,11 +31,6 @@ function displayCategory(category) {
     .trim();
 }
 
-/* The scope key Moderator writes rankings under. */
-function scopeKeyFor(sportName, category) {
-  return `${norm(sportName)}::${norm(displayCategory(category))}`;
-}
-
 function numericRankingValue(value) {
   if (typeof value === 'number') return Number.isFinite(value) ? value : null;
   if (typeof value === 'string' && value.trim() !== '') {
@@ -281,6 +276,10 @@ function MedalTable({ data, search }) {
     const q = norm(search);
     return q ? ranked.filter(t => norm(t.team).includes(q)) : ranked;
   }, [ranked, search]);
+
+  if (visible.length === 0) {
+    return <div className="rk-table-empty">No teams found for this sport/level yet.</div>;
+  }
 
   return (
     <div className="rk-table-wrap" role="table">

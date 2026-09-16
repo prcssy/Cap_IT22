@@ -192,6 +192,13 @@ export default function StudentRegistrationDetails() {
 
   const handleDecision = useCallback(async (reg, status) => {
     if (!reg.regId) return;
+    // Reject is effectively destructive (the student loses their spot with
+    // no undo from this screen), so it gets the same confirm-before-act
+    // treatment as other destructive actions in this app; Approve doesn't
+    // need one since it's the non-harmful default outcome.
+    if (status === 'rejected' && !window.confirm(`Reject ${reg.fullName || 'this student'}'s registration? This cannot be undone from here.`)) {
+      return;
+    }
     setDecidingId(reg.regId);
     setDecisionError('');
     try {

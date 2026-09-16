@@ -21,12 +21,6 @@ const LEVELS = [
   { label: 'College', key: 'college' },
 ];
 
-const LEVEL_TAG = {
-  elementary: 'ELEMENTARY',
-  highSchool: 'HIGH SCHOOL',
-  college: 'COLLEGE',
-};
-
 /* ── Deterministic color per team name, so the same team always
    gets the same avatar color even without a saved logo ── */
 const PALETTE = ['#c0392b', '#8d6e63', '#f1c40f', '#27ae60', '#8e44ad', '#e67e22', '#800000', '#2c3e50', '#2980b9', '#16a085'];

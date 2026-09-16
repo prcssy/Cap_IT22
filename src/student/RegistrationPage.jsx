@@ -1,5 +1,4 @@
 import { useState, useRef, useContext, useEffect, useCallback, useMemo, Children, isValidElement, cloneElement } from 'react';
-import { getDoc } from 'firebase/firestore';
 import {
   parsePhoneNumberFromString,
   getCountries,
@@ -482,15 +481,19 @@ export default function RegistrationPage() {
     });
   }, [teamsConfig, selectedSportConfig]);
 
-  // Positions come entirely from the selected sport's own admin-configured
-  // list (Sports & Teams -> edit sport -> Positions, or the Positions
-  // column when adding a new sport) — no generic fallback, so a sport the
-  // admin hasn't set positions for correctly offers none instead of an
-  // unrelated hardcoded list.
-  const positionOptions = useMemo(
-    () => selectedSportConfig?.positions || [],
-    [selectedSportConfig]
-  );
+  // Positions come from the selected sport's own admin-configured list
+  // (Sports & Teams -> edit sport -> Positions). SportsTeamsManager tells
+  // admins a sport with no positions set "falls back to a default list for
+  // this sport" (see its "No positions set" note) — that fallback needs to
+  // actually exist here, otherwise Position is a required field with zero
+  // options and the sport becomes permanently unregistrable (e.g. an
+  // individual sport like Track or Chess that nobody bothered to add
+  // per-position labels to).
+  const positionOptions = useMemo(() => {
+    const configured = selectedSportConfig?.positions || [];
+    if (configured.length) return configured;
+    return selectedSportConfig ? ['Player'] : [];
+  }, [selectedSportConfig]);
 
   const handleTeamChange = (e) => {
     const teamName = e.target.value;
@@ -660,24 +663,14 @@ export default function RegistrationPage() {
         // createRegistration uploads the photo/waiver to Storage but never
         // lets an upload failure fail the registration itself (see
         // uploadFile in firestoreService.js) — it just saves a null URL.
-        // Read the saved doc back to see whether that happened, so the
-        // success screen can flag it instead of implying everything came
-        // through. Students can't read their own registration back
-        // (firestore.rules only allows staff to read `registrations`), so
-        // this check only actually confirms anything for staff-submitted
-        // registrations — for everyone else it fails closed (no false
-        // warning) rather than risk a false positive.
+        // createRegistration now returns those URLs directly (alongside the
+        // doc ref) so the success screen can flag a failed attachment
+        // without reading the saved doc back — students can't read their
+        // own registration (firestore.rules only allows staff to read
+        // `registrations`), so a read-back here would always fail closed.
         const attachedIssues = [];
-        if (photo || waiver) {
-          try {
-            const savedSnap = await getDoc(result);
-            const saved = savedSnap.exists() ? savedSnap.data() : {};
-            if (photo && !saved.photoURL) attachedIssues.push('photo');
-            if (waiver && !saved.waiverURL) attachedIssues.push('waiver');
-          } catch (readError) {
-            console.warn('Could not verify photo/waiver upload:', readError);
-          }
-        }
+        if (photo && !result.photoURL) attachedIssues.push('photo');
+        if (waiver && !result.waiverURL) attachedIssues.push('waiver');
         setUploadIssues(attachedIssues);
 
         setSubmitted(true);

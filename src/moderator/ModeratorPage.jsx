@@ -511,7 +511,13 @@ function computeEditFinalPoints(record, editDraft, isPoints) {
     f1B = valid ? mA - mB : 0;
   }
 
-  const isWinnerA = record.winner === 'A';
+  // Winner must follow the EDITED scores, not the record's original
+  // `winner` flag — otherwise editing team A/B's score enough to flip who's
+  // actually ahead still credits the old winner with the Elo win-term (S),
+  // producing a finalPoints value that silently disagrees with the score
+  // shown right next to it. Only fall back to the original winner when the
+  // edit is a genuine tie or the inputs are incomplete (f1A/f1B both 0).
+  const isWinnerA = f1A > 0 ? true : f1A < 0 ? false : record.winner === 'A';
   const ratingA = record.teamA.prevPoints ?? DEFAULT_POINTS;
   const ratingB = record.teamB.prevPoints ?? DEFAULT_POINTS;
   const eA = expectedScore(ratingA, ratingB);
@@ -522,6 +528,7 @@ function computeEditFinalPoints(record, editDraft, isPoints) {
   return {
     finalPointsA: round4(ratingA + changeA),
     finalPointsB: round4(ratingB + changeB),
+    winner: isWinnerA ? 'A' : 'B',
   };
 }
 
@@ -1630,6 +1637,7 @@ export default function ModeratorPage() {
   const [formatFilter, setFormatFilter] = useState('');
   const [editingId, setEditingId] = useState(null);
   const [editDraft, setEditDraft] = useState(null);
+  const [savingEditId, setSavingEditId] = useState(null);
   const [flashId, setFlashId] = useState(null);
 
   /* ── "Request a schedule" (ask the admin to arrange a fixture) ── */
@@ -2042,7 +2050,6 @@ export default function ModeratorPage() {
   }), [entries, effectiveTeams, entryScore, prevPointsFor]);
 
   const readyRows = useMemo(() => rows.filter((r) => r.ready), [rows]);
-  const allReady = rows.length >= 2 && readyRows.length === rows.length;
 
   const computation = useMemo(() => {
     if (readyRows.length < 2) return null;
@@ -2340,13 +2347,24 @@ export default function ModeratorPage() {
   }
 
   async function saveEdit(record) {
+    if (savingEditId) return; // guards against a fast double-click firing two concurrent saves
+    setSavingEditId(record.id);
+    try {
+      await saveEditInner(record);
+    } finally {
+      setSavingEditId(null);
+    }
+  }
+
+  async function saveEditInner(record) {
     const teamAObj = effectiveTeams.find((t) => t.id === editDraft.teamAId) || { id: record.teamA.id, name: record.teamA.name, logo: record.teamA.logo };
     const teamBObj = effectiveTeams.find((t) => t.id === editDraft.teamBId) || { id: record.teamB.id, name: record.teamB.name, logo: record.teamB.logo };
     const isPoints = record.mode === 'points' || record.teamA.points != null;
-    const { finalPointsA, finalPointsB } = computeEditFinalPoints(record, editDraft, isPoints);
+    const { finalPointsA, finalPointsB, winner } = computeEditFinalPoints(record, editDraft, isPoints);
 
     const updated = {
       ...record,
+      winner,
       teamA: {
         ...record.teamA,
         id: teamAObj.id, name: teamAObj.name, logo: teamAObj.logo || null,
@@ -2396,7 +2414,7 @@ export default function ModeratorPage() {
   const violTeam = violEntry ? effectiveTeams.find((t) => t.id === violEntry.teamId) : null;
 
   /* Opponent summary shown inside each panel. */
-  function opponentInfoFor(entry, index) {
+  function opponentInfoFor(entry) {
     const others = rows.filter((r) => r.id !== entry.id);
     const named = others.filter((r) => r.name);
     if (!isMulti) {
@@ -2793,8 +2811,10 @@ export default function ModeratorPage() {
                             <span className="mp-vs-mini">-</span>
                             <span>{fmtPts(editPreview.finalPointsB)}</span>
                           </div>
-                          <button className="mp-edit-form__save" onClick={() => saveEdit(r)}>Save</button>
-                          <button className="mp-edit-form__cancel" onClick={() => { setEditingId(null); setEditDraft(null); }}>Cancel</button>
+                          <button className="mp-edit-form__save" onClick={() => saveEdit(r)} disabled={savingEditId === r.id}>
+                            {savingEditId === r.id ? 'Saving…' : 'Save'}
+                          </button>
+                          <button className="mp-edit-form__cancel" onClick={() => { setEditingId(null); setEditDraft(null); }} disabled={savingEditId === r.id}>Cancel</button>
                         </div>
                       </td>
                     </tr>

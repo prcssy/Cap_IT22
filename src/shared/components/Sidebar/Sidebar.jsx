@@ -9,7 +9,7 @@ import "./Sidebar.css";
 function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
-  const { panelOpen, toggleSidebar, openSidebar } = useContext(SidebarContext);
+  const { panelOpen, toggleSidebar } = useContext(SidebarContext);
   const { openAuthModal = () => {}, currentUser, userProfile, logout } = useContext(AuthContext);
 
   // Live pending-request count so an admin sees a schedule request was
