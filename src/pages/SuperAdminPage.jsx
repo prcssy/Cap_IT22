@@ -420,9 +420,8 @@ export default function SuperAdminPage() {
 
   const [users, setUsers]                 = useState([]);
   const [registrations, setRegistrations] = useState([]);
-  const [sportNames, setSportNames]       = useState([]);
-  const [teamCount, setTeamCount]         = useState(0);
-  const [matches, setMatches]             = useState([]);
+  const [configsByLevel, setConfigsByLevel]     = useState({});
+  const [schedulesByLevel, setSchedulesByLevel] = useState({});
   const [loading, setLoading]             = useState(false);
   const [error, setError]                 = useState('');
   const [rangeKey, setRangeKey]           = useState('12m');
@@ -479,15 +478,14 @@ export default function SuperAdminPage() {
       setUsers(userSnap.docs.map(d => ({ id: d.id, ...d.data() })));
       setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() })));
 
-      const names = new Set();
-      let teams = 0;
-      configs.forEach((cfg) => {
-        (cfg.sports || []).forEach(s => { if (s?.name) names.add(s.name.trim()); });
-        teams += (cfg.teams || []).length;
+      const configMap = {};
+      const scheduleMap = {};
+      LEVELS.forEach((l, i) => {
+        configMap[l] = configs[i];
+        scheduleMap[l] = schedules[i];
       });
-      setSportNames([...names]);
-      setTeamCount(teams);
-      setMatches(schedules.flat());
+      setConfigsByLevel(configMap);
+      setSchedulesByLevel(scheduleMap);
     } catch (err) {
       console.error(err);
       setError('Failed to load analytics data.');
@@ -498,9 +496,34 @@ export default function SuperAdminPage() {
 
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
 
+  /* Sports / teams / matches are per-level config docs, so the level tabs
+     filter them by selecting which level(s) to read from rather than by
+     date — "all" just merges the three levels together. */
+  const levelsForConfig = useMemo(
+    () => (levelKey === 'all' ? LEVELS : [levelKey]),
+    [levelKey],
+  );
+
+  const sportNames = useMemo(() => {
+    const names = new Set();
+    levelsForConfig.forEach((l) => {
+      (configsByLevel[l]?.sports || []).forEach(s => { if (s?.name) names.add(s.name.trim()); });
+    });
+    return [...names];
+  }, [configsByLevel, levelsForConfig]);
+
+  const teamCount = useMemo(
+    () => levelsForConfig.reduce((sum, l) => sum + (configsByLevel[l]?.teams || []).length, 0),
+    [configsByLevel, levelsForConfig],
+  );
+
+  const matches = useMemo(
+    () => levelsForConfig.flatMap(l => schedulesByLevel[l] || []),
+    [schedulesByLevel, levelsForConfig],
+  );
+
   /* Users and registrations carry createdAt and a grade level, so they
-     answer to both filters. Sports / teams / matches are configuration
-     rather than dated events — their tiles stay at current totals. */
+     answer to both filters. */
   const cutoff = useMemo(() => {
     if (range.days === null) return null;
     const date = new Date();
