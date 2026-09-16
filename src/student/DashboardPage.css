@@ -552,9 +552,14 @@
 /* ══════════════════════════════════════════
    ONGOING CARD
    ══════════════════════════════════════════ */
+/* Fixed flex-basis with no grow/shrink (not flex: 1) — a bracket can fill
+   .scroll-row with a dozen+ cards, and flex:1 with min-width:0 used to
+   let every card keep shrinking to squeeze them all into view instead of
+   ever triggering the row's overflow-x scroll. 20rem leaves enough room
+   for the two team-banners inside (each min-width 8.59375rem) plus gap
+   and padding without .oc-banners clipping them. */
 .ongoing-card {
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 20rem;
   background: #0A1D52;
   border-radius: 10px;
   padding: 8px;
@@ -605,8 +610,7 @@
    UPCOMING CARD
    ══════════════════════════════════════════ */
 .upcoming-card {
-  flex: 1;
-  min-width: 0;
+  flex: 0 0 20rem;
   background: #0A1D52;
   border-radius: 12px;
   padding: 10px;
@@ -1009,7 +1013,7 @@
 
   .upcoming-card,
   .ongoing-card {
-    min-width: 260px;
+    flex: 0 0 260px;
     height: auto;
   }
 

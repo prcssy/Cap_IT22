@@ -66,9 +66,10 @@ service cloud.firestore {
     }
 
     // ── Player registrations ───────────────────────────────────
-    // Students may create their own registration but never read the
-    // collection back (it holds addresses/emergency contacts). Staff
-    // manage everything from AdminSchedulePage.
+    // Students may create their own registration and read it back (their
+    // own addresses/emergency contacts are their own data) — but never
+    // anyone else's, and never update/delete it themselves. Staff manage
+    // everything (including status changes) from AdminSchedulePage.
     match /registrations/{regId} {
       // status must start 'pending' on create — only isStaff() (updateRegistrationStatus)
       // may ever move it to 'approved'/'rejected'. Without this, a signed-in student could
@@ -76,6 +77,9 @@ service cloud.firestore {
       allow create: if signedIn()
                     && request.resource.data.uid == request.auth.uid
                     && request.resource.data.status == 'pending';
+      // Powers ProfilePage's "Submitted Registrations"/"Events Joined"
+      // cards (getMyRegistrations in firestoreService.js).
+      allow read: if signedIn() && resource.data.uid == request.auth.uid;
       allow read, update, delete: if isStaff();
     }
 

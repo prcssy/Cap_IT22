@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import './ProfilePage.css';
 import Contact from '../public/Landing/Contact/Contact';
 import { BrandingContext } from '../shared/context/BrandingContext';
@@ -13,6 +13,13 @@ import {
   FaKey, FaClock, FaHashtag, FaEdit,
 } from 'react-icons/fa';
 import { AuthContext } from '../shared/context/AuthContext';
+import { getMyRegistrations } from '../shared/services/firestoreService';
+
+function formatRegDate(value) {
+  const date = value?.toDate ? value.toDate() : (value ? new Date(value) : null);
+  if (!date || Number.isNaN(date.getTime())) return '—';
+  return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
 // Staff/role accounts (admin, moderator, superadmin) don't join events,
 // earn awards, or submit player registrations — those concepts only apply
@@ -66,6 +73,25 @@ export default function ProfilePage() {
 
   const contactFooterRef = React.useRef(null);
 
+  // `users/{uid}` never gets an eventsJoined/awards/registrations array (or
+  // teamName/sport/position) written to it anywhere — those only ever live
+  // on the student's own `registrations` doc(s), which this page couldn't
+  // previously read at all (firestore.rules only let STAFF read
+  // `registrations`). Now that a signed-in user can read back their OWN
+  // registration docs (see firestore.rules + getMyRegistrations), fetch
+  // them here instead of relying on profile fields nothing ever populates.
+  const [myRegistrations, setMyRegistrations] = useState([]);
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentUser?.uid) { setMyRegistrations([]); return undefined; }
+    getMyRegistrations(currentUser.uid)
+      .then((regs) => { if (!cancelled) setMyRegistrations(regs); })
+      .catch((err) => { console.warn('Could not load your registrations:', err); if (!cancelled) setMyRegistrations([]); });
+    return () => { cancelled = true; };
+  }, [currentUser?.uid]);
+
+  const latestReg = myRegistrations[0] || null;
+
   // `users/{uid}` docs are written with a `name` field (see AuthContext.signup /
   // firestoreService.createUserProfile). `fullName` was never actually stored
   // there, so reading it always fell through to the hardcoded placeholder
@@ -77,17 +103,38 @@ export default function ProfilePage() {
   const role          = userProfile?.role          || 'Player';
   const gradeLevel    = userProfile?.gradeLevel    || '';
   const section       = userProfile?.section       || '';
-  const teamName      = userProfile?.teamName      || '';
-  const sport         = userProfile?.sport         || '';
-  const position      = userProfile?.position      || '';
+  // teamName/sport/position live on the registration a student submitted,
+  // never on their profile doc — fall back to their most recent
+  // registration so these rows aren't just permanently blank.
+  const teamName      = userProfile?.teamName      || latestReg?.teamName || '';
+  const sport         = userProfile?.sport         || latestReg?.sport    || '';
+  const position      = userProfile?.position      || latestReg?.position || '';
   const email         = currentUser?.email         || '';
   const lastUpdate    = userProfile?.lastUpdate    || '';
 
-  // No sample/placeholder fallback here — these only render once real
-  // Firestore data for events/awards/registrations exists on the profile.
-  const eventsJoined  = userProfile?.eventsJoined  || [];
-  const awards        = userProfile?.awards        || [];
-  const registrations = userProfile?.registrations || [];
+  // "Submitted Registrations" = every registration this student has ever
+  // filed, regardless of decision. "Events Joined" = the subset staff has
+  // actually approved. There's no awards-granting feature anywhere in the
+  // admin tools yet, so Awards stays empty/hidden rather than fabricated.
+  const registrations = myRegistrations.map((r) => ({
+    name: r.sport ? `${r.sport} — ${r.event || 'Event'}` : (r.event || 'Registration'),
+    date: formatRegDate(r.createdAt),
+    submittedDate: `Submitted ${formatRegDate(r.createdAt)}`,
+    status: r.status ? r.status[0].toUpperCase() + r.status.slice(1) : 'Pending',
+  }));
+  const eventsJoined = myRegistrations
+    .filter((r) => r.status === 'approved')
+    .map((r) => ({
+      name: r.event || 'Event',
+      date: formatRegDate(r.reviewedAt || r.createdAt),
+      venue: r.teamName || r.sport || '—',
+      // The modal's badge styling (ej-badge--completed/ongoing/upcoming)
+      // reflects the EVENT's own lifecycle, not the registration decision —
+      // "Completed" is the closest fit until this page also knows whether
+      // the event itself is still running.
+      status: 'Completed',
+    }));
+  const awards = [];
 
   // Staff accounts never show these cards, regardless of array contents.
   // Player/student accounts only show a given card once they actually

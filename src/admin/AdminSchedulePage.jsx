@@ -15,6 +15,7 @@ import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGenerated
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../shared/components/LevelTabs';
+import StudentRegistrationDetails from '../superadmin/StudentRegistrationDetails';
 
 const LEVELS = [
   { key: 'elementary', label: 'Elementary' },
@@ -34,24 +35,6 @@ function getSchoolLevel(gradeLevel) {
   if (HIGH_SCHOOL_GRADES.has(gradeLevel)) return 'highSchool';
   if (COLLEGE_GRADES.has(gradeLevel)) return 'college';
   return null;
-}
-
-/* Firestore returns a Timestamp; older or hand-edited docs might hold a
-   string or a plain Date. Accept all three, same convention as
-   SuperAdminPage's own `toDate`/`formatDateTime`. */
-function toDate(value) {
-  if (!value) return null;
-  if (typeof value.toDate === 'function') return value.toDate();
-  const parsed = new Date(value);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-
-function formatDateTime(date) {
-  if (!date) return '—';
-  return date.toLocaleString(undefined, {
-    month: 'short', day: 'numeric', year: 'numeric',
-    hour: 'numeric', minute: '2-digit',
-  });
 }
 
 function buildSummary(registrations) {
@@ -236,6 +219,13 @@ function isGeneratedMatch(m) {
   if (!m) return false;
   if (m.source) return m.source === 'generated';
   return m.round != null || !!m.stage || !!m.matchLabel;
+}
+
+/* A bracket slot that hasn't been won into yet still holds its generator
+   placeholder text ("Winner QF1", "Loser UB-SF2", …) instead of a real
+   team name. */
+function isPlaceholderTeam(name) {
+  return typeof name === 'string' && /^(Winner|Loser)\s/.test(name);
 }
 
 /* ── Circular team network — visual overview of who's in the pool ── */
@@ -527,6 +517,144 @@ function BracketTree({ stages, leaves, teamByName }) {
   );
 }
 
+/* Single-elimination stages are named "Quarterfinals"/"Semifinals"/
+   "Finals"/"Round of N" with no prefix; double-elimination's are always
+   "Upper Bracket – …"/"Lower Bracket – …"/"Grand Final" — same
+   discriminator advanceBracketWinner (firestoreService.js) uses. */
+function isSingleBracketStage(stage) {
+  return !!stage
+    && !stage.startsWith('Upper Bracket')
+    && !stage.startsWith('Lower Bracket')
+    && stage !== 'Grand Final';
+}
+
+/* ── Already-saved bracket, grouped back into rounds ──
+   BracketTree only ever draws round-1 team names (every later round is
+   just a labeled dot — it was built purely as a generator PREVIEW, before
+   any result exists to show). Once a bracket is saved, what's actually
+   useful is seeing the CURRENT team in every slot — including "Winner
+   QF1" placeholders that have already been resolved by advanceBracketWinner
+   once that earlier match got a result — so this reads directly off the
+   saved matches instead of regenerating a fresh, round-1-only tree. */
+function buildSavedBracketStages(matches) {
+  const byRound = new Map();
+  matches.forEach((m) => {
+    const r = m.round || 0;
+    if (!byRound.has(r)) byRound.set(r, []);
+    byRound.get(r).push(m);
+  });
+  return [...byRound.keys()]
+    .sort((a, b) => a - b)
+    .map((r) => ({
+      name: byRound.get(r)[0]?.stage || `Round ${r}`,
+      matches: byRound.get(r),
+    }));
+}
+
+/* One node's two-team box — same coordinate math as the generator's
+   BracketTree (leafY/matchY/colX/elbow), but a team-box sits at EVERY
+   round's node instead of just round 1, reading each match's CURRENT
+   teamA/teamB straight off the saved schedule. A slot that's still a
+   generator placeholder ("Winner QF2") renders muted/italic instead of a
+   team badge, same visual language as a bye slot in the generator tree. */
+function SavedBracketTree({ stages, matchRecords }) {
+  const ROW_H = 74;
+  const NODE_W = 200;
+  const NODE_H = 56;
+  const LINE_GAP = 40; // horizontal space reserved for the connector between two columns
+  const COL_W = NODE_W + LINE_GAP;
+
+  if (!stages.length) return null;
+  const totalRounds = stages.length;
+  const leafCount = stages[0].matches.length * 2;
+
+  // Y positions are still built bottom-up from an implicit "leaf" row (the
+  // two teams feeding each round-1 box), same idea as the generator's
+  // BracketTree — but here every round gets an actual box, including
+  // round 1, so there's no separate leaf column to draw.
+  const leafY = Array.from({ length: leafCount }, (_, i) => i * ROW_H + ROW_H / 2);
+  const matchY = [];
+  stages.forEach((stage, r) => {
+    matchY.push(stage.matches.map((_, m) => (
+      r === 0
+        ? (leafY[2 * m] + leafY[2 * m + 1]) / 2
+        : (matchY[r - 1][2 * m] + matchY[r - 1][2 * m + 1]) / 2
+    )));
+  });
+
+  const colX = (r) => r * COL_W; // left edge of round r's boxes
+  const championX = colX(totalRounds - 1) + COL_W;
+  const championY = matchY[totalRounds - 1][0];
+  const height = leafCount * ROW_H;
+  const width = championX + 150;
+
+  const elbow = (childX, y1, y2, parentX, parentY) => {
+    const midX = (childX + parentX) / 2;
+    return `M ${childX} ${y1} H ${midX} M ${childX} ${y2} H ${midX} M ${midX} ${y1} V ${y2} M ${midX} ${parentY} H ${parentX}`;
+  };
+
+  // Connectors only run BETWEEN columns of boxes — round 1 has nothing
+  // earlier to connect from, so it starts the tree with no incoming lines.
+  const connectors = [];
+  for (let r = 1; r < totalRounds; r++) {
+    const childX = colX(r - 1) + NODE_W;
+    const parentX = colX(r);
+    stages[r].matches.forEach((_, m) => {
+      connectors.push(elbow(childX, matchY[r - 1][2 * m], matchY[r - 1][2 * m + 1], parentX, matchY[r][m]));
+    });
+  }
+  connectors.push(`M ${colX(totalRounds - 1) + NODE_W} ${championY} H ${championX}`);
+
+  const finalMatch = stages[totalRounds - 1]?.matches[0] || null;
+  const finalRecord = finalMatch && matchRecords.find((r) => recordMatchesSchedule(r, finalMatch));
+  const championName = finalRecord ? recordWinnerName(finalRecord) : null;
+  const championLogo = finalMatch && championName === finalMatch.teamA ? finalMatch.teamALogo
+    : finalMatch && championName === finalMatch.teamB ? finalMatch.teamBLogo
+    : null;
+
+  return (
+    <div className="msf-bracket" style={{ height }}>
+      <div className="msf-bracket-headers">
+        {stages.map((s, i) => <div key={i} style={{ width: COL_W }}>{s.name}</div>)}
+        <div style={{ width: width - colX(totalRounds - 1) - COL_W }}>Champion</div>
+      </div>
+
+      <div className="msf-bracket-canvas" style={{ height, width }}>
+        <svg width={width} height={height} className="msf-bracket-lines">
+          {connectors.map((d, i) => <path key={i} d={d} />)}
+        </svg>
+
+        {stages.map((stage, r) => stage.matches.map((m, mi) => {
+          const recorded = matchRecords.some((rec) => recordMatchesSchedule(rec, m));
+          return (
+            <div
+              key={m.id}
+              className={`msf-savedtree-node ${recorded ? 'msf-savedtree-node--done' : ''}`}
+              style={{ left: colX(r), top: matchY[r][mi] - NODE_H / 2, width: NODE_W, height: NODE_H }}
+            >
+              {[[m.teamA, m.teamALogo], [m.teamB, m.teamBLogo]].map(([name, logo], slot) => (
+                isPlaceholderTeam(name) ? (
+                  <div className="msf-savedtree-slot msf-savedtree-slot--pending" key={slot}>{name}</div>
+                ) : (
+                  <div className="msf-savedtree-slot" key={slot}>
+                    <TeamBadge team={{ name, logo }} size={18} />
+                    <span>{name}</span>
+                  </div>
+                )
+              ))}
+            </div>
+          );
+        }))}
+
+        <div className="msf-bracket-champion" style={{ left: championX, top: championY }}>
+          {championName ? <TeamBadge team={{ name: championName, logo: championLogo }} size={30} /> : <FaTrophy />}
+          <span>{championName || 'Champion'}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════
    DOUBLE BRACKET (double elimination) GENERATOR
    Reuses the single-elim generator for the Upper (Winner's) Bracket.
@@ -694,6 +822,39 @@ function withMatchNumbers(wbStages, lbRounds) {
       })),
     })),
   };
+}
+
+/* ── Already-saved double bracket, regrouped from flat saved matches back
+   into { wbStages, leaves, lbRounds } — the same shape generateDoubleBracket
+   returns — so DoubleBracketTree can draw it without caring whether it's
+   reading a live preview or persisted data. Saved UB matchLabels were
+   prefixed at save time ("UB-QF1"); stripped back to the raw codes
+   ("QF1") DoubleBracketTree's connector renaming expects. LB labels were
+   never prefixed, so they pass through unchanged. */
+function buildSavedDoubleBracketStages(matches) {
+  const groupByStage = (list) => {
+    const byStage = new Map();
+    list.forEach((m) => {
+      if (!byStage.has(m.stage)) byStage.set(m.stage, []);
+      byStage.get(m.stage).push(m);
+    });
+    return [...byStage.values()].sort((a, b) => (a[0]?.round || 0) - (b[0]?.round || 0));
+  };
+
+  const ubGroups = groupByStage(matches.filter(m => (m.stage || '').startsWith('Upper Bracket')));
+  const lbGroups = groupByStage(matches.filter(m => (m.stage || '').startsWith('Lower Bracket')));
+
+  const wbStages = ubGroups.map((group) => ({
+    name: (group[0].stage || '').replace(/^Upper Bracket\s*[–-]\s*/, ''),
+    matches: group.map(m => ({ label: (m.matchLabel || '').replace(/^UB-/, ''), a: m.teamA, b: m.teamB })),
+  }));
+  const lbRounds = lbGroups.map((group) => ({
+    name: (group[0].stage || '').replace(/^Lower Bracket\s*[–-]\s*/, ''),
+    matches: group.map(m => ({ label: m.matchLabel, a: m.teamA, b: m.teamB })),
+  }));
+  const leaves = wbStages[0]?.matches.flatMap(m => [m.a, m.b]) || [];
+
+  return { wbStages, leaves, lbRounds };
 }
 
 /* ── Double Bracket tree: Upper (Winner's) and Lower (Loser's) brackets
@@ -1461,6 +1622,139 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     doc.save(`match-schedule-${level}-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
+  /* Draws the saved single-elimination bracket as an actual diagram (boxes
+     + elbow connectors), same column layout as SavedBracketTree on screen,
+     translated into jsPDF's line/rect/text primitives — a plain match-list
+     table (like handleDownloadPdf above) wouldn't read as "a bracket". */
+  const handleDownloadBracketPdf = () => {
+    const stages = buildSavedBracketStages(lockedMatches);
+    if (!stages.length) return;
+
+    const NODE_W = 150, NODE_H = 46, ROW_H = 60, LINE_GAP = 46;
+    const COL_W = NODE_W + LINE_GAP;
+    const MARGIN = 50;
+    const totalRounds = stages.length;
+    const leafCount = stages[0].matches.length * 2;
+
+    const pdf = new jsPDF({
+      orientation: 'landscape',
+      unit: 'pt',
+      format: [Math.max(842, MARGIN * 2 + (totalRounds + 1) * COL_W + 120), Math.max(595, MARGIN * 2 + leafCount * ROW_H)],
+    });
+    const pageWidth = pdf.internal.pageSize.getWidth();
+
+    pdf.setFontSize(14);
+    pdf.setFont(undefined, 'bold');
+    pdf.text(schoolName, pageWidth / 2, 30, { align: 'center' });
+    pdf.setFontSize(10);
+    pdf.setFont(undefined, 'normal');
+    pdf.text(
+      `${selSport?.name || ''} — ${selCategory?.label || ''} Bracket (${LEVEL_LABELS[level] || level})`,
+      pageWidth / 2, 46, { align: 'center' },
+    );
+
+    const colX = (r) => MARGIN + r * COL_W;
+    const leafY = Array.from({ length: leafCount }, (_, i) => MARGIN + 60 + i * ROW_H + ROW_H / 2);
+    const matchY = [];
+    stages.forEach((stage, r) => {
+      matchY.push(stage.matches.map((_, m) => (
+        r === 0
+          ? (leafY[2 * m] + leafY[2 * m + 1]) / 2
+          : (matchY[r - 1][2 * m] + matchY[r - 1][2 * m + 1]) / 2
+      )));
+    });
+    const championX = colX(totalRounds - 1) + COL_W;
+    const championY = matchY[totalRounds - 1][0];
+
+    pdf.setFontSize(10);
+    pdf.setFont(undefined, 'bold');
+    pdf.setTextColor(91, 103, 138);
+    stages.forEach((s, r) => pdf.text(s.name.toUpperCase(), colX(r), MARGIN + 60, { align: 'left' }));
+    pdf.text('CHAMPION', championX, MARGIN + 60, { align: 'left' });
+    pdf.setTextColor(0);
+
+    pdf.setDrawColor(183, 191, 216);
+    pdf.setLineWidth(1);
+    for (let r = 1; r < totalRounds; r++) {
+      const childX = colX(r - 1) + NODE_W;
+      const parentX = colX(r);
+      const midX = (childX + parentX) / 2;
+      stages[r].matches.forEach((_, m) => {
+        const y1 = matchY[r - 1][2 * m];
+        const y2 = matchY[r - 1][2 * m + 1];
+        const parentY = matchY[r][m];
+        pdf.line(childX, y1, midX, y1);
+        pdf.line(childX, y2, midX, y2);
+        pdf.line(midX, y1, midX, y2);
+        pdf.line(midX, parentY, parentX, parentY);
+      });
+    }
+    pdf.line(colX(totalRounds - 1) + NODE_W, championY, championX, championY);
+
+    // Logos are stored as base64 data URLs (data:image/jpeg;... or
+    // data:image/png;...) directly on the match doc — jsPDF's addImage
+    // takes that string as-is, it just needs the right format keyword.
+    // Wrapped in try/catch: a malformed/unreadable logo must never abort
+    // the whole export, just fall back to text-only for that slot.
+    const logoFormat = (dataUrl) => (/^data:image\/png/i.test(dataUrl || '') ? 'PNG' : 'JPEG');
+    const drawLogo = (logo, x, y, size) => {
+      if (!logo) return false;
+      try {
+        pdf.addImage(logo, logoFormat(logo), x, y, size, size);
+        return true;
+      } catch (err) {
+        console.warn('Could not draw team logo in bracket PDF:', err);
+        return false;
+      }
+    };
+
+    const drawSlot = (name, logo, x, w, lineY) => {
+      const pending = isPlaceholderTeam(name);
+      const logoSize = 12;
+      const hasLogo = !pending && drawLogo(logo, x + 6, lineY - logoSize + 2, logoSize);
+      pdf.setFont(undefined, pending ? 'italic' : 'bold');
+      pdf.setFontSize(8.5);
+      pdf.setTextColor(pending ? 150 : 20);
+      const textX = x + (hasLogo ? 6 + logoSize + 4 : 6);
+      const text = pdf.splitTextToSize(name || 'TBD', w - (textX - x) - 6)[0] || '';
+      pdf.text(text, textX, lineY);
+    };
+
+    stages.forEach((stage, r) => {
+      stage.matches.forEach((m, mi) => {
+        const x = colX(r);
+        const y = matchY[r][mi] - NODE_H / 2;
+        const recorded = matchRecords.some((rec) => recordMatchesSchedule(rec, m));
+        pdf.setDrawColor(recorded ? 134 : 221, recorded ? 239 : 225, recorded ? 172 : 238);
+        pdf.setFillColor(255, 255, 255);
+        pdf.roundedRect(x, y, NODE_W, NODE_H, 5, 5, 'FD');
+        drawSlot(m.teamA, m.teamALogo, x, NODE_W, y + NODE_H * 0.4);
+        pdf.setDrawColor(238, 240, 245);
+        pdf.line(x + 6, y + NODE_H / 2, x + NODE_W - 6, y + NODE_H / 2);
+        drawSlot(m.teamB, m.teamBLogo, x, NODE_W, y + NODE_H * 0.85);
+      });
+    });
+
+    const finalMatch = stages[totalRounds - 1]?.matches[0] || null;
+    const finalRecord = finalMatch && matchRecords.find((r) => recordMatchesSchedule(r, finalMatch));
+    const championName = finalRecord ? recordWinnerName(finalRecord) : null;
+    const championLogo = finalMatch && championName === finalMatch.teamA ? finalMatch.teamALogo
+      : finalMatch && championName === finalMatch.teamB ? finalMatch.teamBLogo
+      : null;
+    const championHasLogo = drawLogo(championLogo, championX, championY - 22, 16);
+    pdf.setFont(undefined, 'bold');
+    pdf.setFontSize(10);
+    pdf.setTextColor(0);
+    pdf.text(championName || 'TBD', championX + (championHasLogo ? 20 : 0), championY, { align: 'left' });
+
+    pdf.setFontSize(8);
+    pdf.setFont(undefined, 'normal');
+    pdf.setTextColor(110);
+    pdf.text(`Generated ${new Date().toLocaleString()}`, MARGIN, pdf.internal.pageSize.getHeight() - 20);
+
+    pdf.save(`bracket-${selSport?.name || 'sport'}-${selCategory?.label || ''}-${level}-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   if (loading) return <div className="msf-loading">Loading sports & teams…</div>;
 
   const sportOptions = sportsList.map(s => s.name);
@@ -1521,7 +1815,31 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               <div className="msf-stat"><span>Saved matches</span><b>{lockedMatches.length}</b></div>
             </div>
           </div>
-        ) : !ready ? (
+        ) : null}
+
+        {isLocked && lockedMatches.every(m => isSingleBracketStage(m.stage)) && (
+          <>
+            <div className="msf-bracket-actions">
+              <button type="button" className="msf-reset-btn" onClick={handleDownloadBracketPdf}>
+                <FaDownload /> Download Bracket PDF
+              </button>
+            </div>
+            <SavedBracketTree
+              stages={buildSavedBracketStages(lockedMatches)}
+              matchRecords={matchRecords}
+            />
+          </>
+        )}
+
+        {isLocked && lockedMatches[0]?.format === 'Double Bracket' && (
+          <div className="msf-dbracket">
+            <div className="msf-dbracket__scroll">
+              <DoubleBracketTree {...buildSavedDoubleBracketStages(lockedMatches)} />
+            </div>
+          </div>
+        )}
+
+        {isLocked ? null : !ready ? (
           <p className="msf-empty">
             {selSport && eligibleTeams.length < 2
               ? `Only ${eligibleTeams.length} team(s) assigned to ${selSport.name} — add at least 2 in Sports & Teams.`
@@ -1551,11 +1869,13 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
             {isDoubleBracket ? (
               <div className="msf-dbracket">
-                <DoubleBracketTree
-                  wbStages={doubleBracket.wbStages}
-                  leaves={doubleBracket.leaves}
-                  lbRounds={doubleBracket.lbRounds}
-                />
+                <div className="msf-dbracket__scroll">
+                  <DoubleBracketTree
+                    wbStages={doubleBracket.wbStages}
+                    leaves={doubleBracket.leaves}
+                    lbRounds={doubleBracket.lbRounds}
+                  />
+                </div>
 
                 <p className="msf-dbracket__note">
                   If the Lower Bracket team wins the Grand Final, a single reset match decides the title —
@@ -2057,7 +2377,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
       {successModal && (
         <div className="msf-overlay" onClick={handleReviewSummary}>
           <div className="msf-success-wrap" onClick={e => e.stopPropagation()}>
-            <p className="msf-success-eyebrow">Schedule saved succesfully</p>
+            <p className="msf-success-eyebrow">Tournament Schedule</p>
             <div className="msf-success-card">
               <div className="msf-success-check"><FaCheck /></div>
               <h2>Schedule saved successfully</h2>
@@ -2263,7 +2583,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <select
                   className="msf-teams-row__select"
                   value={editForm.teamA || ''}
-                  disabled={isGeneratedMatch(editForm)}
+                  disabled={isGeneratedMatch(editForm) && !isPlaceholderTeam(editForm.teamA)}
                   onChange={e => setEditForm(f => ({ ...f, teamA: e.target.value }))}
                 >
                   <option value="">Select a teams</option>
@@ -2276,7 +2596,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <select
                   className="msf-teams-row__select"
                   value={editForm.teamB || ''}
-                  disabled={isGeneratedMatch(editForm)}
+                  disabled={isGeneratedMatch(editForm) && !isPlaceholderTeam(editForm.teamB)}
                   onChange={e => setEditForm(f => ({ ...f, teamB: e.target.value }))}
                 >
                   <option value="">Select a teams</option>
@@ -2286,7 +2606,13 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                   )}
                 </select>
               </div>
-              {isGeneratedMatch(editForm) && (
+              {isGeneratedMatch(editForm) && (isPlaceholderTeam(editForm.teamA) || isPlaceholderTeam(editForm.teamB)) && (
+                <p className="msf-form-note">
+                  This bracket slot is normally filled in automatically once the earlier match's result is
+                  recorded — you can also set it by hand now if needed.
+                </p>
+              )}
+              {isGeneratedMatch(editForm) && !isPlaceholderTeam(editForm.teamA) && !isPlaceholderTeam(editForm.teamB) && (
                 <p className="msf-form-note">
                   Teams are locked because this match came from the schedule generator. Delete and re-generate to change matchups.
                 </p>
@@ -2562,15 +2888,6 @@ const fetchSummary = useCallback(async () => {
   const totalCollege    = visibleSummaryRows.reduce((s, r) => s + r.college, 0);
   const totalPlayers    = totalElementary + totalHighSchool + totalCollege;
 
-  // ── Recent Registrations — latest player/student submissions, moved
-  // here from Super Admin's Data Analytics tab. Sourced from the same
-  // `studentRegs` fetchSummary already pulled from Firestore, so there's
-  // no separate data system for it.
-  const recentRegistrations = [...studentRegs]
-    .map(r => ({ ...r, created: toDate(r.createdAt) }))
-    .sort((a, b) => (b.created?.getTime() || 0) - (a.created?.getTime() || 0))
-    .slice(0, 8);
-
   const fmt = (row, level) => row[level] === 0 ? '--' : row[level];
 
   // ProtectedRoute already gates the /admin route by role, but that check
@@ -2758,43 +3075,18 @@ const fetchSummary = useCallback(async () => {
               </div>
             </div>
 
-            {/* ── Card 2: Recent Registrations ── */}
-            {/* Moved here from Super Admin's Data Analytics tab — same
-                columns/styling (sa-* classes from SuperAdminPage.css),
-                just relocated. Backed by the same `studentRegs` Firestore
-                fetch as the summary card above it. */}
-            <div className="sa-card sa-card--table">
-              <h3 className="sa-table-title">Recent Registrations</h3>
-
-              {summaryLoading ? (
-                <p className="sa-loading">Loading…</p>
-              ) : recentRegistrations.length === 0 ? (
-                <p className="sa-loading">No registrations yet.</p>
-              ) : (
-                <div className="sa-table-wrap">
-                  <table className="sa-table">
-                    <thead>
-                      <tr>
-                        <th>User</th>
-                        <th>Role</th>
-                        <th>Level</th>
-                        <th>Registered On</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {recentRegistrations.map(row => (
-                        <tr key={row.id}>
-                          <td className="sa-td--name" data-label="User">{row.fullName || row.email || 'Unnamed'}</td>
-                          <td data-label="Role"><span className="sa-role sa-role--player">player</span></td>
-                          <td data-label="Level">{LEVEL_LABELS[getSchoolLevel(row.gradeLevel)] || '—'}</td>
-                          <td className="sa-td--date" data-label="Registered On">{formatDateTime(row.created)}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </div>
+            {/* ── Card 2: Student Registration Details ── */}
+            {/* Full approve/reject console — same component Super Admin's
+                Data Analytics tab uses. This used to be a read-only "Recent
+                Registrations" list (8 rows, no actions) here, which meant a
+                plain Admin could see registrations but never actually
+                approve or reject one — that action only existed on the
+                Super-Admin-only route. Admin is documented (see CLAUDE.md)
+                as running "the real registrations... management console",
+                so it needs the actual decision-making UI, not just a
+                summary. Super Admin keeps its own copy too; nothing here
+                takes access away from anyone. */}
+            <StudentRegistrationDetails />
 
           </div>
         )}

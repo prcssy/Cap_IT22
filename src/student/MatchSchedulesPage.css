@@ -8,7 +8,10 @@
   display: flex;
   flex-direction: column;
   width: 100%;
-  height: 100%;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   background-color: #001529;
   color: #fff;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -61,25 +64,11 @@
   margin: 0;
 }
 
-/* ── Scrollable body ── */
+/* ── Body ── */
 .ms-body {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  -webkit-overflow-scrolling: touch;
   padding: 0 14px 20px;
   width: 100%;
   box-sizing: border-box;
-}
-
-.ms-body::-webkit-scrollbar {
-  width: 4px;
-}
-
-.ms-body::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.12);
-  border-radius: 2px;
 }
 
 /* ── Level filter — segmented tab bar (matches RankingPage/DashboardPage) ── */
@@ -217,10 +206,23 @@
   border-radius: 12px;
   padding: 18px 14px;
   margin-bottom: 18px;
-  overflow-x: auto;
   display: flex;
   flex-direction: column;
   align-items: center;
+  min-width: 0;
+}
+
+/* The Double Bracket tree (.msf-dbracket, imported from AdminSchedulePage.css)
+   is a flex CHILD here, not a plain block like it is on the admin page — with
+   align-items: center it would shrink-to-fit its own huge content width
+   instead of being capped to the card, pushing the whole card/page wider
+   instead of scrolling inside .msf-dbracket__scroll. Stretching it to the
+   card's own width (and letting it shrink below its content's size) restores
+   that internal scrolling. */
+.ms-bracket-card .msf-dbracket {
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
 }
 
 .ms-bracket-title {
@@ -807,6 +809,154 @@
 .ms-team-pill__name--tbd {
   color: #aaa;
 }
+
+/* ═══════════════════════════════════════════
+   BRACKET TREE — connected single-elimination tree, same layout as the
+   admin's Schedule Manager: one two-team box per round, joined by elbow
+   connector lines converging into a Champion box.
+   ═══════════════════════════════════════════ */
+.ms-btree {
+  /* Same flex shrink-to-fit issue as .msf-dbracket above: as a bare
+     overflow-x:auto flex item of .ms-bracket-card (align-items: center),
+     this sizes to its own content instead of the card, so a bracket with
+     enough rounds (8+ teams) would push the card/page wider instead of
+     scrolling internally. Stretching it to the card's width fixes that. */
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  margin-top: 18px;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+.ms-btree-headers {
+  display: flex;
+  margin-bottom: 18px;
+}
+
+.ms-btree-headers>div {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.6px;
+  color: #5b678a;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.ms-btree-canvas {
+  position: relative;
+}
+
+.ms-btree-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.ms-btree-lines path {
+  fill: none;
+  stroke: #b7bfd8;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.ms-btree-node {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  background: #fff;
+  border: 1.5px solid #dde1ee;
+  border-radius: 8px;
+  padding: 4px 10px;
+  box-sizing: border-box;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+}
+
+.ms-btree-node--done {
+  border-color: #86efac;
+}
+
+.ms-btree-slot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  color: #001529;
+  letter-spacing: 0.1px;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ms-btree-slot--pending {
+  color: #93a0bd;
+  font-style: italic;
+  font-weight: 600;
+  text-transform: none;
+}
+
+.ms-btree-avatar {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid #eef0f5;
+}
+
+.ms-btree-avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 9px;
+}
+
+.ms-btree-champion {
+  position: absolute;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  transform: translate(-8px, -28px);
+}
+
+.ms-btree-champion svg {
+  color: #f5a623;
+  font-size: 26px;
+}
+
+.ms-btree-champion-avatar {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #eef0f5;
+}
+
+.ms-btree-champion-avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.ms-btree-champion span {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: #001529;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
 /* ── Mobile: leaves room for the floating hamburger button (Sidebar.css
    takes the icon rail out of flow below 768px), which would otherwise
    sit on top of this title. ── */

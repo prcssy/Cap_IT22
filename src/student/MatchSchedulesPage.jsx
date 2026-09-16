@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import './MatchSchedulesPage.css';
+// Double Bracket tree (.msf-dbracket*/.msf-bracket-*/.msf-lbracket-leaf*) reuses
+// the admin Schedule Manager's classes unchanged, so it renders identically here.
+import '../admin/AdminSchedulePage.css';
 import Contact from '../public/Landing/Contact/Contact';
 import { FaSearch, FaTrophy } from 'react-icons/fa';
 import { getMatchSchedules, getMatchRecords } from '../shared/services/firestoreService';
@@ -69,6 +72,43 @@ function winnerNameOf(record) {
   if (record.winner === 'A') return record.teamA?.name || null;
   if (record.winner === 'B') return record.teamB?.name || null;
   return null;
+}
+
+/* ── Single-elimination stages are named "Quarterfinals"/"Semifinals"/
+   "Finals"/"Round of N" with no prefix; double-elimination's are always
+   "Upper Bracket – …"/"Lower Bracket – …"/"Grand Final". Only the former
+   shape is drawn as the connected tree below — same discriminator the
+   admin's Schedule Manager uses. ── */
+function isSingleBracketStage(stage) {
+  return !!stage
+    && !stage.startsWith('Upper Bracket')
+    && !stage.startsWith('Lower Bracket')
+    && stage !== 'Grand Final';
+}
+
+/* A bracket slot that hasn't been won into yet still holds its generator
+   placeholder text ("Winner QF1") instead of a real team name. */
+function isPlaceholderTeam(name) {
+  return typeof name === 'string' && /^(Winner|Loser)\s/.test(name);
+}
+
+/* ── Group a saved single-bracket's matches back into rounds, reading
+   each match's CURRENT teamA/teamB straight off the saved schedule so a
+   placeholder already resolved by the moderator's result shows the real
+   team, exactly like the admin's Schedule Manager view. ── */
+function buildBracketStages(matches) {
+  const byRound = new Map();
+  matches.forEach((m) => {
+    const r = m.round || 0;
+    if (!byRound.has(r)) byRound.set(r, []);
+    byRound.get(r).push(m);
+  });
+  return [...byRound.keys()]
+    .sort((a, b) => a - b)
+    .map((r) => ({
+      name: byRound.get(r)[0]?.stage || `Round ${r}`,
+      matches: byRound.get(r),
+    }));
 }
 
 /* ── Build the tab key/label for a match's sport + category ── */
@@ -182,6 +222,378 @@ function RoundsView({ matches, resultFor, champion }) {
             ? <span className="ms-bracket-champion-name" style={{ fontWeight: 800 }}>{champion}</span>
             : <span className="ms-bracket-champion-placeholder">?</span>}
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   BRACKET TREE — same horizontal, elbow-connector tree the admin's
+   Schedule Manager draws for a saved single-elimination bracket: one
+   two-team box per node at EVERY round (not just round 1), joined by
+   connector lines that converge into a Champion box.
+   ═══════════════════════════════════════════════════════════ */
+function BracketTree({ stages, resultFor }) {
+  const ROW_H = 74;
+  const NODE_W = 200;
+  const NODE_H = 56;
+  const LINE_GAP = 40;
+  const COL_W = NODE_W + LINE_GAP;
+
+  if (!stages.length) return null;
+  const totalRounds = stages.length;
+  const leafCount = stages[0].matches.length * 2;
+  const leafY = Array.from({ length: leafCount }, (_, i) => i * ROW_H + ROW_H / 2);
+
+  const matchY = [];
+  stages.forEach((stage, r) => {
+    matchY.push(stage.matches.map((_, m) => (
+      r === 0
+        ? (leafY[2 * m] + leafY[2 * m + 1]) / 2
+        : (matchY[r - 1][2 * m] + matchY[r - 1][2 * m + 1]) / 2
+    )));
+  });
+
+  const colX = (r) => r * COL_W;
+  const championX = colX(totalRounds - 1) + COL_W;
+  const championY = matchY[totalRounds - 1][0];
+  const height = leafCount * ROW_H;
+  const width = championX + 150;
+
+  const elbow = (childX, y1, y2, parentX, parentY) => {
+    const midX = (childX + parentX) / 2;
+    return `M ${childX} ${y1} H ${midX} M ${childX} ${y2} H ${midX} M ${midX} ${y1} V ${y2} M ${midX} ${parentY} H ${parentX}`;
+  };
+
+  const connectors = [];
+  for (let r = 1; r < totalRounds; r++) {
+    const childX = colX(r - 1) + NODE_W;
+    const parentX = colX(r);
+    stages[r].matches.forEach((_, m) => {
+      connectors.push(elbow(childX, matchY[r - 1][2 * m], matchY[r - 1][2 * m + 1], parentX, matchY[r][m]));
+    });
+  }
+  connectors.push(`M ${colX(totalRounds - 1) + NODE_W} ${championY} H ${championX}`);
+
+  const finalMatch = stages[totalRounds - 1]?.matches[0] || null;
+  const finalRecord = finalMatch ? resultFor(finalMatch) : null;
+  const championName = finalRecord ? winnerNameOf(finalRecord) : null;
+  const championLogo = finalMatch && championName === finalMatch.teamA ? finalMatch.teamALogo
+    : finalMatch && championName === finalMatch.teamB ? finalMatch.teamBLogo
+    : null;
+
+  return (
+    <div className="ms-btree" style={{ minHeight: height }}>
+      <div className="ms-btree-headers">
+        {stages.map((s, i) => <div key={i} style={{ width: COL_W }}>{s.name}</div>)}
+        <div style={{ width: width - colX(totalRounds - 1) - COL_W }}>Champion</div>
+      </div>
+
+      <div className="ms-btree-canvas" style={{ height, width }}>
+        <svg width={width} height={height} className="ms-btree-lines">
+          {connectors.map((d, i) => <path key={i} d={d} />)}
+        </svg>
+
+        {stages.map((stage, r) => stage.matches.map((m, mi) => {
+          const recorded = !!resultFor(m);
+          return (
+            <div
+              key={m.id}
+              className={`ms-btree-node ${recorded ? 'ms-btree-node--done' : ''}`}
+              style={{ left: colX(r), top: matchY[r][mi] - NODE_H / 2, width: NODE_W, height: NODE_H }}
+            >
+              {[[m.teamA, m.teamALogo], [m.teamB, m.teamBLogo]].map(([name, logo], slot) => (
+                isPlaceholderTeam(name) ? (
+                  <div className="ms-btree-slot ms-btree-slot--pending" key={slot}>{name}</div>
+                ) : (
+                  <div className="ms-btree-slot" key={slot}>
+                    {logo
+                      ? <img src={logo} alt="" className="ms-btree-avatar" />
+                      : <span className="ms-btree-avatar ms-btree-avatar--fallback" style={{ background: colorFor(name) }}>{name ? name.charAt(0) : '?'}</span>}
+                    <span>{name || 'TBD'}</span>
+                  </div>
+                )
+              ))}
+            </div>
+          );
+        }))}
+
+        <div className="ms-btree-champion" style={{ left: championX, top: championY }}>
+          {championName
+            ? (championLogo
+                ? <img src={championLogo} alt="" className="ms-btree-champion-avatar" />
+                : <span className="ms-btree-champion-avatar ms-btree-champion-avatar--fallback" style={{ background: colorFor(championName) }}>{championName.charAt(0)}</span>)
+            : <FaTrophy />}
+          <span>{championName || 'Champion'}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* Same stage-name → code mapping the admin generator uses ("Quarterfinals"
+   → "QF", "Round of 16" → "R16", …) — needed so the "Loser UB-<code><i>"
+   references below are rebuilt exactly as they were saved. */
+function stageCodeFor(name) {
+  if (name === 'Finals') return 'F';
+  if (name === 'Semifinals') return 'SF';
+  if (name === 'Quarterfinals') return 'QF';
+  const m = (name || '').match(/Round of (\d+)/);
+  return m ? `R${m[1]}` : 'M';
+}
+
+/* ── Renumbers every real match (skipping byes) sequentially — Upper
+   Bracket rounds, then Lower Bracket rounds — as "Match N", and rewrites
+   every reference to it ("Winner QF1", "Loser UB-SF2", …) into "Winner of
+   Match N" / "Loser of Match N". Ported unchanged from the admin Schedule
+   Manager's own double-bracket tree, which this component matches. ── */
+function withMatchNumbers(wbStages, lbRounds) {
+  let n = 0;
+  const rename = {};
+
+  const ubNumbers = wbStages.map((stage, stageIdx) => {
+    const isFinal = stageIdx === wbStages.length - 1;
+    return stage.matches.map((m, i) => {
+      if (m.isBye) return null;
+      n += 1;
+      rename[`Winner ${m.label}`] = `Winner of Match ${n}`;
+      const code = isFinal ? 'F' : stageCodeFor(stage.name);
+      rename[isFinal ? 'Loser UB-F' : `Loser UB-${code}${i + 1}`] = `Loser of Match ${n}`;
+      return n;
+    });
+  });
+  const lbNumbers = lbRounds.map(round => round.matches.map((m) => {
+    n += 1;
+    rename[`Winner ${m.label}`] = `Winner of Match ${n}`;
+    return n;
+  }));
+
+  const apply = (s) => (s != null && rename[s]) || s;
+  return {
+    wbStages: wbStages.map((stage, stageIdx) => ({
+      ...stage,
+      matches: stage.matches.map((m, i) => ({
+        ...m,
+        label: m.isBye ? m.label : `Match ${ubNumbers[stageIdx][i]}`,
+        a: apply(m.a),
+        b: apply(m.b),
+      })),
+    })),
+    lbRounds: lbRounds.map((round, roundIdx) => ({
+      ...round,
+      matches: round.matches.map((m, i) => ({
+        ...m,
+        label: `Match ${lbNumbers[roundIdx][i]}`,
+        a: apply(m.a),
+        b: apply(m.b),
+      })),
+    })),
+  };
+}
+
+/* ── Already-saved double bracket, regrouped from the flat saved matches
+   back into { wbStages, leaves, lbRounds } — same shape the admin
+   generator's DoubleBracketTree consumes. Saved UB matchLabels were
+   prefixed at save time ("UB-QF1"); stripped back to the raw codes
+   ("QF1") the connector renaming above expects. LB labels were never
+   prefixed, so they pass through unchanged. ── */
+function buildSavedDoubleBracketStages(matches) {
+  const groupByStage = (list) => {
+    const byStage = new Map();
+    list.forEach((m) => {
+      if (!byStage.has(m.stage)) byStage.set(m.stage, []);
+      byStage.get(m.stage).push(m);
+    });
+    return [...byStage.values()].sort((a, b) => (a[0]?.round || 0) - (b[0]?.round || 0));
+  };
+
+  const ubGroups = groupByStage(matches.filter(m => (m.stage || '').startsWith('Upper Bracket')));
+  const lbGroups = groupByStage(matches.filter(m => (m.stage || '').startsWith('Lower Bracket')));
+
+  const wbStages = ubGroups.map((group) => ({
+    name: (group[0].stage || '').replace(/^Upper Bracket\s*[–-]\s*/, ''),
+    matches: group.map(m => ({ label: (m.matchLabel || '').replace(/^UB-/, ''), a: m.teamA, b: m.teamB })),
+  }));
+  const lbRounds = lbGroups.map((group) => ({
+    name: (group[0].stage || '').replace(/^Lower Bracket\s*[–-]\s*/, ''),
+    matches: group.map(m => ({ label: m.matchLabel, a: m.teamA, b: m.teamB })),
+  }));
+  const leaves = wbStages[0]?.matches.flatMap(m => [m.a, m.b]) || [];
+
+  return { wbStages, leaves, lbRounds };
+}
+
+/* ── Double Bracket tree: Upper (Winner's) and Lower (Loser's) brackets
+   drawn on ONE shared canvas so their final-round winners can converge
+   with real connector lines into a single "GC" node and Champion box —
+   ported unchanged from the admin Schedule Manager so it renders in
+   exactly the same format here. ── */
+function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw }) {
+  const ROW_H = 56;
+  const LEAF_W = 190;
+  const LEAF_H = 40;
+  const COL_GAP = 250;
+
+  if (!wbStagesRaw.length || !lbRoundsRaw.length) return null;
+
+  const { wbStages, lbRounds } = withMatchNumbers(wbStagesRaw, lbRoundsRaw);
+
+  const colX = (r) => LEAF_W + (r + 1) * COL_GAP;
+
+  const mergeLines = (x1, y1, x2, y2, parentX, parentY) => {
+    const midX = (Math.max(x1, x2) + parentX) / 2;
+    return `M ${x1} ${y1} H ${midX} M ${x2} ${y2} H ${midX} M ${midX} ${y1} V ${y2} M ${midX} ${parentY} H ${parentX}`;
+  };
+
+  const layoutRounds = (roundsMatches, rootLeaves, top, nodeLabel) => {
+    const known = {};
+    rootLeaves.forEach((name, i) => {
+      if (name) known[name] = { y: top + i * ROW_H + ROW_H / 2, lineX: LEAF_W };
+    });
+    let cursorY = top + rootLeaves.length * ROW_H;
+    const freshBoxes = [];
+    const matchY = [];
+    const connectors = [];
+    const captions = [];
+
+    roundsMatches.forEach((matches, r) => {
+      const childX = r === 0 ? LEAF_W : colX(r - 1);
+      const inputBoxX = r === 0 ? 0 : colX(r - 1);
+      const isFinalRound = r === roundsMatches.length - 1;
+      matchY.push(matches.map((m, i) => {
+        const place = (label, hintY) => {
+          const y = hintY != null ? hintY + ROW_H : cursorY + ROW_H / 2;
+          cursorY = Math.max(cursorY, y + ROW_H / 2);
+          const entry = { y, lineX: childX + LEAF_W };
+          known[label] = entry;
+          if (r > 0) freshBoxes.push({ label, x: childX, y });
+          return entry;
+        };
+        const aKnown = m.a != null ? known[m.a] : null;
+        const bKnown = m.b != null ? known[m.b] : null;
+        const a = aKnown ?? (m.a != null ? place(m.a, bKnown ? bKnown.y : null) : null);
+        const b = bKnown ?? (m.b != null ? place(m.b, a ? a.y : null) : null);
+        const y = a && b ? (a.y + b.y) / 2 : (a ?? b).y;
+        if (a && b) connectors.push(mergeLines(a.lineX, a.y, b.lineX, b.y, colX(r), y));
+        if (m.label) known[`Winner of ${m.label}`] = { y, lineX: colX(r) + LEAF_W };
+        if (m.label && a && b) captions.push({ label: m.label, x: inputBoxX, y: Math.min(a.y, b.y) - LEAF_H / 2 - 14 });
+        return { y, label: nodeLabel(m, i, r, isFinalRound) };
+      }));
+    });
+
+    const bottom = Math.max(cursorY, top + rootLeaves.length * ROW_H);
+    return { matchY, connectors, freshBoxes, captions, bottom, finalY: matchY[matchY.length - 1][0].y };
+  };
+
+  const UB_TOP = 56;
+  const ub = layoutRounds(
+    wbStages.map(s => s.matches), leaves, UB_TOP,
+    (m) => `Winner of ${m.label}`
+  );
+  const ubRoundsCount = wbStages.length;
+  const ubFinalX = colX(ubRoundsCount - 1) + LEAF_W;
+  const ubFinalY = ub.finalY;
+
+  const lbLeafLabels = lbRounds[0].matches.flatMap(m => [m.a || 'Bye', m.b || 'Bye']);
+  const LB_LABEL_Y = ub.bottom + 34;
+  const LB_TOP = LB_LABEL_Y + 54;
+  const lb = layoutRounds(
+    lbRounds.map(r => r.matches), lbLeafLabels, LB_TOP,
+    (m) => `Winner of ${m.label}`
+  );
+  const lbRoundsCount = lbRounds.length;
+  const lbFinalX = colX(lbRoundsCount - 1) + LEAF_W;
+  const lbFinalY = lb.finalY;
+
+  const gcX = Math.max(ubFinalX, lbFinalX) + 140;
+  const gcY = (ubFinalY + lbFinalY) / 2;
+  const championX = gcX + 90;
+
+  const totalHeight = lb.bottom + 30;
+  const totalWidth = Math.max(colX(ubRoundsCount - 1) + LEAF_W, colX(lbRoundsCount - 1) + LEAF_W, championX + 130);
+
+  const connectors = [
+    ...ub.connectors,
+    ...lb.connectors,
+    mergeLines(ubFinalX, ubFinalY, lbFinalX, lbFinalY, gcX, gcY),
+    `M ${gcX} ${gcY} H ${championX}`,
+  ];
+
+  return (
+    <div className="msf-dbracket2" style={{ height: totalHeight, width: totalWidth }}>
+      <svg width={totalWidth} height={totalHeight} className="msf-bracket-lines">
+        {connectors.map((d, i) => <path key={i} d={d} />)}
+      </svg>
+
+      <p className="msf-dbracket__label" style={{ top: 0 }}>Upper Bracket (Winner's Bracket)</p>
+      <div className="msf-dbracket2-headers" style={{ top: 30 }}>
+        <div style={{ width: colX(0) }}>{wbStages[0].name}</div>
+        {wbStages.slice(1).map((s, i) => <div key={i} style={{ width: COL_GAP }}>{s.name === 'Finals' ? "Winner's Finals" : s.name}</div>)}
+        <div style={{ width: COL_GAP }}>Grand Finals</div>
+      </div>
+
+      {leaves.map((name, i) => (
+        name ? (
+          <div key={`ub-${i}`} className="msf-bracket-team" style={{ top: UB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
+            <span className="msf-lbracket-leaf__dot" />
+            <span>{name}</span>
+          </div>
+        ) : (
+          <div key={`ub-${i}`} className="msf-bracket-team msf-bracket-team--bye" style={{ top: UB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
+            <span>Bye</span>
+          </div>
+        )
+      ))}
+
+      {ub.matchY.map((round, r) => round.map((node, i) => (
+        <div key={`ub-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
+          <span className="msf-lbracket-leaf__dot" />
+          <span>{node.label}</span>
+        </div>
+      )))}
+
+      {ub.captions.map((c, i) => (
+        <span key={`ub-cap-${i}`} className="msf-dbracket__matchcap" style={{ left: c.x, top: c.y, width: LEAF_W }}>{c.label}</span>
+      ))}
+
+      <p className="msf-dbracket__label msf-dbracket__label--lower" style={{ top: LB_LABEL_Y }}>Lower Bracket (Loser's Bracket)</p>
+      <div className="msf-dbracket2-headers" style={{ top: LB_LABEL_Y + 30 }}>
+        {lbRounds.map((r, i) => <div key={i} style={{ width: i === 0 ? colX(0) : COL_GAP }}>{r.name}</div>)}
+      </div>
+
+      {lbLeafLabels.map((label, i) => (
+        <div key={`lb-${i}`} className="msf-lbracket-leaf" style={{ top: LB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
+          <span className="msf-lbracket-leaf__dot" />
+          <span>{label}</span>
+        </div>
+      ))}
+
+      {lb.freshBoxes.map((box, i) => (
+        <div key={`lb-fresh-${i}`} className="msf-lbracket-leaf" style={{ top: box.y - LEAF_H / 2, left: box.x, height: LEAF_H, width: LEAF_W }}>
+          <span className="msf-lbracket-leaf__dot" />
+          <span>{box.label}</span>
+        </div>
+      ))}
+
+      {lb.matchY.map((round, r) => round.map((node, i) => (
+        <div key={`lb-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
+          <span className="msf-lbracket-leaf__dot" />
+          <span>{node.label}</span>
+        </div>
+      )))}
+
+      {lb.captions.map((c, i) => (
+        <span key={`lb-cap-${i}`} className="msf-dbracket__matchcap" style={{ left: c.x, top: c.y, width: LEAF_W }}>{c.label}</span>
+      ))}
+
+      <div className="msf-bracket-node" style={{ left: gcX, top: gcY }}>
+        <span className="msf-bracket-node__dot" />
+        <span className="msf-bracket-node__label">GC</span>
+      </div>
+
+      <div className="msf-bracket-champion" style={{ left: championX, top: gcY }}>
+        <FaTrophy />
+        <span>Champion</span>
       </div>
     </div>
   );
@@ -347,6 +759,21 @@ export default function MatchSchedulesPage() {
     [categoryMatches]
   );
 
+  /* ── A saved single-elimination bracket gets the connected tree view;
+     round-robin legs keep the column view below, same distinction the
+     admin's Schedule Manager makes. ── */
+  const isBracketShaped = useMemo(
+    () => generatedMatches.length > 0 && generatedMatches.every(m => m.stage && isSingleBracketStage(m.stage)),
+    [generatedMatches]
+  );
+
+  /* ── A saved double-elimination bracket gets the same Upper/Lower
+     Bracket tree the admin's Schedule Manager draws. ── */
+  const isDoubleBracketShaped = useMemo(
+    () => generatedMatches.length > 0 && generatedMatches.some(m => (m.stage || '').startsWith('Upper Bracket')),
+    [generatedMatches]
+  );
+
   /* ── Schedule table only shows matches an admin has actually pinned
      to a real date + time — a freshly generated match with blank
      date/time doesn't belong on the "real-time schedule" yet ── */
@@ -481,7 +908,17 @@ export default function MatchSchedulesPage() {
             <div className="ms-bracket-card">
               <h3 className="ms-bracket-title">{category?.label || ''}</h3>
               {generatedMatches.length > 0 ? (
-                <RoundsView matches={generatedMatches} resultFor={resultFor} champion={champion} />
+                isBracketShaped ? (
+                  <BracketTree stages={buildBracketStages(generatedMatches)} resultFor={resultFor} />
+                ) : isDoubleBracketShaped ? (
+                  <div className="msf-dbracket">
+                    <div className="msf-dbracket__scroll">
+                      <DoubleBracketTree {...buildSavedDoubleBracketStages(generatedMatches)} />
+                    </div>
+                  </div>
+                ) : (
+                  <RoundsView matches={generatedMatches} resultFor={resultFor} champion={champion} />
+                )
               ) : (
                 <p className="ms-bracket-empty">No bracket or rounds generated yet for {category?.label}.</p>
               )}

@@ -8,6 +8,7 @@ import {
   updateDoc,
   deleteDoc,
   query,
+  where,
   orderBy,
   limit,
   serverTimestamp,
@@ -451,6 +452,27 @@ export async function updateRegistrationStatus(regId, status, actorRole, targetL
     targetId: regId,
     targetLabel,
   });
+}
+
+/**
+ * A student's own registration(s) — powers ProfilePage's "Submitted
+ * Registrations" and "Events Joined" cards. `registrations` is otherwise
+ * staff-only (see firestore.rules), but a signed-in user may always read
+ * back docs where `uid` matches their own, same self-read pattern already
+ * used for `users/{uid}`. No `orderBy` here on purpose — a `uid` equality
+ * filter plus an `orderBy` on a different field needs a composite Firestore
+ * index; sorting the (typically one or two) results client-side avoids
+ * requiring one.
+ */
+export async function getMyRegistrations(uid) {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot load your registrations.');
+    return [];
+  }
+  const snap = await getDocs(query(collection(db, 'registrations'), where('uid', '==', uid)));
+  return snap.docs
+    .map((d) => ({ id: d.id, ...d.data() }))
+    .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
 }
 
 /* ─────────────────────────────────────────────
@@ -1020,6 +1042,79 @@ export async function getMatchRecords(level) {
 }
 
 /**
+ * Single-elimination bracket progression.
+ *
+ * The bracket generator (AdminSchedulePage.jsx's generateBracket) saves
+ * every round-2+ match with a placeholder team name like "Winner QF1"
+ * instead of a real team — nothing ever used to resolve that placeholder
+ * once QF1 actually got played, so a bracket permanently got stuck
+ * showing "Winner QF1 vs Winner QF2" forever. This runs after every
+ * confirmed match record and, if that record is for a bracket fixture,
+ * writes the winning team's name (and logo) into whichever later match
+ * still shows that fixture's placeholder.
+ *
+ * Deliberately single-elimination only: round-robin matches never carry a
+ * `stage` field (nothing to advance), and double-elimination's win/loss
+ * cross-pairing (a loser drops into a *different* bracket entirely, with
+ * its own renumbering) is a separate, more involved algorithm than a
+ * single "find and replace one placeholder" pass — left untouched rather
+ * than risk silently mis-wiring a lower-bracket slot.
+ *
+ * Best-effort: any failure here is logged and swallowed so a bug in
+ * bracket-matching can never block saving the match result itself, which
+ * is already safely persisted by the time this runs.
+ */
+async function advanceBracketWinner(level, record) {
+  try {
+    if (!record.scheduleId) return;
+    const winnerName = record.winner === 'A' ? record.teamA?.name
+      : record.winner === 'B' ? record.teamB?.name
+      : null;
+    if (!winnerName) return; // no definitive winner (draw / unset) — nothing to advance
+
+    const schedules = await getMatchSchedules(level);
+    const source = schedules.find((m) => String(m.id) === String(record.scheduleId));
+    if (!source || !source.matchLabel) return;
+
+    // Single-elimination stages are named "Quarterfinals"/"Semifinals"/
+    // "Finals"/"Round of N" with no prefix; double-elimination's are always
+    // "Upper Bracket – …"/"Lower Bracket – …"/"Grand Final".
+    const isSingleBracket = !!source.stage
+      && !source.stage.startsWith('Upper Bracket')
+      && !source.stage.startsWith('Lower Bracket')
+      && source.stage !== 'Grand Final';
+    if (!isSingleBracket) return;
+
+    const placeholder = `Winner ${source.matchLabel}`;
+    const winnerLogo = record.winner === 'A' ? (record.teamA?.logo || null) : (record.teamB?.logo || null);
+    let changed = false;
+    const updated = schedules.map((m) => {
+      if (m.sport !== source.sport || m.category !== source.category) return m;
+      const hitA = m.teamA === placeholder;
+      const hitB = m.teamB === placeholder;
+      if (!hitA && !hitB) return m;
+      changed = true;
+      return {
+        ...m,
+        teamA: hitA ? winnerName : m.teamA,
+        teamALogo: hitA ? winnerLogo : m.teamALogo,
+        teamB: hitB ? winnerName : m.teamB,
+        teamBLogo: hitB ? winnerLogo : m.teamBLogo,
+      };
+    });
+    if (!changed) return;
+
+    await setDoc(
+      doc(db, 'matchSchedules', level),
+      { matches: updated, updatedAt: serverTimestamp() },
+      { merge: true },
+    );
+  } catch (error) {
+    console.warn('Could not advance bracket winner:', error);
+  }
+}
+
+/**
  * Adds (or updates) a single confirmed match record.
  */
 export async function upsertMatchRecord(level, record, actorRole) {
@@ -1037,6 +1132,8 @@ export async function upsertMatchRecord(level, record, actorRole) {
     { records: merged, updatedAt: serverTimestamp() },
     { merge: true }
   );
+
+  await advanceBracketWinner(level, record);
 
   logActivity({
     actorRole,
