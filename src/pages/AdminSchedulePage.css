@@ -741,6 +741,74 @@
   opacity: 0.55;
 }
 
+/* Registration review statuses (Student Registration Details table +
+   modal, Super Admin only). Same three colors as the student-facing
+   sr-badge--* classes in SubmittedRegistrationsModal.css, kept in sync
+   so a status reads the same whichever side of the review it's seen from. */
+.asp-status--pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.asp-status--approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.asp-status--rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Approve/Reject — Student Registration Details table row + modal footer */
+.asp-btn-approve,
+.asp-btn-reject {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 5px;
+  padding: 4px 12px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.asp-btn-approve {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .asp-btn-approve:hover:not(:disabled) {
+    background: #15803d;
+    color: #fff;
+    border-color: #15803d;
+  }
+}
+
+.asp-btn-reject {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .asp-btn-reject:hover:not(:disabled) {
+    background: #b91c1c;
+    color: #fff;
+    border-color: #b91c1c;
+  }
+}
+
+.asp-btn-approve:disabled,
+.asp-btn-reject:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .asp-td--actions {
   display: flex !important;
   gap: 6px;

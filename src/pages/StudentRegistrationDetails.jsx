@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useCallback, useContext } from 'react';
-import { FaSearch, FaTimes, FaUserGraduate } from 'react-icons/fa';
+import { FaSearch, FaTimes, FaUserGraduate, FaCheck } from 'react-icons/fa';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getEventKey, getEventLabel } from '../services/firestoreService';
+import { getEventKey, getEventLabel, updateRegistrationStatus } from '../services/firestoreService';
 import { BrandingContext } from '../components/BrandingContext';
+import { AuthContext } from '../components/AuthContext';
 import './AdminSchedulePage.css';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -30,9 +31,14 @@ function getEventBucket(r, eventList) {
 
 export default function StudentRegistrationDetails() {
   const { events } = useContext(BrandingContext);
+  const { userProfile } = useContext(AuthContext);
   const [allRegistrations, setAllRegistrations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Which registration's Approve/Reject is in flight, so its buttons can
+  // disable without blocking the rest of the table.
+  const [decidingId, setDecidingId] = useState(null);
+  const [decisionError, setDecisionError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterGrade, setFilterGrade] = useState('');
@@ -79,6 +85,11 @@ export default function StudentRegistrationDetails() {
           ...(registration || {}),
           id: user.id,
           uid: user.id,
+          // The registration doc's own id, distinct from the user id above —
+          // this is what approve/reject writes back to. Null when the
+          // student hasn't registered at all (an audience-only account).
+          regId: registration?.id || null,
+          status: registration ? (registration.status || 'pending') : null,
           fullName: (registration && registration.fullName) || user.name || '',
           email: (registration && registration.email) || user.email || '',
           gender: user.gender || '—',
@@ -103,6 +114,26 @@ export default function StudentRegistrationDetails() {
   }, [events]);
 
   useEffect(() => { fetchStudents(); }, [fetchStudents]);
+
+  const handleDecision = useCallback(async (reg, status) => {
+    if (!reg.regId) return;
+    setDecidingId(reg.regId);
+    setDecisionError('');
+    try {
+      await updateRegistrationStatus(reg.regId, status, userProfile?.role, reg.fullName);
+      // Reflect it locally instead of a full refetch — same doc, just a
+      // new status, so no need to re-hit Firestore for the whole table.
+      setAllRegistrations(prev => prev.map(r => (
+        r.regId === reg.regId ? { ...r, status } : r
+      )));
+      setSelectedStudent(prev => (prev && prev.regId === reg.regId ? { ...prev, status } : prev));
+    } catch (err) {
+      console.error(err);
+      setDecisionError(`Failed to ${status === 'approved' ? 'approve' : 'reject'} ${reg.fullName || 'this registration'}.`);
+    } finally {
+      setDecidingId(null);
+    }
+  }, [userProfile]);
 
   const uniqueSections = [...new Set(allRegistrations.map(r => r.section).filter(Boolean))].sort();
   const uniqueSports   = [...new Set(allRegistrations.map(r => r.sport).filter(Boolean))].sort();
@@ -143,6 +174,7 @@ export default function StudentRegistrationDetails() {
         </div>
 
         {error && <p className="asp-empty">{error}</p>}
+        {decisionError && <div className="asp-alert asp-alert--error">{decisionError}</div>}
 
         {/* Filter pills */}
         <div className="asp-filters">
@@ -193,6 +225,7 @@ export default function StudentRegistrationDetails() {
                   <th>Section</th>
                   <th>Sport</th>
                   <th>Event</th>
+                  <th>Status</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -217,8 +250,35 @@ export default function StudentRegistrationDetails() {
                     <td data-label="Section">{reg.section || '—'}</td>
                     <td className="asp-td--sport" data-label="Sport">{reg.sport || '—'}</td>
                     <td data-label="Event">{reg.event || '—'}</td>
+                    <td data-label="Status">
+                      {reg.status ? (
+                        <span className={`asp-status-badge asp-status--${reg.status}`}>{reg.status}</span>
+                      ) : '—'}
+                    </td>
                     <td data-label="Action">
-                      <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                        <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
+                        {reg.regId && reg.status === 'pending' && (
+                          <>
+                            <button
+                              type="button"
+                              className="asp-btn-approve"
+                              disabled={decidingId === reg.regId}
+                              onClick={() => handleDecision(reg, 'approved')}
+                            >
+                              <FaCheck /> Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="asp-btn-reject"
+                              disabled={decidingId === reg.regId}
+                              onClick={() => handleDecision(reg, 'rejected')}
+                            >
+                              <FaTimes /> Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -233,7 +293,17 @@ export default function StudentRegistrationDetails() {
         <div className="asp-modal-overlay" onClick={() => setSelectedStudent(null)}>
           <div className="asp-modal" onClick={e => e.stopPropagation()}>
             <div className="asp-modal__header">
-              <h2>Student Details</h2>
+              <h2>
+                Student Details
+                {selectedStudent.status && (
+                  <span
+                    className={`asp-status-badge asp-status--${selectedStudent.status}`}
+                    style={{ marginLeft: 10, verticalAlign: 'middle' }}
+                  >
+                    {selectedStudent.status}
+                  </span>
+                )}
+              </h2>
               <button className="asp-modal__close" onClick={() => setSelectedStudent(null)}><FaTimes /></button>
             </div>
             <div className="asp-modal__body">
@@ -326,6 +396,26 @@ export default function StudentRegistrationDetails() {
                 )}
               </div>
               <div className="asp-form-actions">
+                {selectedStudent.regId && selectedStudent.status === 'pending' && (
+                  <>
+                    <button
+                      type="button"
+                      className="asp-btn-approve"
+                      disabled={decidingId === selectedStudent.regId}
+                      onClick={() => handleDecision(selectedStudent, 'approved')}
+                    >
+                      <FaCheck /> Approve
+                    </button>
+                    <button
+                      type="button"
+                      className="asp-btn-reject"
+                      disabled={decidingId === selectedStudent.regId}
+                      onClick={() => handleDecision(selectedStudent, 'rejected')}
+                    >
+                      <FaTimes /> Reject
+                    </button>
+                  </>
+                )}
                 <button type="button" className="asp-btn-cancel" onClick={() => setSelectedStudent(null)}>Close</button>
               </div>
             </div>

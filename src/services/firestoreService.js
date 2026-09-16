@@ -5,6 +5,7 @@ import {
   setDoc,
   getDoc,
   addDoc,
+  updateDoc,
   deleteDoc,
   query,
   orderBy,
@@ -412,6 +413,39 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
   });
 
   return docRef;
+}
+
+/**
+ * Super Admin/Admin decides on a pending player registration — the
+ * "Pending Review" tile on SuperAdminPage counts docs still at
+ * `status: 'pending'` (or missing the field entirely, same fallback
+ * used everywhere else this field is read). This is what moves a
+ * registration out of that count, one way or the other.
+ *
+ * @param {string} regId  The `registrations/{regId}` doc id — NOT the
+ *                         student's uid (a student can only ever have
+ *                         one registration, but the doc id is its own
+ *                         field, distinct from `uid`).
+ */
+export async function updateRegistrationStatus(regId, status, actorRole, targetLabel) {
+  if (!db) throw new Error('Firestore not initialized.');
+  if (status !== 'approved' && status !== 'rejected') {
+    throw new Error(`Unknown registration status: ${status}`);
+  }
+
+  await updateDoc(doc(db, 'registrations', regId), {
+    status,
+    reviewedAt: serverTimestamp(),
+  });
+
+  logActivity({
+    actorRole,
+    type: status === 'approved' ? 'Registration Approved' : 'Registration Rejected',
+    details: `${status === 'approved' ? 'Approved' : 'Rejected'} ${targetLabel || 'a student'}'s registration`,
+    targetType: 'registration',
+    targetId: regId,
+    targetLabel,
+  });
 }
 
 /* ─────────────────────────────────────────────
