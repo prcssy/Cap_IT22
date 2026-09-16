@@ -448,19 +448,46 @@
   margin-top: 8px;
   background: #001529;
   border-radius: 14px;
-  padding: 10px;
   width: 260px;
   box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
   opacity: 0;
   transform: translateY(-8px) scale(0.97);
   pointer-events: none;
   transition: opacity 0.16s ease, transform 0.16s ease;
+  /* Keep the rounded corners clipped and let the inner .mp-dd-panel__scroll
+     own the scrollbar instead — border-radius + overflow-y on the same
+     element squares off the scrollbar-side corners (see CLAUDE.md gotcha). */
+  overflow: hidden;
 }
 
 .mp-dd-panel--open {
   opacity: 1;
   transform: translateY(0) scale(1);
   pointer-events: auto;
+}
+
+.mp-dd-panel__scroll {
+  padding: 10px;
+  max-height: min(340px, 60vh);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+.mp-dd-panel__scroll::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mp-dd-panel__scroll::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mp-dd-panel__scroll::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
+}
+
+.mp-dd-panel--teams .mp-dd-panel__scroll::-webkit-scrollbar-thumb {
+  background: #c5d1ec;
 }
 
 .mp-dd-panel__label {
@@ -510,6 +537,9 @@
 .mp-dd-panel--teams {
   background: #fff;
   border: 2px solid #6d8fe0;
+}
+
+.mp-dd-panel--teams .mp-dd-panel__scroll {
   padding: 4px;
 }
 
@@ -2160,6 +2190,7 @@ input.mp-text-input:disabled {
 .mp-edit-row td {
   background: #eef1f8;
   padding: 14px 10px;
+  vertical-align: middle;
 }
 
 .mp-edit-row {
@@ -2167,7 +2198,11 @@ input.mp-text-input:disabled {
 }
 
 .mp-edit-form {
-  display: flex;
+  /* inline-flex so it shrink-wraps to its controls instead of stretching
+     to the full <td> width — that's what lets the cell's text-align
+     (see .mp-td-center) actually center this group instead of it always
+     hugging the left edge regardless of the column's alignment. */
+  display: inline-flex;
   flex-wrap: wrap;
   align-items: center;
   gap: 10px;
@@ -2195,6 +2230,33 @@ input.mp-text-input:disabled {
 
 .mp-edit-form select {
   min-width: 130px;
+}
+
+.mp-edit-team-select {
+  min-width: 130px;
+}
+
+.mp-edit-team-select .mp-select-trigger {
+  padding: 8px 10px;
+  font-size: 0.8rem;
+  border-radius: 8px;
+}
+
+/* The shared OptionDropdown panel is sized for the big "Select team"
+   pickers elsewhere (260px wide, ~1rem options) — far too large next to
+   this row's compact 130px trigger, so shrink it to match here. */
+.mp-edit-team-select .mp-dd-panel {
+  width: 190px;
+}
+
+.mp-edit-team-select .mp-dd-panel__scroll {
+  padding: 4px;
+  max-height: 220px;
+}
+
+.mp-edit-team-select .mp-dd-option {
+  padding: 8px 10px;
+  font-size: 0.78rem;
 }
 
 .mp-edit-form .mp-vs-mini {
@@ -2228,6 +2290,10 @@ input.mp-text-input:disabled {
   background: #eef1f8;
   border-radius: 6px;
   padding: 6px 10px;
+  /* Cancels the pill's own left padding so its text lines up with the
+     plain-text Final Points values in every other row instead of sitting
+     ~10px further right than them. */
+  margin-left: -10px;
 }
 
 .mp-edit-form__score--auto .mp-vs-mini {
@@ -2238,7 +2304,7 @@ input.mp-text-input:disabled {
    gap between them, replacing the one .mp-edit-form's own flex gap used
    to provide when they were two flat items in its row). */
 .mp-edit-form__actions {
-  display: flex;
+  display: inline-flex;
   gap: 10px;
 }
 
@@ -3207,8 +3273,9 @@ input.mp-text-input:disabled {
    at a glance. Below this width each row becomes its own card, using
    the data-label attributes now on every <td> (see ModeratorPage.jsx)
    for the CSS-generated field labels. The inline edit row (.mp-edit-row,
-   a single colSpan cell holding its own form) and the empty-state row
-   are left as plain blocks rather than being split into label/value rows.
+   one <td> per column like any other row, each holding a form control
+   instead of static text) and the empty-state row are left as plain
+   blocks rather than being split into label/value rows.
    ══════════════════════════════════════════ */
 @media (max-width: 700px) {
   .mp-table-wrap {

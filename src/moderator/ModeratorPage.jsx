@@ -576,22 +576,24 @@ function OptionDropdown({
       )}
 
       <div className={`mp-dd-panel ${variant === 'teams' ? 'mp-dd-panel--teams' : ''} ${open ? 'mp-dd-panel--open' : ''}`}>
-        {panelLabel && <div className="mp-dd-panel__label">{panelLabel}</div>}
-        {options.length === 0 ? (
-          <div className="mp-dd-panel__label" style={{ padding: '10px 6px', textTransform: 'none', fontSize: '0.78rem' }}>
-            Nothing available yet
-          </div>
-        ) : options.map((o) => (
-          <button
-            key={o.key}
-            type="button"
-            className={`mp-dd-option ${o.key === value ? 'mp-dd-option--active' : ''} ${o.disabled ? 'mp-dd-option--disabled' : ''}`}
-            disabled={o.disabled}
-            onClick={() => { if (o.disabled) return; onChange(o.key); setOpen(false); }}
-          >
-            {renderOption ? renderOption(o) : o.label}
-          </button>
-        ))}
+        <div className="mp-dd-panel__scroll">
+          {panelLabel && <div className="mp-dd-panel__label">{panelLabel}</div>}
+          {options.length === 0 ? (
+            <div className="mp-dd-panel__label" style={{ padding: '10px 6px', textTransform: 'none', fontSize: '0.78rem' }}>
+              Nothing available yet
+            </div>
+          ) : options.map((o) => (
+            <button
+              key={o.key}
+              type="button"
+              className={`mp-dd-option ${o.key === value ? 'mp-dd-option--active' : ''} ${o.disabled ? 'mp-dd-option--disabled' : ''}`}
+              disabled={o.disabled}
+              onClick={() => { if (o.disabled) return; onChange(o.key); setOpen(false); }}
+            >
+              {renderOption ? renderOption(o) : o.label}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -1639,6 +1641,10 @@ export default function ModeratorPage() {
   const [editDraft, setEditDraft] = useState(null);
   const [savingEditId, setSavingEditId] = useState(null);
   const [flashId, setFlashId] = useState(null);
+  const editTeamOptions = useMemo(
+    () => effectiveTeams.map((t) => ({ key: t.id, label: t.name })),
+    [effectiveTeams],
+  );
 
   /* ── "Request a schedule" (ask the admin to arrange a fixture) ── */
   const [requestModalOpen, setRequestModalOpen] = useState(false);
@@ -2746,7 +2752,7 @@ export default function ModeratorPage() {
                   <th className="mp-th-center">Violation</th>
                   <th>Duration / Score</th>
                   <th>Final points <InfoTip caption="Final points info" placement="bottom">Final points = Previous rating + K(S − E) + Ppu(team score/time performance − violations + comeback bonus). E is the Elo expected score from both teams' ratings, S is 1 for a win / 0 for a loss, K = {K_FACTOR}, Ppu = {PPU}, and the comeback bonus is +{COMEBACK_BONUS}. New teams start at {DEFAULT_POINTS}.</InfoTip></th>
-                  <th style={{ width: 60 }}>Edit</th>
+                  <th className="mp-th-center" style={{ width: 60 }}>Edit</th>
                 </tr>
               </thead>
               <tbody>
@@ -2769,7 +2775,7 @@ export default function ModeratorPage() {
                             : r.participants.map((p) => minutesToDurationString(p.minutes)).join(' - ')}
                         </td>
                         <td className="mp-table__points" data-label="Final Points">{r.participants.map((p) => fmtPts(p.finalPoints)).join(' - ')}</td>
-                        <td data-label="Edit">
+                        <td className="mp-td-center" data-label="Edit">
                           <button className="mp-table__edit-btn" onClick={() => loadRecordIntoForm(r)} aria-label="Edit"><FaEdit /></button>
                         </td>
                       </tr>
@@ -2779,20 +2785,39 @@ export default function ModeratorPage() {
                   const editPreview = editingId === r.id ? computeEditFinalPoints(r, editDraft, rowIsPoints) : null;
                   return editingId === r.id ? (
                     <tr className="mp-edit-row" key={r.id}>
-                      <td colSpan={6}>
+                      <td data-label="Sports">{displayCategory(r.label || r.sportName || '').toUpperCase()}</td>
+                      <td data-label="Team">
                         <div className="mp-edit-form">
-                          <select value={editDraft.teamAId} onChange={(e) => setEditDraft((d) => ({ ...d, teamAId: e.target.value }))}>
-                            {effectiveTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </select>
+                          <div className="mp-edit-team-select">
+                            <OptionDropdown
+                              variant="teams"
+                              value={editDraft.teamAId}
+                              options={editTeamOptions}
+                              onChange={(key) => setEditDraft((d) => ({ ...d, teamAId: key }))}
+                            />
+                          </div>
                           <span className="mp-vs-mini">vs</span>
-                          <select value={editDraft.teamBId} onChange={(e) => setEditDraft((d) => ({ ...d, teamBId: e.target.value }))}>
-                            {effectiveTeams.map((t) => <option key={t.id} value={t.id}>{t.name}</option>)}
-                          </select>
+                          <div className="mp-edit-team-select">
+                            <OptionDropdown
+                              variant="teams"
+                              value={editDraft.teamBId}
+                              options={editTeamOptions}
+                              onChange={(key) => setEditDraft((d) => ({ ...d, teamBId: key }))}
+                            />
+                          </div>
+                        </div>
+                      </td>
+                      <td className="mp-td-center" data-label="Violation">
+                        <div className="mp-edit-form">
                           <div className="mp-edit-form__score">
                             <input type="number" min="0" value={editDraft.totalViolationsA} onChange={(e) => setEditDraft((d) => ({ ...d, totalViolationsA: e.target.value }))} />
                             <span className="mp-vs-mini">-</span>
                             <input type="number" min="0" value={editDraft.totalViolationsB} onChange={(e) => setEditDraft((d) => ({ ...d, totalViolationsB: e.target.value }))} />
                           </div>
+                        </div>
+                      </td>
+                      <td data-label="Duration / Score">
+                        <div className="mp-edit-form">
                           {rowIsPoints ? (
                             <div className="mp-edit-form__score">
                               <input className="mp-edit-time" type="number" min="0" placeholder="pts" value={editDraft.pointsA} onChange={(e) => setEditDraft((d) => ({ ...d, pointsA: e.target.value }))} />
@@ -2806,17 +2831,21 @@ export default function ModeratorPage() {
                               <input className="mp-edit-time" type="text" placeholder="mins" value={editDraft.minutesB} onChange={(e) => setEditDraft((d) => ({ ...d, minutesB: e.target.value }))} />
                             </div>
                           )}
-                          <div className="mp-edit-form__score mp-edit-form__score--auto" title="Recalculated automatically from violations/score above">
-                            <span>{fmtPts(editPreview.finalPointsA)}</span>
-                            <span className="mp-vs-mini">-</span>
-                            <span>{fmtPts(editPreview.finalPointsB)}</span>
-                          </div>
-                          <div className="mp-edit-form__actions">
-                            <button className="mp-edit-form__save" onClick={() => saveEdit(r)} disabled={savingEditId === r.id}>
-                              {savingEditId === r.id ? 'Saving…' : 'Save'}
-                            </button>
-                            <button className="mp-edit-form__cancel" onClick={() => { setEditingId(null); setEditDraft(null); }} disabled={savingEditId === r.id}>Cancel</button>
-                          </div>
+                        </div>
+                      </td>
+                      <td className="mp-table__points" data-label="Final Points">
+                        <div className="mp-edit-form__score mp-edit-form__score--auto" title="Recalculated automatically from violations/score above">
+                          <span>{fmtPts(editPreview.finalPointsA)}</span>
+                          <span className="mp-vs-mini">-</span>
+                          <span>{fmtPts(editPreview.finalPointsB)}</span>
+                        </div>
+                      </td>
+                      <td className="mp-td-center" data-label="Edit">
+                        <div className="mp-edit-form__actions">
+                          <button className="mp-edit-form__save" onClick={() => saveEdit(r)} disabled={savingEditId === r.id}>
+                            {savingEditId === r.id ? 'Saving…' : 'Save'}
+                          </button>
+                          <button className="mp-edit-form__cancel" onClick={() => { setEditingId(null); setEditDraft(null); }} disabled={savingEditId === r.id}>Cancel</button>
                         </div>
                       </td>
                     </tr>
@@ -2827,7 +2856,7 @@ export default function ModeratorPage() {
                       <td className="mp-td-center" data-label="Violation">{(r.teamA.totalViolations || r.teamB.totalViolations) ? `${r.teamA.totalViolations}-${r.teamB.totalViolations}` : '--'}</td>
                       <td data-label="Duration / Score">{rowIsPoints ? (r.teamA.points != null ? `${r.teamA.points} - ${r.teamB.points} pts` : '--') : (r.teamA.minutes != null ? `${minutesToDurationString(r.teamA.minutes)} - ${minutesToDurationString(r.teamB.minutes)}` : '--')}</td>
                       <td className="mp-table__points" data-label="Final Points">{fmtPts(r.teamA.finalPoints)} - {fmtPts(r.teamB.finalPoints)}</td>
-                      <td data-label="Edit"><button className="mp-table__edit-btn" onClick={() => startEdit(r)} aria-label="Edit"><FaEdit /></button></td>
+                      <td className="mp-td-center" data-label="Edit"><button className="mp-table__edit-btn" onClick={() => startEdit(r)} aria-label="Edit"><FaEdit /></button></td>
                     </tr>
                   );
                 })}
