@@ -94,18 +94,27 @@
   cursor: pointer;
 }
 
-/* ── Venue's booked-schedules modal ── */
+/* ── Venue's booked-schedules modal ──
+   Outer shell stays rounded + clipped; only the inner body scrolls, so the
+   scrollbar track never renders flush against a rounded corner (see
+   "Known CSS gotchas" in the repo's CLAUDE.md). */
 .vm-schedule-modal {
   background: #fff;
   width: 100%;
   max-width: 520px;
   max-height: 80vh;
-  overflow-y: auto;
+  overflow: hidden;
   border-radius: 14px;
-  padding: 22px 24px;
+  display: flex;
+  flex-direction: column;
   color: #001529;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
   animation: msf-fade-up 0.2s ease both;
+}
+
+.vm-schedule-modal__body {
+  padding: 16px 24px 22px;
+  overflow-y: auto;
 
   /* Thin, rounded scrollbar instead of the browser-default flat one,
      which reads as a hard edge cutting across the modal's rounded
@@ -114,22 +123,22 @@
   scrollbar-color: #c7cfe6 transparent;
 }
 
-.vm-schedule-modal::-webkit-scrollbar {
+.vm-schedule-modal__body::-webkit-scrollbar {
   width: 8px;
 }
 
-.vm-schedule-modal::-webkit-scrollbar-track {
+.vm-schedule-modal__body::-webkit-scrollbar-track {
   background: transparent;
   margin: 14px 0;
 }
 
-.vm-schedule-modal::-webkit-scrollbar-thumb {
+.vm-schedule-modal__body::-webkit-scrollbar-thumb {
   background: #c7cfe6;
   border-radius: 8px;
 }
 
 @media (hover: hover) and (pointer: fine) {
-.vm-schedule-modal::-webkit-scrollbar-thumb:hover {
+.vm-schedule-modal__body::-webkit-scrollbar-thumb:hover {
   background: #a9b4d6;
 }
 }
@@ -139,9 +148,9 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  padding-bottom: 16px;
-  margin-bottom: 4px;
+  padding: 22px 24px 16px;
   border-bottom: 1px solid #eef0f5;
+  flex-shrink: 0;
 }
 
 .vm-schedule-modal__title {

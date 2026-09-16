@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { FaTrophy, FaCalendarAlt, FaMapMarkerAlt, FaTimes } from 'react-icons/fa';
 import './EventsJoinedModal.css';
 

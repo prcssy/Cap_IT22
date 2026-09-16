@@ -1,4 +1,5 @@
-import React, { useState, useRef, useContext, useEffect, useCallback, useMemo } from 'react';
+import { useState, useRef, useContext, useEffect, useCallback, useMemo, Children, isValidElement, cloneElement } from 'react';
+import { getDoc } from 'firebase/firestore';
 import {
   parsePhoneNumberFromString,
   getCountries,
@@ -28,8 +29,6 @@ const GRADE_LEVELS = ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Gr
   'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12',
   '1st Year', '2nd Year', '3rd Year', '4th Year'];
 
-const SECTIONS = ['Section A', 'Section B', 'Section C', 'Section D', 'Section E'];
-
 /* Sport & Team options aren't hardcoded here — they come from whatever
    the admin has configured for the student's school level in the
    "Sports & Teams" manager (see SportsTeamsManager.jsx /
@@ -44,6 +43,13 @@ function getSchoolLevel(gradeLevel) {
   if (HIGH_SCHOOL_GRADES.has(gradeLevel)) return 'highSchool';
   if (COLLEGE_GRADES.has(gradeLevel)) return 'college';
   return null;
+}
+
+const SCHOOL_LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
+
+function gradeLevelDisplayLabel(gradeLevel) {
+  const label = SCHOOL_LEVEL_LABELS[getSchoolLevel(gradeLevel)];
+  return label ? `${gradeLevel} (${label})` : gradeLevel;
 }
 
 // Region code ("PH", "US") -> display name ("Philippines", "United
@@ -157,6 +163,12 @@ export default function RegistrationPage() {
   const [submitted, setSubmitted] = useState(false);
   const [errors, setErrors]       = useState({});
   const [showNotice, setShowNotice] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  // Set when the student attached a photo/waiver but the saved registration
+  // doc came back without the matching URL — see handleSave's post-save
+  // check below. Shown as a banner on the success screen, since the
+  // registration itself did save.
+  const [uploadIssues, setUploadIssues] = useState([]);
 
   // Sport / Team options, sourced live from the admin's Sports & Teams
   // config for whichever school level the selected Grade/Year falls in.
@@ -563,6 +575,8 @@ export default function RegistrationPage() {
     if (!form.dob)                    errs.dob              = 'Date of birth is required';
     if (!form.age)                    errs.age              = 'Age is required';
     else if (Number(form.age) <= 0)   errs.age              = 'Enter a valid age';
+    else if (Number(form.age) < 5 || Number(form.age) > 40)
+                                       errs.age              = 'Age must be between 5 and 40';
     if (!form.gender)                 errs.gender           = 'Please select a gender';
 
     const phoneCountryName = COUNTRY_OPTIONS.find(c => c.code === form.phoneCountry)?.name || form.phoneCountry;
@@ -592,7 +606,7 @@ export default function RegistrationPage() {
       if (err) errs.emergencyContact = err;
     }
     if (!form.gradeLevel)             errs.gradeLevel       = 'Please select a grade / year level';
-    if (!form.section)                errs.section          = 'Please select a section';
+    if (!form.section.trim())         errs.section          = 'Please enter a section';
     if (!form.teamName)               errs.teamName         = 'Please select a team';
     if (!form.sport)                  errs.sport            = 'Please select a sport / event';
     if (!form.position)               errs.position         = 'Please select a position';
@@ -604,6 +618,10 @@ export default function RegistrationPage() {
 
  const handleSave = async (e) => {
     e.preventDefault();
+
+    // Guards a fast double-click/double-Enter in case the disabled
+    // attribute on the submit button doesn't catch it in time.
+    if (submitting) return;
 
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
@@ -623,11 +641,13 @@ export default function RegistrationPage() {
             return;
         }
 
+        setSubmitting(true);
+
         // form.contactNumber and form.emergencyContact are already kept in
         // sync by the compose effects above (phoneCountry + national
         // digits -> full E.164 / "Name - +<number>"), so `form` itself is
         // already submission-ready — no extra normalization needed here.
-        await createRegistration(
+        const result = await createRegistration(
             currentUser.uid,
             currentUser.email,
             form,
@@ -636,6 +656,29 @@ export default function RegistrationPage() {
             userProfile?.role || 'student',
             events
         );
+
+        // createRegistration uploads the photo/waiver to Storage but never
+        // lets an upload failure fail the registration itself (see
+        // uploadFile in firestoreService.js) — it just saves a null URL.
+        // Read the saved doc back to see whether that happened, so the
+        // success screen can flag it instead of implying everything came
+        // through. Students can't read their own registration back
+        // (firestore.rules only allows staff to read `registrations`), so
+        // this check only actually confirms anything for staff-submitted
+        // registrations — for everyone else it fails closed (no false
+        // warning) rather than risk a false positive.
+        const attachedIssues = [];
+        if (photo || waiver) {
+          try {
+            const savedSnap = await getDoc(result);
+            const saved = savedSnap.exists() ? savedSnap.data() : {};
+            if (photo && !saved.photoURL) attachedIssues.push('photo');
+            if (waiver && !saved.waiverURL) attachedIssues.push('waiver');
+          } catch (readError) {
+            console.warn('Could not verify photo/waiver upload:', readError);
+          }
+        }
+        setUploadIssues(attachedIssues);
 
         setSubmitted(true);
 
@@ -653,6 +696,8 @@ export default function RegistrationPage() {
     } catch (error) {
         console.error(error);
         alert(error.message);
+    } finally {
+        setSubmitting(false);
     }
 };
 
@@ -676,6 +721,17 @@ export default function RegistrationPage() {
               Your registration for <strong style={{ color: '#001529' }}>{form.event || 'the event'}</strong> has
               been received. You'll be notified once it's reviewed.
             </p>
+            {uploadIssues.length > 0 && (
+              <div className="reg-notice" role="alert" style={{ textAlign: 'left', margin: '0 0 18px' }}>
+                <svg className="reg-notice__icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                  <path d="M12 2 1 21h22L12 2zm0 5.5 6.9 12H5.1L12 7.5zM11 10v5h2v-5h-2zm0 6.5V18h2v-1.5h-2z"/>
+                </svg>
+                <span>
+                  Your registration was saved, but your {uploadIssues.join(' and ')} did not upload
+                  successfully. Please contact the registration desk, or a staff member will follow up with you.
+                </span>
+              </div>
+            )}
             <div className="reg-event-counts reg-event-counts--center">
               <span className="reg-event-counts__title">Players Registered per Event</span>
               <div className="reg-event-counts__chips">
@@ -785,20 +841,9 @@ export default function RegistrationPage() {
               </Field>
             </div>
 
-            {/* Row 2: Gender / Contact Number / Emergency Contact —
+            {/* Row 2: Contact Number / Emergency Contact / Gender —
                 every "how to reach the student or family" field in one row. */}
             <div className="reg-row reg-row--3eq">
-              <Field label="Gender" required error={errors.gender}>
-                <div className="reg-radio-group">
-                  {['Male', 'Female', 'Others'].map(g => (
-                    <label className="reg-radio-label" key={g}>
-                      <input type="radio" name="gender" value={g}
-                        checked={form.gender === g} onChange={set('gender')} />
-                      {g}
-                    </label>
-                  ))}
-                </div>
-              </Field>
               <Field label="Contact Number" required error={errors.contactNumber}>
                 <select className="reg-select" value={form.phoneCountry} onChange={onPhoneCountryChange} required>
                   {COUNTRY_OPTIONS.length === 0 ? (
@@ -826,6 +871,17 @@ export default function RegistrationPage() {
                     value={form.emergencyContactNational} onChange={onEmergencyNationalChange} required />
                 </div>
                 <PhoneHint value={form.emergencyContactNational} check={emergencyPhoneCheck} />
+              </Field>
+              <Field label="Gender" required error={errors.gender}>
+                <div className="reg-radio-group">
+                  {['Male', 'Female', 'Others'].map(g => (
+                    <label className="reg-radio-label" key={g}>
+                      <input type="radio" name="gender" value={g}
+                        checked={form.gender === g} onChange={set('gender')} />
+                      {g}
+                    </label>
+                  ))}
+                </div>
               </Field>
             </div>
 
@@ -887,14 +943,17 @@ export default function RegistrationPage() {
               <Field label="Grade / Year Level" required error={errors.gradeLevel}>
                 <select className="reg-select" value={form.gradeLevel} onChange={set('gradeLevel')} required>
                   <option value="">Select Grade / Year Level</option>
-                  {GRADE_LEVELS.map(g => <option key={g}>{g}</option>)}
+                  {GRADE_LEVELS.map(g => <option key={g} value={g}>{gradeLevelDisplayLabel(g)}</option>)}
                 </select>
               </Field>
               <Field label="Section" required error={errors.section}>
-                <select className="reg-select" value={form.section} onChange={set('section')} required>
-                  <option value="">Select Section</option>
-                  {SECTIONS.map(s => <option key={s}>{s}</option>)}
-                </select>
+                <input
+                  className="reg-input"
+                  placeholder="e.g. Section A"
+                  value={form.section}
+                  onChange={set('section')}
+                  required
+                />
               </Field>
             </div>
 
@@ -1023,9 +1082,9 @@ export default function RegistrationPage() {
                 <button type="button" className="reg-btn-reset" onClick={handleReset}>
                   Reset ↺
                 </button>
-                <button type="submit" className="reg-btn-save">
+                <button type="submit" className="reg-btn-save" disabled={submitting}>
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
-                  Save Registration
+                  {submitting ? 'Saving...' : 'Save Registration'}
                 </button>
               </div>
             </div>
@@ -1042,13 +1101,38 @@ export default function RegistrationPage() {
 
 
 
-function Field({ label, required, error, children }) {
+// Slugifies a Field's label into a stable id fallback ("City / Municipality"
+// -> "reg-field-city-municipality") so every Field gets a working
+// label/input pairing without having to pass an explicit id at each call
+// site below.
+function slugify(label) {
+  return String(label).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-+|-+$)/g, '');
+}
+
+const LABELABLE_TAGS = new Set(['input', 'select', 'textarea']);
+
+function Field({ label, required, error, id, children }) {
+  const fieldId = id || `reg-field-${slugify(label)}`;
+
+  // Field is invoked with either a single input/select/textarea, or that
+  // control plus extra siblings (hint text, a second phone input, upload
+  // captions, PhoneHint, ...). Only the first child is ever the field's own
+  // primary control, so only it gets the id the <label>'s htmlFor points
+  // to — cloned in automatically rather than needing an id prop threaded
+  // through every call site below.
+  const [firstChild, ...restChildren] = Children.toArray(children);
+  const canLabelFirstChild = isValidElement(firstChild) && LABELABLE_TAGS.has(firstChild.type);
+  const labeledFirstChild = canLabelFirstChild
+    ? cloneElement(firstChild, { id: firstChild.props.id || fieldId })
+    : firstChild;
+
   return (
     <div className={`reg-field${error ? ' reg-field--error' : ''}`}>
-      <label className="reg-label">
+      <label className="reg-label" htmlFor={canLabelFirstChild ? fieldId : undefined}>
         {label}{required && <span>*</span>}
       </label>
-      {children}
+      {labeledFirstChild}
+      {restChildren}
       {error && <span className="reg-field__error">{error}</span>}
     </div>
   );

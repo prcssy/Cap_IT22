@@ -1,4 +1,4 @@
-import React, { useState, useContext, useEffect, useCallback, useRef } from 'react';
+import { useState, useContext, useEffect, useCallback, useRef } from 'react';
 import { AuthContext } from '../components/AuthContext';
 import { BrandingContext } from '../components/BrandingContext';
 import { useNavigate } from 'react-router-dom';
@@ -1274,7 +1274,12 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   };
 
   const handleConfirmAdd = async () => {
-    const validPairs = addForm.pairs.filter(p => p.teamA && p.teamB);
+    const filledPairs = addForm.pairs.filter(p => p.teamA && p.teamB);
+    if (filledPairs.some(p => norm(p.teamA) === norm(p.teamB))) {
+      setToast({ text: 'A team cannot be scheduled against itself — pick two different teams.' });
+      return;
+    }
+    const validPairs = filledPairs;
     if (!addForm.sport || !addForm.category || !addForm.date || !addForm.time || validPairs.length === 0) return;
     if (venueOccupied(addForm.location, addForm.date, addForm.time, null)) {
       setToast({ text: 'That venue is already booked at this date & time — pick another.' });
@@ -1332,6 +1337,10 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
   const handleConfirmEdit = async () => {
     if (!editForm || !editForm.category || !editForm.date || !editForm.time || !editForm.teamA || !editForm.teamB) return;
+    if (norm(editForm.teamA) === norm(editForm.teamB)) {
+      setToast({ text: 'A team cannot be scheduled against itself — pick two different teams.' });
+      return;
+    }
     if (venueOccupied(editForm.location, editForm.date, editForm.time, editForm.id)) {
       setToast({ text: 'That venue is already booked at this date & time — pick another.' });
       return;

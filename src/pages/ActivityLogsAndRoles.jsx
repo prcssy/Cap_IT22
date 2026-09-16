@@ -65,7 +65,7 @@ function parseLocalDate(yyyyMmDd) {
  * `users`/`logs` are fetched once by SuperAdminPage.jsx and handed down as
  * props (no duplicate reads); `onRefresh` re-pulls a fresh batch of logs.
  */
-export default function ActivityLogsAndRoles({ users, logs, loading, error, onRefresh, actorRole }) {
+export default function ActivityLogsAndRoles({ users, logs, loading, error, onRefresh, onUserRoleChanged, actorRole }) {
   /* ── Filters (draft vs. applied — a Filter button commits them, like
      the reference design, rather than filtering live on every keystroke) ── */
   const [draftType, setDraftType] = useState('All Types');
@@ -183,6 +183,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
       }));
       setActionMsg({ tone: 'success', text: `${selectedUser.name || selectedUser.email} is now ${roleLabel(role)}.` });
       onRefresh();
+      onUserRoleChanged?.();
     } catch (err) {
       console.error('Failed to assign role:', err);
       setActionMsg({ tone: 'error', text: friendlyRoleError(err, 'Could not update this role') });
@@ -193,6 +194,10 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
 
   const handleRemove = async () => {
     if (!selectedUser || isSelf) return;
+    const confirmed = window.confirm(
+      `Remove ${selectedUser.name || selectedUser.email} as ${roleLabel(selectedRole)}? They will lose staff access immediately.`
+    );
+    if (!confirmed) return;
     setBusyRole('remove');
     setActionMsg(null);
     try {
@@ -206,6 +211,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
       }));
       setActionMsg({ tone: 'success', text: `${selectedUser.name || selectedUser.email}'s staff role was removed.` });
       onRefresh();
+      onUserRoleChanged?.();
     } catch (err) {
       console.error('Failed to remove role:', err);
       setActionMsg({ tone: 'error', text: friendlyRoleError(err, 'Could not remove this role') });

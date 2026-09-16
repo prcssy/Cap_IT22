@@ -14,7 +14,6 @@
     "@aivangogh/ph-address": "^2026.2.3",
     "firebase": "^11.10.0",
     "firebase-admin": "^14.2.0",
-    "icons": "^1.0.0",
     "jspdf": "^4.2.1",
     "jspdf-autotable": "^5.0.8",
     "libphonenumber-js": "^1.13.13",

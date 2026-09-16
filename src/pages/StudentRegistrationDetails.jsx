@@ -1,9 +1,10 @@
-import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
-import { FaSearch, FaTimes, FaUserGraduate } from 'react-icons/fa';
+import { useState, useEffect, useCallback, useContext, useRef } from 'react';
+import { FaSearch, FaTimes, FaUserGraduate, FaCheck } from 'react-icons/fa';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
-import { getEventKey, getEventLabel } from '../services/firestoreService';
+import { getEventKey, getEventLabel, updateRegistrationStatus } from '../services/firestoreService';
 import { BrandingContext } from '../components/BrandingContext';
+import { AuthContext } from '../components/AuthContext';
 import './AdminSchedulePage.css';
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -21,6 +22,23 @@ const ALL_GRADES = [
   'Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12',
   '1st Year','2nd Year','3rd Year','4th Year',
 ];
+
+// Same grade -> school-level mapping used by AdminSchedulePage.jsx /
+// SuperAdminPage.jsx / RegistrationPage.jsx — level is always derived
+// from gradeLevel on the fly, never stored as its own field.
+const ELEMENTARY_GRADES = new Set(['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6']);
+const HIGH_SCHOOL_GRADES = new Set(['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']);
+const COLLEGE_GRADES = new Set(['1st Year', '2nd Year', '3rd Year', '4th Year']);
+
+function getSchoolLevel(gradeLevel) {
+  if (!gradeLevel) return null;
+  if (ELEMENTARY_GRADES.has(gradeLevel)) return 'elementary';
+  if (HIGH_SCHOOL_GRADES.has(gradeLevel)) return 'highSchool';
+  if (COLLEGE_GRADES.has(gradeLevel)) return 'college';
+  return null;
+}
+
+const LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
 
 /* Which event bucket a registration belongs to — same rule AdminSchedulePage
    uses for its own event filter/chips. */
@@ -87,11 +105,17 @@ function FilterDropdown({ label, value, options, onChange }) {
 
 export default function StudentRegistrationDetails() {
   const { events } = useContext(BrandingContext);
+  const { userProfile } = useContext(AuthContext);
   const [allRegistrations, setAllRegistrations] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // Which registration's Approve/Reject is in flight, so its buttons can
+  // disable without blocking the rest of the table.
+  const [decidingId, setDecidingId] = useState(null);
+  const [decisionError, setDecisionError] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [filterLevel, setFilterLevel] = useState('');
   const [filterGrade, setFilterGrade] = useState('');
   const [filterSection, setFilterSection] = useState('');
   const [filterSport, setFilterSport] = useState('');
@@ -136,6 +160,11 @@ export default function StudentRegistrationDetails() {
           ...(registration || {}),
           id: user.id,
           uid: user.id,
+          // The registration doc's own id, distinct from the user id above —
+          // this is what approve/reject writes back to. Null when the
+          // student hasn't registered at all (an audience-only account).
+          regId: registration?.id || null,
+          status: registration ? (registration.status || 'pending') : null,
           fullName: (registration && registration.fullName) || user.name || '',
           email: (registration && registration.email) || user.email || '',
           gender: user.gender || '—',
@@ -161,6 +190,26 @@ export default function StudentRegistrationDetails() {
 
   useEffect(() => { fetchStudents(); }, [fetchStudents]);
 
+  const handleDecision = useCallback(async (reg, status) => {
+    if (!reg.regId) return;
+    setDecidingId(reg.regId);
+    setDecisionError('');
+    try {
+      await updateRegistrationStatus(reg.regId, status, userProfile?.role, reg.fullName);
+      // Reflect it locally instead of a full refetch — same doc, just a
+      // new status, so no need to re-hit Firestore for the whole table.
+      setAllRegistrations(prev => prev.map(r => (
+        r.regId === reg.regId ? { ...r, status } : r
+      )));
+      setSelectedStudent(prev => (prev && prev.regId === reg.regId ? { ...prev, status } : prev));
+    } catch (err) {
+      console.error(err);
+      setDecisionError(`Failed to ${status === 'approved' ? 'approve' : 'reject'} ${reg.fullName || 'this registration'}.`);
+    } finally {
+      setDecidingId(null);
+    }
+  }, [userProfile]);
+
   const uniqueSections = [...new Set(allRegistrations.map(r => r.section).filter(Boolean))].sort();
   const uniqueSports   = [...new Set(allRegistrations.map(r => r.sport).filter(Boolean))].sort();
 
@@ -168,6 +217,7 @@ export default function StudentRegistrationDetails() {
     const q = searchQuery.toLowerCase();
     return (
       (!q             || (r.fullName || '').toLowerCase().includes(q)) &&
+      (!filterLevel   || getSchoolLevel(r.gradeLevel) === filterLevel) &&
       (!filterGrade   || r.gradeLevel === filterGrade) &&
       (!filterSection || r.section    === filterSection) &&
       (!filterSport   || r.sport      === filterSport) &&
@@ -176,8 +226,8 @@ export default function StudentRegistrationDetails() {
     );
   });
 
-  const hasFilters = searchQuery || filterGrade || filterSection || filterSport || filterGender || filterEvent;
-  const clearFilters = () => { setSearchQuery(''); setFilterGrade(''); setFilterSection(''); setFilterSport(''); setFilterGender(''); setFilterEvent(''); };
+  const hasFilters = searchQuery || filterLevel || filterGrade || filterSection || filterSport || filterGender || filterEvent;
+  const clearFilters = () => { setSearchQuery(''); setFilterLevel(''); setFilterGrade(''); setFilterSection(''); setFilterSport(''); setFilterGender(''); setFilterEvent(''); };
 
   return (
     <>
@@ -200,9 +250,20 @@ export default function StudentRegistrationDetails() {
         </div>
 
         {error && <p className="asp-empty">{error}</p>}
+        {decisionError && <div className="asp-alert asp-alert--error">{decisionError}</div>}
 
         {/* Filter pills */}
         <div className="asp-filters">
+          <FilterDropdown
+            label="Level ▾"
+            value={filterLevel}
+            onChange={setFilterLevel}
+            options={[
+              { value: 'elementary', label: 'Elementary' },
+              { value: 'highSchool', label: 'High School' },
+              { value: 'college', label: 'College' },
+            ]}
+          />
           <FilterDropdown
             label="Grade/Year ▾"
             value={filterGrade}
@@ -261,9 +322,11 @@ export default function StudentRegistrationDetails() {
                   <th>Name</th>
                   <th>Gender</th>
                   <th>Grade/Year</th>
+                  <th>Level</th>
                   <th>Section</th>
                   <th>Sport</th>
                   <th>Event</th>
+                  <th>Status</th>
                   <th>Action</th>
                 </tr>
               </thead>
@@ -285,11 +348,39 @@ export default function StudentRegistrationDetails() {
                       </span>
                     </td>
                     <td data-label="Grade/Year">{reg.gradeLevel || '—'}</td>
+                    <td data-label="Level">{LEVEL_LABELS[getSchoolLevel(reg.gradeLevel)] || '—'}</td>
                     <td data-label="Section">{reg.section || '—'}</td>
                     <td className="asp-td--sport" data-label="Sport">{reg.sport || '—'}</td>
                     <td data-label="Event">{reg.event || '—'}</td>
+                    <td data-label="Status">
+                      {reg.status ? (
+                        <span className={`asp-status-badge asp-status--${reg.status}`}>{reg.status}</span>
+                      ) : '—'}
+                    </td>
                     <td data-label="Action">
-                      <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                        <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
+                        {reg.regId && reg.status === 'pending' && (
+                          <>
+                            <button
+                              type="button"
+                              className="asp-btn-approve"
+                              disabled={decidingId === reg.regId}
+                              onClick={() => handleDecision(reg, 'approved')}
+                            >
+                              <FaCheck /> Approve
+                            </button>
+                            <button
+                              type="button"
+                              className="asp-btn-reject"
+                              disabled={decidingId === reg.regId}
+                              onClick={() => handleDecision(reg, 'rejected')}
+                            >
+                              <FaTimes /> Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
                     </td>
                   </tr>
                 ))}
@@ -304,7 +395,17 @@ export default function StudentRegistrationDetails() {
         <div className="asp-modal-overlay" onClick={() => setSelectedStudent(null)}>
           <div className="asp-modal" onClick={e => e.stopPropagation()}>
             <div className="asp-modal__header">
-              <h2>Student Details</h2>
+              <h2>
+                Student Details
+                {selectedStudent.status && (
+                  <span
+                    className={`asp-status-badge asp-status--${selectedStudent.status}`}
+                    style={{ marginLeft: 10, verticalAlign: 'middle' }}
+                  >
+                    {selectedStudent.status}
+                  </span>
+                )}
+              </h2>
               <button className="asp-modal__close" onClick={() => setSelectedStudent(null)}><FaTimes /></button>
             </div>
             <div className="asp-modal__body">
@@ -327,6 +428,10 @@ export default function StudentRegistrationDetails() {
                   <label>Section</label>
                   <p>{selectedStudent.section || '—'}</p>
                 </div>
+              </div>
+              <div className="asp-form-group">
+                <label>Level</label>
+                <p>{LEVEL_LABELS[getSchoolLevel(selectedStudent.gradeLevel)] || '—'}</p>
               </div>
               <div className="asp-form-row">
                 <div className="asp-form-group">
@@ -397,6 +502,26 @@ export default function StudentRegistrationDetails() {
                 )}
               </div>
               <div className="asp-form-actions">
+                {selectedStudent.regId && selectedStudent.status === 'pending' && (
+                  <>
+                    <button
+                      type="button"
+                      className="asp-btn-approve"
+                      disabled={decidingId === selectedStudent.regId}
+                      onClick={() => handleDecision(selectedStudent, 'approved')}
+                    >
+                      <FaCheck /> Approve
+                    </button>
+                    <button
+                      type="button"
+                      className="asp-btn-reject"
+                      disabled={decidingId === selectedStudent.regId}
+                      onClick={() => handleDecision(selectedStudent, 'rejected')}
+                    >
+                      <FaTimes /> Reject
+                    </button>
+                  </>
+                )}
                 <button type="button" className="asp-btn-cancel" onClick={() => setSelectedStudent(null)}>Close</button>
               </div>
             </div>

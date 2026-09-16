@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { FaMedal, FaCalendarAlt, FaTimes } from 'react-icons/fa';
 import './AwardsModal.css';
 

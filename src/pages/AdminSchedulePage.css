@@ -377,6 +377,82 @@
 }
 }
 
+/* Custom pill dropdown (StudentRegistrationDetails) — a themed popup in
+   place of a native <select>'s OS-rendered option list. */
+.asp-dropdown {
+  position: relative;
+}
+
+.asp-filter-pill--btn {
+  display: inline-flex;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.asp-filter-pill--active {
+  border-color: #001529;
+  background-color: #eef2f8;
+  color: #001529;
+}
+
+.asp-dropdown__menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 30;
+  min-width: 170px;
+  max-height: 260px;
+  overflow-y: auto;
+  padding: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  background: #fff;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  box-shadow: 0 12px 28px rgba(15, 23, 42, 0.14), 0 2px 6px rgba(15, 23, 42, 0.06);
+  animation: asp-dropdown-in 0.12s ease-out;
+}
+
+@keyframes asp-dropdown-in {
+  from { opacity: 0; transform: translateY(-4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.asp-dropdown__item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 8px 10px;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.82rem;
+  font-weight: 500;
+  color: #334155;
+  cursor: pointer;
+  transition: background-color 0.12s, color 0.12s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .asp-dropdown__item:hover {
+    background: #f1f5f9;
+  }
+}
+
+.asp-dropdown__item--active {
+  background: #001529;
+  color: #fff;
+  font-weight: 700;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .asp-dropdown__item--active:hover {
+    background: #001529;
+  }
+}
+
 .asp-clear-btn {
   display: flex;
   align-items: center;
@@ -484,16 +560,18 @@
   white-space: nowrap;
 }
 
-/* Gender, Grade/Year, Section and Sport columns should be centered under
-   their headers — Name (with the avatar) and Action stay as-is. */
+/* Gender, Grade/Year, Level, Section and Sport columns should be centered
+   under their headers — Name (with the avatar) and Action stay as-is. */
 .asp-table--students th:nth-child(3),
 .asp-table--students th:nth-child(4),
 .asp-table--students th:nth-child(5),
 .asp-table--students th:nth-child(6),
+.asp-table--students th:nth-child(7),
 .asp-table--students td:nth-child(3),
 .asp-table--students td:nth-child(4),
 .asp-table--students td:nth-child(5),
-.asp-table--students td:nth-child(6) {
+.asp-table--students td:nth-child(6),
+.asp-table--students td:nth-child(7) {
   text-align: center;
 }
 
@@ -739,6 +817,74 @@
 
 .asp-status-row--cancelled {
   opacity: 0.55;
+}
+
+/* Registration review statuses (Student Registration Details table +
+   modal, Super Admin only). Same three colors as the student-facing
+   sr-badge--* classes in SubmittedRegistrationsModal.css, kept in sync
+   so a status reads the same whichever side of the review it's seen from. */
+.asp-status--pending {
+  background: #fef3c7;
+  color: #92400e;
+}
+
+.asp-status--approved {
+  background: #d1fae5;
+  color: #065f46;
+}
+
+.asp-status--rejected {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+/* Approve/Reject — Student Registration Details table row + modal footer */
+.asp-btn-approve,
+.asp-btn-reject {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border-radius: 5px;
+  padding: 4px 12px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.asp-btn-approve {
+  background: #f0fdf4;
+  color: #15803d;
+  border: 1px solid #bbf7d0;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .asp-btn-approve:hover:not(:disabled) {
+    background: #15803d;
+    color: #fff;
+    border-color: #15803d;
+  }
+}
+
+.asp-btn-reject {
+  background: #fef2f2;
+  color: #b91c1c;
+  border: 1px solid #fecaca;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .asp-btn-reject:hover:not(:disabled) {
+    background: #b91c1c;
+    color: #fff;
+    border-color: #b91c1c;
+  }
+}
+
+.asp-btn-approve:disabled,
+.asp-btn-reject:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
 }
 
 .asp-td--actions {
@@ -2929,7 +3075,8 @@
   .asp-table--students td:nth-child(3),
   .asp-table--students td:nth-child(4),
   .asp-table--students td:nth-child(5),
-  .asp-table--students td:nth-child(6) {
+  .asp-table--students td:nth-child(6),
+  .asp-table--students td:nth-child(7) {
     text-align: right;
   }
 

@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useState } from 'react';
+import { createContext, useEffect, useState } from 'react';
 import { subscribeBrandingConfig, DEFAULT_BRANDING } from '../services/firestoreService';
 import defaultLogo from './img/SRCLogo.png';
 

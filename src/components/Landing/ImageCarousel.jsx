@@ -1,4 +1,3 @@
-import React from 'react';
 import './LandingPage.css';
 
 // ImageCarousel: renders two rows of images that scroll continuously without pausing on hover.

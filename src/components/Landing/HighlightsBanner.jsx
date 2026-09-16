@@ -1,4 +1,3 @@
-import React from 'react';
 import { FaCamera } from 'react-icons/fa';
 import './LandingPage.css';
 

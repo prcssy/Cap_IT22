@@ -5,6 +5,7 @@ import {
   setDoc,
   getDoc,
   addDoc,
+  updateDoc,
   deleteDoc,
   query,
   orderBy,
@@ -283,6 +284,8 @@ export async function removeStaffRole(targetUser, actorRole) {
   });
 }
 
+const UPLOAD_TIMEOUT_MS = 15 * 1000;
+
 /* ─────────────────────────────────────────────
    Upload a single file to Firebase Storage.
    Returns the public download URL.
@@ -294,14 +297,24 @@ export async function removeStaffRole(targetUser, actorRole) {
    would throw and take the whole registration down with it. Catch
    that and store null instead — once Storage is turned on, uploads
    will start succeeding here with no code changes needed.
+
+   When Storage isn't provisioned, requests fail with a 404 that the
+   SDK treats as retryable — it silently retries with backoff for up
+   to ~10 minutes before finally rejecting, so callers (upload
+   buttons) would otherwise appear to hang instead of showing the
+   "Storage not set up" message. Race against a short local timeout
+   so failure surfaces quickly regardless of the SDK's own retry budget.
 ───────────────────────────────────────────── */
 async function uploadFile(file, storagePath) {
   if (!file) return null;
   try {
     const storage = getStorage();
     const fileRef = ref(storage, storagePath);
-    await uploadBytes(fileRef, file);
-    return await getDownloadURL(fileRef);
+    const timeout = new Promise((_, reject) => {
+      setTimeout(() => reject(new Error('Upload timed out — Cloud Storage may not be set up for this project yet.')), UPLOAD_TIMEOUT_MS);
+    });
+    await Promise.race([uploadBytes(fileRef, file), timeout]);
+    return await Promise.race([getDownloadURL(fileRef), timeout]);
   } catch (error) {
     console.warn(`File upload skipped (Firebase Storage not set up yet): ${storagePath}`, error);
     return null;
@@ -400,6 +413,39 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
   });
 
   return docRef;
+}
+
+/**
+ * Super Admin/Admin decides on a pending player registration — the
+ * "Pending Review" tile on SuperAdminPage counts docs still at
+ * `status: 'pending'` (or missing the field entirely, same fallback
+ * used everywhere else this field is read). This is what moves a
+ * registration out of that count, one way or the other.
+ *
+ * @param {string} regId  The `registrations/{regId}` doc id — NOT the
+ *                         student's uid (a student can only ever have
+ *                         one registration, but the doc id is its own
+ *                         field, distinct from `uid`).
+ */
+export async function updateRegistrationStatus(regId, status, actorRole, targetLabel) {
+  if (!db) throw new Error('Firestore not initialized.');
+  if (status !== 'approved' && status !== 'rejected') {
+    throw new Error(`Unknown registration status: ${status}`);
+  }
+
+  await updateDoc(doc(db, 'registrations', regId), {
+    status,
+    reviewedAt: serverTimestamp(),
+  });
+
+  logActivity({
+    actorRole,
+    type: status === 'approved' ? 'Registration Approved' : 'Registration Rejected',
+    details: `${status === 'approved' ? 'Approved' : 'Rejected'} ${targetLabel || 'a student'}'s registration`,
+    targetType: 'registration',
+    targetId: regId,
+    targetLabel,
+  });
 }
 
 /* ─────────────────────────────────────────────
