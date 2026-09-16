@@ -358,7 +358,7 @@ export default function StudentRegistrationDetails() {
                       ) : '—'}
                     </td>
                     <td data-label="Action">
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'center' }}>
+                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                         <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
                         {reg.regId && reg.status === 'pending' && (
                           <>

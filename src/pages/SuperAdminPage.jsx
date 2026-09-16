@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useContext, useMemo } from 'react';
+import { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
 import { AuthContext } from '../components/AuthContext';
 import { BrandingContext } from '../components/BrandingContext';
 import { collection, getDocs } from 'firebase/firestore';
@@ -12,7 +12,7 @@ import LandingPageSettings from './LandingPageSettings';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
-  FaSync, FaDownload, FaChartPie, FaRegCalendarAlt,
+  FaSync, FaDownload, FaChartPie, FaRegCalendarAlt, FaChevronDown, FaCheck,
 } from 'react-icons/fa';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -79,6 +79,63 @@ const RANGES = [
   { key: '12m', label: 'Last 12 Months', days: 365 },
   { key: 'all', label: 'All Time',       days: null },
 ];
+
+/* Custom-themed dropdown for the range picker — a native <select>'s open
+   option list is OS-rendered and can't be restyled cross-browser, so this
+   swaps in a button + absolutely-positioned menu that follows the panel's
+   own design tokens instead. */
+function RangeDropdown({ value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleOutside = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    const handleKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  const selected = options.find(o => o.key === value) || options[0];
+
+  return (
+    <div className="sa-dropdown" ref={rootRef}>
+      <button
+        type="button"
+        className={`sa-select${open ? ' sa-select--open' : ''}`}
+        onClick={() => setOpen(o => !o)}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        {selected.label}
+        <FaChevronDown className="sa-select__chevron" />
+      </button>
+      {open && (
+        <div className="sa-dropdown__menu" role="listbox">
+          {options.map(opt => (
+            <button
+              key={opt.key}
+              type="button"
+              role="option"
+              aria-selected={value === opt.key}
+              className={`sa-dropdown__item${value === opt.key ? ' sa-dropdown__item--active' : ''}`}
+              onClick={() => { onChange(opt.key); setOpen(false); }}
+            >
+              {opt.label}
+              {value === opt.key && <FaCheck className="sa-dropdown__check" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 /* Match statuses in the data are free-form-ish, so fold the ones that
    actually occur into the three buckets this card reports. */
@@ -772,9 +829,7 @@ export default function SuperAdminPage() {
                 <FaRegCalendarAlt />
                 {rangeCaption}
               </span>
-              <select className="sa-select" value={rangeKey} onChange={e => setRangeKey(e.target.value)}>
-                {RANGES.map(r => <option key={r.key} value={r.key}>{r.label}</option>)}
-              </select>
+              <RangeDropdown value={rangeKey} options={RANGES} onChange={setRangeKey} />
               <button className="sa-icon-btn" onClick={fetchAnalytics} disabled={loading} title="Refresh">
                 <FaSync className={loading ? 'sa-spin' : ''} />
               </button>
