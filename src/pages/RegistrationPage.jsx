@@ -28,8 +28,6 @@ const GRADE_LEVELS = ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Gr
   'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12',
   '1st Year', '2nd Year', '3rd Year', '4th Year'];
 
-const SECTIONS = ['Section A', 'Section B', 'Section C', 'Section D', 'Section E'];
-
 /* Sport & Team options aren't hardcoded here — they come from whatever
    the admin has configured for the student's school level in the
    "Sports & Teams" manager (see SportsTeamsManager.jsx /
@@ -44,6 +42,13 @@ function getSchoolLevel(gradeLevel) {
   if (HIGH_SCHOOL_GRADES.has(gradeLevel)) return 'highSchool';
   if (COLLEGE_GRADES.has(gradeLevel)) return 'college';
   return null;
+}
+
+const SCHOOL_LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
+
+function gradeLevelDisplayLabel(gradeLevel) {
+  const label = SCHOOL_LEVEL_LABELS[getSchoolLevel(gradeLevel)];
+  return label ? `${gradeLevel} (${label})` : gradeLevel;
 }
 
 // Region code ("PH", "US") -> display name ("Philippines", "United
@@ -592,7 +597,7 @@ export default function RegistrationPage() {
       if (err) errs.emergencyContact = err;
     }
     if (!form.gradeLevel)             errs.gradeLevel       = 'Please select a grade / year level';
-    if (!form.section)                errs.section          = 'Please select a section';
+    if (!form.section.trim())         errs.section          = 'Please enter a section';
     if (!form.teamName)               errs.teamName         = 'Please select a team';
     if (!form.sport)                  errs.sport            = 'Please select a sport / event';
     if (!form.position)               errs.position         = 'Please select a position';
@@ -785,20 +790,9 @@ export default function RegistrationPage() {
               </Field>
             </div>
 
-            {/* Row 2: Gender / Contact Number / Emergency Contact —
+            {/* Row 2: Contact Number / Emergency Contact / Gender —
                 every "how to reach the student or family" field in one row. */}
             <div className="reg-row reg-row--3eq">
-              <Field label="Gender" required error={errors.gender}>
-                <div className="reg-radio-group">
-                  {['Male', 'Female', 'Others'].map(g => (
-                    <label className="reg-radio-label" key={g}>
-                      <input type="radio" name="gender" value={g}
-                        checked={form.gender === g} onChange={set('gender')} />
-                      {g}
-                    </label>
-                  ))}
-                </div>
-              </Field>
               <Field label="Contact Number" required error={errors.contactNumber}>
                 <select className="reg-select" value={form.phoneCountry} onChange={onPhoneCountryChange} required>
                   {COUNTRY_OPTIONS.length === 0 ? (
@@ -826,6 +820,17 @@ export default function RegistrationPage() {
                     value={form.emergencyContactNational} onChange={onEmergencyNationalChange} required />
                 </div>
                 <PhoneHint value={form.emergencyContactNational} check={emergencyPhoneCheck} />
+              </Field>
+              <Field label="Gender" required error={errors.gender}>
+                <div className="reg-radio-group">
+                  {['Male', 'Female', 'Others'].map(g => (
+                    <label className="reg-radio-label" key={g}>
+                      <input type="radio" name="gender" value={g}
+                        checked={form.gender === g} onChange={set('gender')} />
+                      {g}
+                    </label>
+                  ))}
+                </div>
               </Field>
             </div>
 
@@ -887,14 +892,17 @@ export default function RegistrationPage() {
               <Field label="Grade / Year Level" required error={errors.gradeLevel}>
                 <select className="reg-select" value={form.gradeLevel} onChange={set('gradeLevel')} required>
                   <option value="">Select Grade / Year Level</option>
-                  {GRADE_LEVELS.map(g => <option key={g}>{g}</option>)}
+                  {GRADE_LEVELS.map(g => <option key={g} value={g}>{gradeLevelDisplayLabel(g)}</option>)}
                 </select>
               </Field>
               <Field label="Section" required error={errors.section}>
-                <select className="reg-select" value={form.section} onChange={set('section')} required>
-                  <option value="">Select Section</option>
-                  {SECTIONS.map(s => <option key={s}>{s}</option>)}
-                </select>
+                <input
+                  className="reg-input"
+                  placeholder="e.g. Section A"
+                  value={form.section}
+                  onChange={set('section')}
+                  required
+                />
               </Field>
             </div>
 
