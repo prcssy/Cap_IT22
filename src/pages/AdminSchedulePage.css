@@ -1263,11 +1263,11 @@
 
 .msf-bracket-headers {
   display: flex;
-  margin-bottom: 14px;
+  margin-bottom: 18px;
 }
 
 .msf-bracket-headers>div {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.6px;
   color: #5b678a;
@@ -1288,8 +1288,9 @@
 
 .msf-bracket-lines path {
   fill: none;
-  stroke: #c7cfe6;
+  stroke: #b7bfd8;
   stroke-width: 1.5;
+  stroke-linecap: round;
 }
 
 .msf-bracket-team {
@@ -1298,15 +1299,16 @@
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1.5px solid #eef0f5;
+  border: 1.5px solid #dde1ee;
   border-radius: 8px;
-  padding: 0 10px;
+  padding: 0 12px;
   background: #fff;
   box-sizing: border-box;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
 }
 
 .msf-bracket-team span {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 800;
   color: #001529;
   letter-spacing: 0.2px;
@@ -1331,22 +1333,22 @@
   position: absolute;
   display: flex;
   align-items: center;
-  gap: 6px;
-  transform: translate(-5px, -8px);
+  gap: 8px;
+  transform: translate(-6px, -9px);
 }
 
 .msf-bracket-node__dot {
-  width: 10px;
-  height: 10px;
+  width: 11px;
+  height: 11px;
   border-radius: 50%;
-  background: #8891ab;
+  background: #7a86a8;
   flex-shrink: 0;
 }
 
 .msf-bracket-node__label {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
-  color: #5b678a;
+  color: #3d4666;
   white-space: nowrap;
 }
 
@@ -1373,37 +1375,51 @@
   white-space: nowrap;
 }
 
-/* ── Double Bracket: Upper/Lower label-only trees + Grand Final block ── */
+/* ── Double Bracket: Upper + Lower brackets on one shared canvas,
+   converging into a single Grand Final Champion node. ── */
 .msf-dbracket {
-  margin-top: 14px;
+  margin-top: 20px;
 }
 
-.msf-dbracket__label {
-  font-size: 12px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  color: #1d4ed8;
-  text-transform: uppercase;
-  margin: 0 0 10px;
-}
-
-.msf-dbracket__label--lower {
-  margin-top: 26px;
-  color: #b45309;
-}
-
-.msf-lbracket {
+.msf-dbracket2 {
+  position: relative;
   overflow-x: auto;
   overflow-y: visible;
 }
 
-.msf-lbracket-headers {
-  display: flex;
-  margin-bottom: 10px;
+.msf-dbracket__label {
+  position: absolute;
+  left: 0;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #1d4ed8;
+  text-transform: uppercase;
+  margin: 0;
 }
 
-.msf-lbracket-headers>div {
+.msf-dbracket__label--lower {
+  color: #b45309;
+}
+
+.msf-dbracket__matchcap {
+  position: absolute;
   font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.4px;
+  color: #8891ab;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.msf-dbracket2-headers {
+  position: absolute;
+  left: 0;
+  display: flex;
+}
+
+.msf-dbracket2-headers>div {
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.5px;
   color: #5b678a;
@@ -1411,25 +1427,21 @@
   flex-shrink: 0;
 }
 
-.msf-lbracket-canvas {
-  position: relative;
-}
-
 .msf-lbracket-leaf {
   position: absolute;
-  left: 0;
   display: flex;
   align-items: center;
   gap: 8px;
-  border: 1.5px solid #eef0f5;
+  border: 1.5px solid #dde1ee;
   border-radius: 8px;
-  padding: 0 10px;
+  padding: 0 12px;
   background: #fff;
   box-sizing: border-box;
+  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
 }
 
 .msf-lbracket-leaf span:last-child {
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   color: #001529;
   overflow: hidden;
@@ -1438,53 +1450,22 @@
 }
 
 .msf-lbracket-leaf__dot {
-  width: 8px;
-  height: 8px;
+  width: 9px;
+  height: 9px;
   border-radius: 50%;
-  background: #8891ab;
+  background: #7a86a8;
   flex-shrink: 0;
 }
 
-.msf-dbracket__final {
-  margin-top: 24px;
-  padding: 18px;
-  border: 1.5px dashed #eef0f5;
-  border-radius: 10px;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 6px;
-  text-align: center;
-}
-
-.msf-dbracket__final-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 11px;
-  font-weight: 700;
-  color: #001529;
-}
-
-.msf-dbracket__trophy {
-  color: #f5a623;
-  font-size: 24px;
-  margin-top: 6px;
-}
-
-.msf-dbracket__champion-label {
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.4px;
-  color: #001529;
-  text-transform: uppercase;
-}
-
 .msf-dbracket__note {
-  font-size: 11px;
+  font-size: 12px;
   color: #5b678a;
-  max-width: 420px;
-  margin: 6px 0 0;
+  max-width: 560px;
+  margin: 24px auto 0;
+  padding-top: 20px;
+  border-top: 1px solid #eef0f5;
+  line-height: 1.5;
+  text-align: center;
 }
 
 /* ── Bracket-format Match Schedule Summary table ── */
@@ -1549,8 +1530,9 @@
 .msf-card {
   background: #fff;
   border-radius: 12px;
-  padding: 22px 24px;
+  padding: 26px 30px;
   color: #001529;
+  box-shadow: 0 6px 24px rgba(0, 21, 41, 0.08);
 }
 
 .msf-loading,
@@ -1701,12 +1683,15 @@
   align-items: flex-start;
   flex-wrap: wrap;
   gap: 10px;
-  margin-bottom: 16px;
+  margin-bottom: 18px;
+  padding-bottom: 16px;
+  border-bottom: 1px solid #eef0f5;
 }
 
 .msf-result-head h3 {
   margin: 0 0 4px;
-  font-size: 17px;
+  font-size: 18px;
+  font-weight: 800;
   letter-spacing: 0.4px;
 }
 
@@ -1719,16 +1704,16 @@
   background: #001529;
   color: #fff;
   border-radius: 8px;
-  padding: 8px 14px;
+  padding: 9px 16px;
   font-size: 12px;
   font-weight: 700;
   display: flex;
-  gap: 6px;
+  gap: 7px;
   align-items: center;
 }
 
 .msf-stat b {
-  font-size: 14px;
+  font-size: 15px;
   color: #f5a623;
 }
 

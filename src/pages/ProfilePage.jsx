@@ -8,7 +8,7 @@ import SubmittedRegistrationsModal from '../components/SubmittedRegistrationsMod
 import ChangePasswordModal from '../components/ChangePasswordModal/ChangePasswordModal';
 import {
   FaUserCircle, FaTrophy, FaMedal, FaClipboardList, FaChevronRight,
-  FaMapMarkerAlt, FaPhoneAlt, FaEnvelope, FaFacebookF,
+  FaEnvelope,
   FaUserGraduate, FaUsers, FaBasketballBall, FaUserTag,
   FaKey, FaClock, FaHashtag, FaEdit,
 } from 'react-icons/fa';
@@ -19,13 +19,6 @@ import { AuthContext } from '../components/AuthContext';
 // to student/player accounts. Anyone whose resolved role falls in here
 // never sees the Events / Awards / Registrations stat cards at all.
 const STAFF_ROLES = ['admin', 'moderator', 'superadmin'];
-
-const CONTACT_ITEMS = [
-  { icon: FaMapMarkerAlt, text: 'San Jose, Santa Rita Pampanga, Philippines', href: 'https://www.google.com/maps/place/Santa+Rita+College/@14.9989285,120.6178094,18.6z' },
-  { icon: FaPhoneAlt,     text: '(045) 900 0557',                             href: 'tel:+0459000557' },
-  { icon: FaEnvelope,     text: 'src_educ_ph@yahoo.com',                      href: 'mailto:src_educ_ph@yahoo.com' },
-  { icon: FaFacebookF,    text: 'facebook.com/santaritacollege',               href: 'https://facebook.com/santaritacollege' },
-];
 
 function InfoRow({ icon: Icon, label, value }) {
   return (
@@ -233,7 +226,7 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        <Contact items={CONTACT_ITEMS} contactFooterRef={contactFooterRef} />
+        <Contact contactFooterRef={contactFooterRef} />
       </div>
 
       {/* ── All modals ── */}

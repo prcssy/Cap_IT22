@@ -1187,6 +1187,19 @@ export const DEFAULT_BRANDING = {
   copyrightText: `© ${new Date().getFullYear()} Santa Rita College of Pampanga, Inc. All Rights Reserved.`,
   logoURL: null,
   events: EVENT_TYPES,
+  // Contact footer shown on the public landing page (Contact.jsx). Icons
+  // for these 4 fixed rows (address/phone/email/facebook) are chosen by
+  // the component, not stored here — only the display text and link are
+  // editable, same shape LandingPage.jsx's old hardcoded CONTACT_ITEMS used.
+  contact: {
+    address: {
+      text: 'San Jose, Santa Rita Pampanga, Philippines',
+      href: 'https://www.google.com/maps/place/Santa+Rita+College/@14.9989285,120.6178094,18.6z/data=!4m14!1m7!3m6!1s0x339658b934844e19:0x7ba727f39f0709df!2sSanta+Rita+College+Of+Pampanga,Inc.+Annex-1!8m2!3d14.9763355!4d120.6370981!16s%2Fg%2F11h0mw9qvh!3m5!1s0x3396f5ffca98627b:0xd9691231b874272b!8m2!3d14.9993667!4d120.6182403!16s%2Fg%2F1q5bm6dg_?entry=ttu&g_ep=EgoyMDI2MDYxNi4wIKXMDSoASAFQAw%3D%3D',
+    },
+    phone: { text: '(045) 900 0557', href: 'tel:+0459000557' },
+    email: { text: 'src_educ_ph@yahoo.com', href: 'mailto:src_educ_ph@yahoo.com' },
+    facebook: { text: 'facebook.com/santaritacollege', href: 'https://facebook.com/santaritacollege' },
+  },
 };
 
 export function subscribeBrandingConfig(callback) {
@@ -1232,16 +1245,12 @@ export async function saveSchoolEvents(events, actorEmail, actorRole = 'superadm
   return updateBrandingInfo({ events }, actorEmail, actorRole);
 }
 
-/* Uploads a new logo to Storage and returns its download URL — same
-   `uploadFile` helper (and same silent-null-on-failure behavior while
-   Storage/Blaze isn't provisioned) used for registration photo/waiver
-   uploads. Does not itself write the Firestore doc — callers should
-   follow up with updateBrandingInfo({ logoURL }). */
-export async function uploadBrandingLogo(file) {
-  const timestamp = Date.now();
-  const ext = (file?.type || '').split('/')[1] || 'png';
-  return uploadFile(file, `branding/logo_${timestamp}.${ext}`);
-}
+// Logo upload no longer goes through Firebase Storage (uploadBrandingLogo
+// used to call uploadFile('branding/...') here, silently returning null
+// whenever Storage wasn't provisioned — which is why it never worked).
+// BrandingSettings.jsx now resizes the file client-side to a base64 data
+// URL (src/utils/resizeImage.js, same approach SportsTeamsManager.jsx's
+// LogoUpload uses) and passes that straight to updateBrandingInfo({ logoURL }).
 
 /* ─────────────────────────────────────────────
    Landing Page CMS — one document (siteConfig/landingPage) is the single
@@ -1336,13 +1345,8 @@ export async function updateLandingPageConfig(fields, actorEmail, actorRole = 's
   });
 }
 
-/* Uploads a hero background or gallery image to Storage and returns its
-   download URL — same `uploadFile` helper as uploadBrandingLogo. `kind`
-   is just a filename prefix ('hero' | 'gallery') so the two are easy to
-   tell apart in the Storage console. Does not itself write the Firestore
-   doc — callers follow up with updateLandingPageConfig(...). */
-export async function uploadLandingPageImage(file, kind = 'gallery') {
-  const timestamp = Date.now();
-  const ext = (file?.type || '').split('/')[1] || 'png';
-  return uploadFile(file, `landingPage/${kind}_${timestamp}.${ext}`);
-}
+// Same story as the branding logo above — hero/gallery image uploads no
+// longer go through Firebase Storage. LandingPageSettings.jsx resizes
+// each file client-side to a base64 data URL (src/utils/resizeImage.js)
+// and passes it straight into updateLandingPageConfig({ hero }) /
+// ({ gallery }).

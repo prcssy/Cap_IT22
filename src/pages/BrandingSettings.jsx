@@ -3,10 +3,13 @@ import {
   FaUpload, FaTrash, FaArrowUp, FaArrowDown, FaPlus, FaSync,
 } from 'react-icons/fa';
 import { BrandingContext } from '../components/BrandingContext';
-import { updateBrandingInfo, saveSchoolEvents, uploadBrandingLogo } from '../services/firestoreService';
+import { updateBrandingInfo, saveSchoolEvents } from '../services/firestoreService';
+import { resizeImageToDataUrl } from '../utils/resizeImage';
 import './BrandingSettings.css';
 
-const MAX_LOGO_BYTES = 1 * 1024 * 1024; // 1MB, matches the storage.rules limit
+// Source-file gate before resizing — generous, since the canvas resize
+// below (not this raw size) determines what actually gets stored.
+const MAX_LOGO_SOURCE_BYTES = 5 * 1024 * 1024; // 5MB
 const ALLOWED_LOGO_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
 function friendlyBrandingError(err, fallback) {
@@ -46,6 +49,7 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
   const [draftEvents, setDraftEvents] = useState(
     branding.events.map((e) => ({ _id: uid(), key: e.key, label: e.label })),
   );
+  const [draftContact, setDraftContact] = useState(branding.contact);
 
   // Seed the draft exactly once, the first time real data arrives —
   // never again afterward, so a Firestore push (including the one this
@@ -60,7 +64,8 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
       copyrightText: branding.copyrightText,
     });
     setDraftEvents(branding.events.map((e) => ({ _id: uid(), key: e.key, label: e.label })));
-  }, [branding.loading, branding.schoolName, branding.tagline, branding.motto, branding.copyrightText, branding.events]);
+    setDraftContact(branding.contact);
+  }, [branding.loading, branding.schoolName, branding.tagline, branding.motto, branding.copyrightText, branding.events, branding.contact]);
 
   /* ── Logo ── */
   const fileInputRef = useRef(null);
@@ -78,23 +83,26 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
       setLogoMsg({ tone: 'error', text: 'Please choose a PNG, JPEG, or WEBP image.' });
       return;
     }
-    if (file.size > MAX_LOGO_BYTES) {
-      setLogoMsg({ tone: 'error', text: 'That image is larger than 1MB — please choose a smaller file.' });
+    if (file.size > MAX_LOGO_SOURCE_BYTES) {
+      setLogoMsg({ tone: 'error', text: 'That image is larger than 5MB — please choose a smaller file.' });
       return;
     }
 
     setLogoBusy(true);
     setLogoMsg(null);
     try {
-      const url = await uploadBrandingLogo(file);
-      if (!url) {
-        setLogoMsg({ tone: 'error', text: 'Upload failed — Cloud Storage may not be set up for this project yet.' });
-        return;
-      }
-      await updateBrandingInfo({ logoURL: url }, actorEmail, actorRole);
+      // Resized client-side to a base64 data URL and stored directly on
+      // siteConfig/branding — same approach as the Sports & Teams logo
+      // upload, no Firebase Storage required (which is what made this
+      // silently fail before: uploadBytes/getDownloadURL need Storage
+      // provisioned on the Firebase project, which this one doesn't have).
+      const dataUrl = await resizeImageToDataUrl(file, {
+        maxWidth: 300, maxHeight: 300, mode: 'contain', format: 'png',
+      });
+      await updateBrandingInfo({ logoURL: dataUrl }, actorEmail, actorRole);
       setLogoMsg({ tone: 'success', text: 'Logo updated.' });
     } catch (err) {
-      console.error('Failed to upload logo:', err);
+      console.error('Failed to update logo:', err);
       setLogoMsg({ tone: 'error', text: friendlyBrandingError(err, 'Could not update the logo') });
     } finally {
       setLogoBusy(false);
@@ -191,6 +199,28 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
     }
   };
 
+  /* ── Contact Information (public landing page footer) ── */
+  const [contactBusy, setContactBusy] = useState(false);
+  const [contactMsg, setContactMsg] = useState(null);
+
+  const updateContactField = (key, field, value) => {
+    setDraftContact((prev) => ({ ...prev, [key]: { ...prev[key], [field]: value } }));
+  };
+
+  const handleSaveContact = async () => {
+    setContactBusy(true);
+    setContactMsg(null);
+    try {
+      await updateBrandingInfo({ contact: draftContact }, actorEmail, actorRole);
+      setContactMsg({ tone: 'success', text: 'Contact information saved.' });
+    } catch (err) {
+      console.error('Failed to save contact information:', err);
+      setContactMsg({ tone: 'error', text: friendlyBrandingError(err, 'Could not save these changes') });
+    } finally {
+      setContactBusy(false);
+    }
+  };
+
   return (
     <div className="ws-wrap">
       <div className="sa-panel__head">
@@ -229,7 +259,7 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
                   style={{ display: 'none' }}
                   onChange={handleLogoChange}
                 />
-                <span className="ws-card-hint">Recommended size 300 × 300px (PNG, JPEG). Max file size: 1MB.</span>
+                <span className="ws-card-hint">Any size or format works — it's resized automatically. Source file up to 5MB.</span>
               </div>
             </div>
             {logoMsg && <p className={`ws-msg ws-msg--${logoMsg.tone}`}>{logoMsg.text}</p>}
@@ -323,6 +353,85 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
               {eventsMsg && <p className={`ws-msg ws-msg--${eventsMsg.tone}`}>{eventsMsg.text}</p>}
               <button type="button" className="sa-export" onClick={handleSaveEvents} disabled={eventsBusy}>
                 {eventsBusy && <FaSync className="sa-spin" />} Save Changes
+              </button>
+            </div>
+          </div>
+
+          {/* ── Contact Information ── */}
+          <div className="sa-card">
+            <h3 className="ws-card-title">Contact Information</h3>
+            <p className="ws-card-hint">Shown in the "Contact Us" strip at the bottom of the public landing page.</p>
+
+            <div className="ws-contact-grid">
+              <div className="ws-contact-group">
+                <span className="ws-field__label">Address</span>
+                <input
+                  type="text"
+                  placeholder="Display text"
+                  value={draftContact.address.text}
+                  onChange={(e) => updateContactField('address', 'text', e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Map link (URL)"
+                  value={draftContact.address.href}
+                  onChange={(e) => updateContactField('address', 'href', e.target.value)}
+                />
+              </div>
+
+              <div className="ws-contact-group">
+                <span className="ws-field__label">Phone</span>
+                <input
+                  type="text"
+                  placeholder="Display text"
+                  value={draftContact.phone.text}
+                  onChange={(e) => updateContactField('phone', 'text', e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="tel: link"
+                  value={draftContact.phone.href}
+                  onChange={(e) => updateContactField('phone', 'href', e.target.value)}
+                />
+              </div>
+
+              <div className="ws-contact-group">
+                <span className="ws-field__label">Email</span>
+                <input
+                  type="text"
+                  placeholder="Display text"
+                  value={draftContact.email.text}
+                  onChange={(e) => updateContactField('email', 'text', e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="mailto: link"
+                  value={draftContact.email.href}
+                  onChange={(e) => updateContactField('email', 'href', e.target.value)}
+                />
+              </div>
+
+              <div className="ws-contact-group">
+                <span className="ws-field__label">Facebook</span>
+                <input
+                  type="text"
+                  placeholder="Display text"
+                  value={draftContact.facebook.text}
+                  onChange={(e) => updateContactField('facebook', 'text', e.target.value)}
+                />
+                <input
+                  type="text"
+                  placeholder="Profile/page link (URL)"
+                  value={draftContact.facebook.href}
+                  onChange={(e) => updateContactField('facebook', 'href', e.target.value)}
+                />
+              </div>
+            </div>
+
+            <div className="ws-card-actions">
+              {contactMsg && <p className={`ws-msg ws-msg--${contactMsg.tone}`}>{contactMsg.text}</p>}
+              <button type="button" className="sa-export" onClick={handleSaveContact} disabled={contactBusy}>
+                {contactBusy && <FaSync className="sa-spin" />} Save Changes
               </button>
             </div>
           </div>

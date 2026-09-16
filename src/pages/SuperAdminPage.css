@@ -1,7 +1,7 @@
 /* ═══════════════════════════════════════════
    SuperAdminPage.css — Data Analytics
-   Light dashboard: navy top bar, breadcrumb,
-   then one white panel holding every card.
+   Dark navy page shell (matches AdminSchedulePage's .asp-page) with one
+   white panel holding every card floating on top of it.
    ═══════════════════════════════════════════ */
 
 @import url('https://fonts.googleapis.com/css2?family=Lalezar&family=Inter:wght@400;500;600;700;800;900&display=swap');
@@ -11,13 +11,14 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background-color: #eef2f8;
+  background-color: #001529;
   font-family: 'Inter', sans-serif;
-  color: #001529;
+  color: #fff;
   overflow: hidden;
 }
 
-/* ── Navy header ── */
+/* ── Navy header — matches AdminSchedulePage's .asp-header/.asp-header__title
+   exactly, so Admin and Super Admin present the same top bar. ── */
 .sa-header {
   display: flex;
   align-items: center;
@@ -27,12 +28,13 @@
   flex-shrink: 0;
   width: 100%;
   background-color: #001529;
+  border-bottom: 3px solid #fff;
   margin-top: 3.6px;
   box-sizing: border-box;
 }
 
 .sa-header__title {
-  font-size: 19px;
+  font-size: 20px;
   font-family: 'Lalezar', sans-serif;
   font-weight: 700;
   letter-spacing: 0.06em;
@@ -80,28 +82,6 @@
   background: #16337a;
 }
 
-/* ── Breadcrumb ── */
-.sa-crumbs {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 25px 10px;
-  flex-shrink: 0;
-  font-size: 11.5px;
-  font-weight: 600;
-  color: #64748b;
-}
-
-.sa-crumbs svg {
-  font-size: 8px;
-  color: #94a3b8;
-}
-
-.sa-crumbs__current {
-  color: #001529;
-  font-weight: 800;
-}
-
 /* ── Scrollable body ── */
 .sa-body {
   flex: 1;
@@ -109,7 +89,7 @@
   overflow-y: auto;
   overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
-  padding: 0 18px 22px;
+  padding: 16px 18px 22px;
   box-sizing: border-box;
 }
 

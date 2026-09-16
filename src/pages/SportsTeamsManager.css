@@ -180,6 +180,10 @@
   font-weight: 700;
 }
 
+.stm-table th.stm-th-center {
+  text-align: center;
+}
+
 .stm-num-badge {
   display: inline-flex;
   align-items: center;

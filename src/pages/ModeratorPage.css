@@ -1991,6 +1991,14 @@ input.mp-text-input:disabled {
   border-bottom: 1px solid #e4e8f1;
 }
 
+.mp-table th.mp-th-center {
+  text-align: center;
+}
+
+.mp-td-center {
+  text-align: center;
+}
+
 .mp-table tbody tr {
   transition: background 0.15s ease;
 }

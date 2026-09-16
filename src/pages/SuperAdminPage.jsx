@@ -12,7 +12,7 @@ import LandingPageSettings from './LandingPageSettings';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
-  FaSync, FaDownload, FaChartPie, FaChevronRight, FaRegCalendarAlt,
+  FaSync, FaDownload, FaChartPie, FaRegCalendarAlt,
 } from 'react-icons/fa';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -648,23 +648,6 @@ export default function SuperAdminPage() {
       <header className="sa-header">
         <h1 className="sa-header__title">{schoolName}</h1>
       </header>
-
-      <nav className="sa-crumbs">
-        {sectionTab === 'branding' && (
-          <>
-            <span>Web Customization</span>
-            <FaChevronRight />
-          </>
-        )}
-        <span className="sa-crumbs__current">
-          {sectionTab === 'roles'
-            ? 'Roles & Permissions'
-            : sectionTab === 'branding'
-              ? (webTab === 'landingPage' ? 'Landing Page' : 'Branding')
-              : 'Data Analytics'}
-        </span>
-        <FaChevronRight />
-      </nav>
 
       <div className="sa-body">
         <div className="sa-panel">

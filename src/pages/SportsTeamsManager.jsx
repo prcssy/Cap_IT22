@@ -875,6 +875,7 @@ export default function SportsTeamsManager({ level }) {
   const [savingEditSport,   setSavingEditSport]   = useState(false);
   const [editTeamTarget,    setEditTeamTarget]    = useState(null); // saved team being edited in popup
   const [savingEditTeam,    setSavingEditTeam]    = useState(false);
+  const [resetTarget,       setResetTarget]       = useState(null); // 'sports' | 'teams' — form pending reset confirmation
 
   const [saving,  setSaving]  = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1144,8 +1145,8 @@ export default function SportsTeamsManager({ level }) {
                 <tr>
                   <th>#</th>
                   <th>Sports Name</th>
-                  <th>Logo</th>
-                  <th>Categories</th>
+                  <th className="stm-th-center">Logo</th>
+                  <th className="stm-th-center">Categories</th>
                   <th>Division</th>
                   <th>Violations</th>
                   <th>Positions</th>
@@ -1232,7 +1233,11 @@ export default function SportsTeamsManager({ level }) {
         )}
 
         <div className="stm-form-actions">
-          <button type="button" className="stm-btn-ghost" onClick={resetSportsForm}>
+          <button
+            type="button"
+            className="stm-btn-ghost"
+            onClick={() => (sportsRows.length > 0 ? setResetTarget('sports') : resetSportsForm())}
+          >
             <FaSync style={{ marginRight: 5, fontSize: '0.7rem' }} /> Reset
           </button>
           <button type="button" className="stm-btn-primary" onClick={submitSports} disabled={saving}>Submit</button>
@@ -1421,7 +1426,7 @@ export default function SportsTeamsManager({ level }) {
                 <tr>
                   <th>#</th>
                   <th>Team Name</th>
-                  <th>Logo</th>
+                  <th className="stm-th-center">Logo</th>
                   <th>Sports</th>
                   <th />
                 </tr>
@@ -1477,7 +1482,11 @@ export default function SportsTeamsManager({ level }) {
         )}
 
         <div className="stm-form-actions">
-          <button type="button" className="stm-btn-ghost" onClick={resetTeamsForm}>
+          <button
+            type="button"
+            className="stm-btn-ghost"
+            onClick={() => (teamsRows.length > 0 ? setResetTarget('teams') : resetTeamsForm())}
+          >
             <FaSync style={{ marginRight: 5, fontSize: '0.7rem' }} /> Reset
           </button>
           <button type="button" className="stm-btn-primary" onClick={submitTeams} disabled={saving}>Submit</button>
@@ -1693,6 +1702,33 @@ export default function SportsTeamsManager({ level }) {
           onClose={() => setShowTeamsConfirm(false)}
           onSave={saveTeams}
         />
+      )}
+
+      {resetTarget && (
+        <div className="stm-overlay" onClick={() => setResetTarget(null)}>
+          <div className="stm-modal stm-modal--delete" onClick={e => e.stopPropagation()}>
+            <h3 className="stm-confirm-title">RESET {resetTarget === 'sports' ? 'SPORTS' : 'TEAMS'} FORM?</h3>
+            <p className="stm-delete-msg">
+              This will clear every unsaved row you've added to this {resetTarget === 'sports' ? 'sports' : 'teams'} form.
+              Anything already saved to the preview below is not affected.
+            </p>
+            <div className="stm-delete-actions">
+              <button type="button" className="stm-btn-ghost" onClick={() => setResetTarget(null)}>
+                Cancel
+              </button>
+              <button
+                type="button"
+                className="stm-btn-primary"
+                onClick={() => {
+                  resetTarget === 'sports' ? resetSportsForm() : resetTeamsForm();
+                  setResetTarget(null);
+                }}
+              >
+                <FaSync style={{ marginRight: 6, fontSize: '0.7rem' }} /> Reset
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );

@@ -23,12 +23,6 @@ import {
 } from '@aivangogh/ph-address';
 import './RegistrationPage.css';
 import Contact from '../components/Landing/Contact/Contact';
-import {
-  FaMapMarkerAlt,
-  FaPhoneAlt,
-  FaEnvelope,
-  FaFacebookF,
-} from 'react-icons/fa';
 
 const GRADE_LEVELS = ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6',
   'Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12',
@@ -151,13 +145,6 @@ const ADDR_INITIAL = {
 // country is reachable from a single Province dropdown.
 const METRO_MANILA_CODE = '1300000000';
 const METRO_MANILA_PSEUDO_PROVINCE = { name: 'Metro Manila', psgcCode: METRO_MANILA_CODE };
-
-const CONTACT_ITEMS = [
-  { icon: FaMapMarkerAlt, text: 'San Jose, Santa Rita Pampanga, Philippines', href: 'https://www.google.com/maps/place/Santa+Rita+College/@14.9989285,120.6178094,18.6z' },
-  { icon: FaPhoneAlt,     text: '(045) 900 0557',                href: 'tel:+0459000557' },
-  { icon: FaEnvelope,     text: 'src_educ_ph@yahoo.com',         href: 'mailto:src_educ_ph@yahoo.com' },
-  { icon: FaFacebookF,    text: 'facebook.com/santaritacollege', href: 'https://facebook.com/santaritacollege' },
-];
 
 export default function RegistrationPage() {
 
@@ -709,7 +696,7 @@ export default function RegistrationPage() {
               Register Another Player
             </button>
           </div>
-          <Contact items={CONTACT_ITEMS} contactFooterRef={contactFooterRef} />
+          <Contact contactFooterRef={contactFooterRef} />
         </div>
       </div>
     );
@@ -1046,7 +1033,7 @@ export default function RegistrationPage() {
           </form>
         </div>
 
-        <Contact items={CONTACT_ITEMS} contactFooterRef={contactFooterRef} />
+        <Contact contactFooterRef={contactFooterRef} />
 
       </div>
     </div>

@@ -2704,7 +2704,7 @@ export default function ModeratorPage() {
                 <tr>
                   <th>Sports</th>
                   <th>Team</th>
-                  <th>Violation</th>
+                  <th className="mp-th-center">Violation</th>
                   <th>Duration / Score</th>
                   <th>Final points <InfoTip caption="Final points info" placement="bottom">Final points = Previous rating + K(S − E) + Ppu(team score/time performance − violations + comeback bonus). E is the Elo expected score from both teams' ratings, S is 1 for a win / 0 for a loss, K = {K_FACTOR}, Ppu = {PPU}, and the comeback bonus is +{COMEBACK_BONUS}. New teams start at {DEFAULT_POINTS}.</InfoTip></th>
                   <th style={{ width: 60 }}>Edit</th>
@@ -2723,7 +2723,7 @@ export default function ModeratorPage() {
                       <tr key={r.id} className={flashId === r.id ? 'mp-row-flash' : ''}>
                         <td data-label="Sports">{displayCategory(r.label || r.sportName || '').toUpperCase()} <span className="mp-tag-multi">1 vs many</span></td>
                         <td data-label="Team">{r.participants.map((p) => p.name).join(' · ')}</td>
-                        <td data-label="Violation">{r.participants.map((p) => p.totalViolations).join('-')}</td>
+                        <td className="mp-td-center" data-label="Violation">{r.participants.map((p) => p.totalViolations).join('-')}</td>
                         <td data-label="Duration / Score">
                           {rowIsPoints
                             ? r.participants.map((p) => `${p.points}`).join(' - ') + ' pts'
@@ -2777,7 +2777,7 @@ export default function ModeratorPage() {
                     <tr key={r.id} className={flashId === r.id ? 'mp-row-flash' : ''}>
                       <td data-label="Sports">{displayCategory(r.label || r.sportName || '').toUpperCase()}</td>
                       <td data-label="Team">{r.teamA.name} vs {r.teamB.name}</td>
-                      <td data-label="Violation">{(r.teamA.totalViolations || r.teamB.totalViolations) ? `${r.teamA.totalViolations}-${r.teamB.totalViolations}` : '--'}</td>
+                      <td className="mp-td-center" data-label="Violation">{(r.teamA.totalViolations || r.teamB.totalViolations) ? `${r.teamA.totalViolations}-${r.teamB.totalViolations}` : '--'}</td>
                       <td data-label="Duration / Score">{rowIsPoints ? (r.teamA.points != null ? `${r.teamA.points} - ${r.teamB.points} pts` : '--') : (r.teamA.minutes != null ? `${minutesToDurationString(r.teamA.minutes)} - ${minutesToDurationString(r.teamB.minutes)}` : '--')}</td>
                       <td className="mp-table__points" data-label="Final Points">{fmtPts(r.teamA.finalPoints)} - {fmtPts(r.teamB.finalPoints)}</td>
                       <td data-label="Edit"><button className="mp-table__edit-btn" onClick={() => startEdit(r)} aria-label="Edit"><FaEdit /></button></td>
