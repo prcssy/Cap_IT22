@@ -615,7 +615,7 @@ function ScheduleDayTable({ day, matches, resultFor }) {
           <div className="ms-row" role="row" key={m.id}>
             <div className="ms-cell ms-cell-time" role="cell" data-label="Time">{formatTime(m.time)}</div>
             <div className="ms-cell ms-cell-sport" role="cell" data-label="Sport">{categoryOf(m).label}</div>
-            <div className="ms-cell ms-cell-venue" role="cell" data-label="Venue">{m.location || '—'}</div>
+            <div className="ms-cell ms-cell-venue" role="cell" data-label="Venue">{m.location || 'TBA'}</div>
             <div className="ms-cell ms-cell-team ms-cell-team--body" role="cell">
               {(() => {
                 const record = resultFor ? resultFor(m) : null;

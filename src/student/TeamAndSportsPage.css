@@ -352,6 +352,25 @@
     width: 56px;
     height: 56px;
   }
+
+  /* Shrink the segmented control so all four tabs ("All Levels",
+     "Elementary", "High School", "College") fit on one row instead of
+     "College" wrapping onto a second line, then stretch each tab to
+     fill the row evenly so the control reaches the box's right edge
+     instead of leaving empty space next to "College". */
+  .ts-lvltabs {
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .ts-lvltab {
+    flex: 1;
+    padding: 9px 6px;
+    font-size: 12px;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    text-align: center;
+  }
 }
 /* ── Mobile: leaves room for the floating hamburger button (Sidebar.css
    takes the icon rail out of flow below 768px), which would otherwise
@@ -364,5 +383,15 @@
   .ts-subheader {
     flex-wrap: wrap;
     gap: 10px;
+  }
+
+  /* .ts-lvltabs has flex-shrink: 0, so once it wraps onto its own row
+     below the stats it still sizes to its content (max-content) instead
+     of the available width — "College" ran past the screen edge and got
+     clipped by .ts-body's overflow-x: hidden instead of wrapping onto a
+     second row. Forcing it to the full row width lets its own
+     flex-wrap: wrap take over. */
+  .ts-lvltabs {
+    width: 100%;
   }
 }

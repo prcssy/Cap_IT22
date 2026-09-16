@@ -50,6 +50,27 @@
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   padding: 20px 25px 60px;
+  scrollbar-width: thin;
+}
+
+/* Real phones show a thin, auto-hiding overlay scrollbar here (or none at
+   all), but testing at phone width in a desktop browser (e.g. Chrome
+   DevTools' device toolbar) renders the OS's full-width scrollbar instead,
+   which eats into an already-narrow 375px viewport and crowds whatever
+   sits at the right edge of the panels below (the team badge, the
+   Win/Lose radios). Slimming it down keeps desktop-at-phone-width testing
+   honest to what a real phone looks like. */
+.mp-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.mp-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.mp-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.25);
+  border-radius: 3px;
 }
 
 /* ══════════════════════════════════════════
@@ -164,11 +185,13 @@
 
 .mp-levelband__tabs {
   display: inline-flex;
+  align-items: center;
   gap: 6px;
   background: #001c33;
   border: 1.5px solid #23446e;
   border-radius: 16px;
   padding: 6px;
+  max-width: 100%;
 }
 
 .mp-levelband__tab {
@@ -180,10 +203,29 @@
   font-size: 1.15rem;
   letter-spacing: 0.06em;
   text-transform: uppercase;
+  white-space: nowrap;
   padding: 10px 24px;
   border-radius: 11px;
   cursor: pointer;
   transition: background 0.18s ease, color 0.18s ease, transform 0.12s ease;
+}
+
+/* On narrow phones, "High School" at the default padding/font-size no
+   longer fits on one line, so it wraps to two lines and grows taller than
+   the single-line Elementary/College tabs next to it — the active pill
+   looks mismatched/unaligned against the plain-text tabs beside it.
+   Shrinking padding + font-size here keeps every tab on one line. */
+@media (max-width: 480px) {
+  .mp-levelband__tabs {
+    gap: 2px;
+    padding: 5px;
+  }
+
+  .mp-levelband__tab {
+    font-size: 0.82rem;
+    padding: 9px 12px;
+    letter-spacing: 0.03em;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -279,6 +321,25 @@
   text-align: left;
   color: #fff;
   transition: border-color 0.15s, transform 0.1s, background 0.15s;
+}
+
+/* On narrow phones, a card's own natural (unwrapped) width — e.g. "Ateneo
+   De Manila vs Dela Salle University" on one line — is wider than the
+   screen, so the card gets clipped mid-text and the moderator has to
+   scroll sideways just to read a single match. Make each card fill the
+   panel's visible width so its text wraps normally and one match is shown
+   fully at a time; scroll-snap keeps swiping between cards clean. */
+@media (max-width: 480px) {
+  .mp-finished-panel__list {
+    scroll-snap-type: x mandatory;
+  }
+
+  .mp-finished-card {
+    flex: 0 0 100%;
+    width: 100%;
+    min-width: 0;
+    scroll-snap-align: start;
+  }
 }
 
 @media (hover: hover) and (pointer: fine) {
@@ -484,6 +545,24 @@
   border-radius: 18px;
   padding: 26px 26px 22px;
   color: #0b2447;
+}
+
+/* .mp-body already has 25px of its own side padding, and this card's 26px
+   stacks on top of it — 51px lost to padding on each side before any real
+   content starts. On a 375px-wide phone that's over a quarter of the
+   screen gone, which is what actually reads as the white/orange team-card
+   "not fitting" the phone with a wide unused strip beside it (the
+   scrollbar for the "Before/After the game" content lives inside that
+   same strip, right at the true edge). Shrink both paddings together on
+   phones so the card actually uses the width it has. */
+@media (max-width: 480px) {
+  .mp-body {
+    padding: 16px 16px 60px;
+  }
+
+  .mp-card {
+    padding: 18px 14px 16px;
+  }
 }
 
 .mp-card__title {
@@ -991,6 +1070,7 @@ input.mp-text-input:disabled {
 .mp-points-row {
   display: flex;
   gap: 12px;
+  margin-bottom: 16px;
 }
 
 .mp-points-box {
@@ -1927,6 +2007,20 @@ input.mp-text-input:disabled {
   text-align: right;
 }
 
+/* .mp-summary__head wraps below the title on narrow screens, and once
+   .mp-summary__count is on its own line, `justify-content: space-between`
+   has nothing to space it against — it lands at the start of that line
+   (shrink-to-fit width), but its own text stays right-aligned inside that
+   shrunk box. That put the big number under the *end* of "Total match
+   complete" instead of under its start. Left-align both on mobile so the
+   number sits directly under the label, like every other left-aligned
+   block on this page. */
+@media (max-width: 480px) {
+  .mp-summary__count {
+    text-align: left;
+  }
+}
+
 .mp-summary__count-label {
   font-size: 0.6rem;
   font-weight: 700;
@@ -2109,6 +2203,18 @@ input.mp-text-input:disabled {
   font-size: 0.75rem;
 }
 
+/* The "vs" between the two team selects is a direct child of .mp-edit-form
+   (the score "-" separators are nested one level deeper inside
+   .mp-edit-form__score, so this doesn't touch those). Nudged right, on
+   phones only, so it sits over the gap between the stacked selects
+   instead of the far left — desktop already has both selects on one row
+   with "vs" naturally between them. */
+@media (max-width: 480px) {
+  .mp-edit-form > .mp-vs-mini {
+    margin-left: 130px;
+  }
+}
+
 .mp-edit-form__score {
   display: flex;
   align-items: center;
@@ -2126,6 +2232,24 @@ input.mp-text-input:disabled {
 
 .mp-edit-form__score--auto .mp-vs-mini {
   color: #8593ad;
+}
+
+/* Groups Save/Cancel so they always stay adjacent to each other (the
+   gap between them, replacing the one .mp-edit-form's own flex gap used
+   to provide when they were two flat items in its row). */
+.mp-edit-form__actions {
+  display: flex;
+  gap: 10px;
+}
+
+/* On phones, Save could still fit next to whatever came before it (the
+   auto rating) while Cancel wrapped alone underneath — splitting one
+   action pair across two lines. Force the pair onto their own full-width
+   row there; desktop has room for them to sit inline and stays as-is. */
+@media (max-width: 480px) {
+  .mp-edit-form__actions {
+    width: 100%;
+  }
 }
 
 .mp-edit-form__save {
@@ -2359,6 +2483,16 @@ input.mp-text-input:disabled {
   flex-wrap: wrap;
 }
 
+/* On narrow phones .mp-intro wraps: the "Request a schedule" button drops
+   onto its own line below the title and sits flush against the Match
+   Schedules panel right under it, since .mp-intro has no bottom margin of
+   its own. Give it one once it's actually wrapped/stacked. */
+@media (max-width: 480px) {
+  .mp-intro {
+    margin-bottom: 16px;
+  }
+}
+
 .mp-format-chip {
   display: inline-flex;
   align-items: center;
@@ -2432,6 +2566,7 @@ input.mp-text-input:disabled {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
+  margin-bottom: 16px;
 }
 
 .mp-field--center {

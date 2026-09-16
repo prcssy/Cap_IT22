@@ -2811,10 +2811,12 @@ export default function ModeratorPage() {
                             <span className="mp-vs-mini">-</span>
                             <span>{fmtPts(editPreview.finalPointsB)}</span>
                           </div>
-                          <button className="mp-edit-form__save" onClick={() => saveEdit(r)} disabled={savingEditId === r.id}>
-                            {savingEditId === r.id ? 'Saving…' : 'Save'}
-                          </button>
-                          <button className="mp-edit-form__cancel" onClick={() => { setEditingId(null); setEditDraft(null); }} disabled={savingEditId === r.id}>Cancel</button>
+                          <div className="mp-edit-form__actions">
+                            <button className="mp-edit-form__save" onClick={() => saveEdit(r)} disabled={savingEditId === r.id}>
+                              {savingEditId === r.id ? 'Saving…' : 'Save'}
+                            </button>
+                            <button className="mp-edit-form__cancel" onClick={() => { setEditingId(null); setEditDraft(null); }} disabled={savingEditId === r.id}>Cancel</button>
+                          </div>
                         </div>
                       </td>
                     </tr>

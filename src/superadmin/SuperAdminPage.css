@@ -55,6 +55,24 @@
   flex-shrink: 0;
 }
 
+/* Four tabs ("All Levels" included) in one un-wrapping inline-flex row
+   don't fit a phone's width — the row just overflowed past the edge, and
+   since .sa-body clips horizontal overflow (overflow-x: hidden) rather
+   than scrolling, "College" got cut off instead of showing. Shrink the
+   tabs enough to keep all four on one line instead. */
+@media (max-width: 480px) {
+  .sa-lvltabs {
+    flex-shrink: 1;
+    gap: 2px;
+    padding: 3px;
+  }
+
+  .sa-lvltab {
+    padding: 5px 6px;
+    font-size: 10px;
+  }
+}
+
 .sa-lvltab {
   background: transparent;
   border: none;

@@ -149,7 +149,6 @@ const LEVELS = ['Elementary', 'High School', 'College'];
 
 const CARD_W = 400;
 const GAP    = 24;
-const STEP   = CARD_W + GAP; // 424px per position slot
 
 // Visual config per position index (-2 … +2)
 const POS_STYLE = {
@@ -239,7 +238,7 @@ function StatRow({ label, icon: Icon, aVal, bVal, aWin, bWin }) {
   );
 }
 
-function FinishedCard({ match, isActive }) {
+function FinishedCard({ match, isActive, width }) {
   const drawn = match.winner === 'DRAW' || match.winner == null;
   const winnerA = match.winner === 'A';
   const winnerB = match.winner === 'B';
@@ -248,7 +247,10 @@ function FinishedCard({ match, isActive }) {
   const hasTime = match.time && match.time !== 'TBA';
 
   return (
-    <div className={`finished-card ${isActive ? 'finished-card--active' : 'finished-card--side'}`}>
+    <div
+      className={`finished-card ${isActive ? 'finished-card--active' : 'finished-card--side'}`}
+      style={{ width }}
+    >
       <div className="fc-header">
         <span className="fc-sport">{match.sport} {match.gender}</span>
         <span className="fc-status"><span className="fc-status-dot" />Finished</span>
@@ -289,6 +291,32 @@ function FinishedCarousel({ matches, emptyText }) {
   const lockRef = useRef(false);
   const prevCenterRef = useRef(center);
 
+  // The carousel is built around a fixed 400px card (CARD_W) so the
+  // coverflow peek effect has consistent geometry on desktop. On a phone
+  // that's wider than the viewport, so the active card gets clipped by
+  // the section's overflow: hidden and never reaches the screen edge.
+  // Below the same mobile breakpoint used elsewhere in this file (600px),
+  // shrink the card to the measured container width so the active slide
+  // fills the screen; above it, always keep the desktop/laptop CARD_W
+  // untouched regardless of how the container happens to measure.
+  const containerRef = useRef(null);
+  const [cardW, setCardW] = useState(CARD_W);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    const update = () => {
+      if (window.innerWidth > 600) { setCardW(CARD_W); return; }
+      setCardW(Math.min(CARD_W, el.clientWidth || CARD_W));
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  const step = cardW + GAP;
+
   // The list this carousel shows can change identity whenever the global
   // sport filter changes (a fresh, shorter/longer array). Without this, an
   // index picked under "All Sports" could point past the end of a smaller
@@ -327,18 +355,19 @@ function FinishedCarousel({ matches, emptyText }) {
       </div>
 
       {total === 0 ? <p className="dash-empty">{emptyText}</p> : (
-      <div className="finished-carousel">
-        <div className="finished-carousel__track">
+      <div className="finished-carousel" ref={containerRef}>
+        <div className="finished-carousel__track" style={{ width: cardW }}>
           {matches.map((match, matchIdx) => {
             const pos = wrapSigned(matchIdx - center);
             const ps = POS_STYLE[String(pos)] || {
               scale: 0.62, opacity: 0, brightness: 0.4, grayscale: 0.5, z: 0,
             };
-            const tx = pos * STEP;
+            const tx = pos * step;
             const prevPos = wrapSigned(matchIdx - prevCenterRef.current);
             const isWrapped = Math.abs(pos - prevPos) > 2;
 
             const style = {
+              width:     cardW,
               transform: `translateX(${tx}px) scale(${ps.scale})`,
               opacity:   ps.opacity,
               filter:    `brightness(${ps.brightness}) grayscale(${ps.grayscale})`,
@@ -355,6 +384,7 @@ function FinishedCarousel({ matches, emptyText }) {
                 <FinishedCard
                   match={match}
                   isActive={matchIdx === center}
+                  width={cardW}
                 />
               </div>
             );
@@ -369,7 +399,12 @@ function FinishedCarousel({ matches, emptyText }) {
 function ScrollRow({ children, label, variant, isEmpty, emptyText }) {
   const ref = React.useRef(null);
   const scroll = (dir) => {
-    if (ref.current) ref.current.scrollBy({ left: dir * 180, behavior: 'smooth' });
+    if (!ref.current) return;
+    // On mobile, Upcoming shows one full-width match per view (CSS scroll-snap
+    // makes swipe land on it too) — advance by a whole card, not the desktop
+    // peek-next-card 180px nudge, so the arrow lands on the same match a swipe would.
+    const step = variant === 'upcoming' && window.innerWidth <= 600 ? ref.current.clientWidth : 180;
+    ref.current.scrollBy({ left: dir * step, behavior: 'smooth' });
   };
   return (
     <section className={`dash-section dash-section--${variant}`}>

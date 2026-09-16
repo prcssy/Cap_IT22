@@ -976,9 +976,37 @@
    drop onto their own label/value lines underneath.
    ══════════════════════════════════════════ */
 @media (max-width: 640px) {
+  /* Shrink the segmented control so all four tabs ("All Levels",
+     "Elementary", "High School", "College") fit on one row instead of
+     "College" wrapping onto a second line — same fix as .ts-lvltabs on
+     the Team and Sports page: stretch each tab to fill the row evenly
+     via flex: 1 instead of sizing to its own text. */
+  .ms-lvltabs {
+    width: 100%;
+    flex-wrap: nowrap;
+    gap: 4px;
+    padding: 4px;
+  }
+
+  .ms-lvltab {
+    flex: 1;
+    padding: 9px 4px;
+    font-size: 11px;
+    letter-spacing: 0.01em;
+    white-space: nowrap;
+    text-align: center;
+  }
+
   .ms-row {
     display: flex;
     flex-direction: column;
+    /* The base .ms-row rule above sets align-items: center for its desktop
+       grid layout, and that value isn't reset by a more specific rule at
+       this width — it was still centering every cell as a shrink-to-fit
+       box instead of stretching it full width, so the Time/Sport/Venue
+       rows each started at a different x depending on their own content
+       length instead of lining up in a straight column. */
+    align-items: stretch;
     gap: 8px;
     border-top: none;
     border-bottom: 1px solid rgba(0, 21, 41, 0.1);
@@ -996,8 +1024,19 @@
     border-bottom: none;
   }
 
+  /* .ms-cell-team's children (match-label pill, each team name, "vs",
+     winner pill) are plain sibling <span>s under a flex-direction: column
+     parent, so each one becomes its own row — and with the default
+     align-items: stretch, every span (including the pills, which are
+     meant to hug their own text) stretched to the row's full width,
+     left-aligning some text against a pill background that spread edge
+     to edge. align-items: center sizes each span to its own content and
+     centers the whole stack instead, matching the centered team-matchup
+     style used elsewhere (e.g. FinishedCard on the Dashboard). */
   .ms-cell-team {
     order: 1;
+    align-items: center;
+    text-align: center;
   }
 
   .ms-cell-time,
@@ -1005,7 +1044,8 @@
   .ms-cell-venue {
     order: 2;
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-start;
+    gap: 6px;
     font-size: 12px;
     font-weight: 600;
   }

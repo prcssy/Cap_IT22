@@ -1011,10 +1011,26 @@
     padding: 12px 10px 8px;
   }
 
-  .upcoming-card,
   .ongoing-card {
     flex: 0 0 260px;
     height: auto;
+  }
+
+  /* Upcoming Matches on mobile: one match per view instead of a
+     multi-card horizontal scroll (which left several matches bleeding
+     half-visible off the right edge). scroll-snap-type + full-width
+     cards makes each arrow click *and* a native touch swipe land on
+     exactly the next match, mirroring the Finished Matches carousel's
+     one-at-a-time feel without needing custom touch-gesture JS. */
+  .dash-section--upcoming .scroll-row {
+    scroll-snap-type: x mandatory;
+  }
+
+  .dash-section--upcoming .upcoming-card {
+    flex: 0 0 100%;
+    width: 100%;
+    height: auto;
+    scroll-snap-align: center;
   }
 
   /* .team-banner--uc/--oc are a fixed ~330px tall on desktop, sized for

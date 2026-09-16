@@ -518,7 +518,7 @@ function LandingPage() {
           </div>
 
           {/* Right — ongoing match card */}
-          <div className="match-card">
+          <div className={`match-card ${!currentMatch ? 'match-card--no-level' : ''}`}>
             <div className="match-card-header">
               <p className="match-card-label">ONGOING MATCHES</p>
 

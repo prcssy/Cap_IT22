@@ -945,9 +945,25 @@
 
 /* ── Responsive ── */
 @media (max-width: 900px) {
+  .content-section {
+    padding: 0 1.25rem 4rem;
+  }
+
+  /* Section headings ("How to Join as a Player") use a fixed Lalezar
+     font-size with white-space: nowrap, sized for desktop. On a narrow
+     phone the text is wider than the viewport, so the flanking
+     .heading-line bars (flex: 1) get squeezed down to near-zero width
+     instead of leaving any visible gap around the text. Shrink the text
+     and let it wrap so the lines keep their gap. */
+  .heading-text {
+    font-size: 1.35rem;
+    white-space: normal;
+    text-align: center;
+  }
+
   .info-cards-row {
     grid-template-columns: 1fr;
-    margin-top: -2.5rem;
+    margin-top: 0;
   }
 
   .step-arrow {
@@ -983,7 +999,41 @@
     flex-direction: column;
     align-items: flex-start;
     padding: 1.5rem 1.25rem 2.5rem;
-    gap: 2rem;
+    gap: 1.25rem;
+    /* .hero-body's base z-index (10) loses to .info-cards-row's z-index
+       (20) below it, so now that the level dropdown menu is allowed to
+       escape the match card's bounds on mobile (see .match-card above),
+       it was rendering underneath the "Choose Your Sport" card instead
+       of on top of it. Only needed here — on desktop the dropdown stays
+       clipped inside the match card and never reaches that section. */
+    z-index: 21;
+  }
+
+  /* The dropdown menu's translucent glass background (rgba white +
+     backdrop-filter blur) only reads well over the dark match card it
+     was designed for. On mobile it spills past the card onto the
+     brighter, un-darkened right side of the hero photo (see
+     .hero-overlay, which only darkens the left side), which washes the
+     text out — exactly what made "College" unreadable. Give it the
+     same solid navy the rest of the UI uses so it's legible no matter
+     what's behind it. */
+  .level-menu {
+    background: #08122A;
+    backdrop-filter: none;
+  }
+
+  /* .info-cards-row's base desktop margin-top (-2.5rem here on mobile,
+     see above) pulls "Choose Your Sport" up to overlap the tail end of
+     the hero, so its rounded top corners were hidden behind the match
+     card / hero photo in every closed-dropdown state — and when the
+     "Levels" menu (~3 items tall) opened, it had nowhere to go but
+     straight over that same overlapped heading. Giving the content
+     section a permanently larger top gap (instead of only reserving it
+     while the menu is open) fixes both: the card always drops cleanly
+     into the flat background color below the hero, with its rounded
+     top visible, whether the menu is open, closed, or showing a match. */
+  .content-section {
+    padding-top: 2.5rem;
   }
 
   .hero-left {
@@ -1036,6 +1086,24 @@
     aspect-ratio: auto;
     margin-top: 0;
     margin-right: 0;
+    overflow: visible;
+  }
+
+  /* Only nudge the card up when no level is picked yet (shorter
+     "Pick a level above…" empty state) — once a level is selected,
+     keep the spacing as-is. */
+  .match-card--no-level {
+    margin-top: -3rem;
+  }
+
+  .header-with-lines .header-text {
+    font-size: 1.8rem;
+    white-space: nowrap;
+  }
+
+  .sports-moments .linegroup1,
+  .sports-moments .linegroup2 {
+    display: none;
   }
 }
 

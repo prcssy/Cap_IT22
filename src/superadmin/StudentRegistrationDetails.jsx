@@ -40,6 +40,21 @@ function getSchoolLevel(gradeLevel) {
 
 const LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
 
+// Shared by every field in the Student Details modal: values the merge
+// logic already fell back to ('—' for user-profile fields, 'N/A' for
+// registration fields) render as a muted "Not provided" instead of a bare
+// dash, so it's unambiguous that the data is missing rather than "0" or
+// blank on purpose.
+function DetailField({ label, value, center }) {
+  const isEmpty = !value || value === '—' || value === 'N/A';
+  return (
+    <div className={`asp-form-group${center ? ' asp-form-group--center' : ''}`}>
+      <label>{label}</label>
+      <p>{isEmpty ? <span className="asp-detail-empty">Not provided</span> : value}</p>
+    </div>
+  );
+}
+
 /* Which event bucket a registration belongs to — same rule AdminSchedulePage
    uses for its own event filter/chips. */
 function getEventBucket(r, eventList) {
@@ -189,6 +204,17 @@ export default function StudentRegistrationDetails() {
   }, [events]);
 
   useEffect(() => { fetchStudents(); }, [fetchStudents]);
+
+  // Lock the page behind the modal so there's only ever one scrollable
+  // surface on screen at a time — without this, mobile users get a
+  // scrollbar on the modal body AND one on the page behind it, and it's
+  // unclear which one a given swipe/scroll is acting on.
+  useEffect(() => {
+    if (!selectedStudent) return undefined;
+    const original = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => { document.body.style.overflow = original; };
+  }, [selectedStudent]);
 
   const handleDecision = useCallback(async (reg, status) => {
     if (!reg.regId) return;
@@ -416,98 +442,76 @@ export default function StudentRegistrationDetails() {
               <button className="asp-modal__close" onClick={() => setSelectedStudent(null)}><FaTimes /></button>
             </div>
             <div className="asp-modal__body">
-              <div className="asp-form-row">
-                <div className="asp-form-group">
-                  <label>Full Name</label>
-                  <p>{selectedStudent.fullName || '—'}</p>
+              <section className="asp-modal__section-group">
+                <h3 className="asp-modal__section">Basic Information</h3>
+                <div className="asp-form-row">
+                  <DetailField label="Full Name" value={selectedStudent.fullName} />
+                  <DetailField label="Gender" value={selectedStudent.gender} center />
                 </div>
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Gender</label>
-                  <p>{selectedStudent.gender || '—'}</p>
+                <div className="asp-form-row">
+                  <DetailField label="Date of Birth" value={selectedStudent.dob} />
+                  <DetailField label="Age" value={selectedStudent.age} center />
                 </div>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group">
-                  <label>Grade / Year Level</label>
-                  <p>{selectedStudent.gradeLevel || '—'}</p>
+              </section>
+
+              <section className="asp-modal__section-group">
+                <h3 className="asp-modal__section">Academic Information</h3>
+                <div className="asp-form-row">
+                  <DetailField label="Grade / Year Level" value={selectedStudent.gradeLevel} />
+                  <DetailField label="Section" value={selectedStudent.section} center />
                 </div>
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Section</label>
-                  <p>{selectedStudent.section || '—'}</p>
+                <DetailField label="Level" value={LEVEL_LABELS[getSchoolLevel(selectedStudent.gradeLevel)]} />
+              </section>
+
+              <section className="asp-modal__section-group">
+                <h3 className="asp-modal__section">Contact Information</h3>
+                <div className="asp-form-row">
+                  <DetailField label="Contact Number" value={selectedStudent.contactNumber} />
+                  <DetailField label="Email" value={selectedStudent.email || selectedStudent.studentEmail} center />
                 </div>
-              </div>
-              <div className="asp-form-group">
-                <label>Level</label>
-                <p>{LEVEL_LABELS[getSchoolLevel(selectedStudent.gradeLevel)] || '—'}</p>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group">
-                  <label>Date of Birth</label>
-                  <p>{selectedStudent.dob || '—'}</p>
+                <DetailField label="Address" value={selectedStudent.address} />
+                <DetailField label="Emergency Contact" value={selectedStudent.emergencyContact} />
+              </section>
+
+              <section className="asp-modal__section-group">
+                <h3 className="asp-modal__section">Sports &amp; Team</h3>
+                <div className="asp-form-row">
+                  <DetailField label="Sport" value={selectedStudent.sport} />
+                  <DetailField label="Position" value={selectedStudent.position} center />
                 </div>
-                <div className="asp-form-group">
-                  <label>Age</label>
-                  <p>{selectedStudent.age || '—'}</p>
+                <div className="asp-form-row">
+                  <DetailField label="Team Name" value={selectedStudent.teamName} />
+                  <DetailField label="Event" value={selectedStudent.event} center />
                 </div>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group">
-                  <label>Contact Number</label>
-                  <p>{selectedStudent.contactNumber || '—'}</p>
-                </div>
-                <div className="asp-form-group">
-                  <label>Email</label>
-                  <p>{selectedStudent.email || selectedStudent.studentEmail || '—'}</p>
-                </div>
-              </div>
-              <div className="asp-form-group">
-                <label>Address</label>
-                <p>{selectedStudent.address || '—'}</p>
-              </div>
-              <div className="asp-form-group">
-                <label>Emergency Contact</label>
-                <p>{selectedStudent.emergencyContact || '—'}</p>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Sport</label>
-                  <p>{selectedStudent.sport || '—'}</p>
-                </div>
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Position</label>
-                  <p>{selectedStudent.position || '—'}</p>
-                </div>
-              </div>
-              <div className="asp-form-row">
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Team Name</label>
-                  <p>{selectedStudent.teamName || '—'}</p>
-                </div>
-                <div className="asp-form-group asp-form-group--center">
-                  <label>Event</label>
-                  <p>{selectedStudent.event || '—'}</p>
-                </div>
-              </div>
+              </section>
+
               {selectedStudent.message && (
-                <div className="asp-form-group">
-                  <label>Message</label>
-                  <p>{selectedStudent.message}</p>
-                </div>
+                <section className="asp-modal__section-group">
+                  <h3 className="asp-modal__section">Message</h3>
+                  <DetailField label="Message" value={selectedStudent.message} />
+                </section>
               )}
-              <div className="asp-form-row">
-                {selectedStudent.photoURL && (
-                  <div className="asp-form-group">
-                    <label>Photo</label>
-                    <p><a href={selectedStudent.photoURL} target="_blank" rel="noreferrer">View photo</a></p>
+
+              {(selectedStudent.photoURL || selectedStudent.waiverURL) && (
+                <section className="asp-modal__section-group">
+                  <h3 className="asp-modal__section">Attachments</h3>
+                  <div className="asp-form-row">
+                    {selectedStudent.photoURL && (
+                      <div className="asp-form-group">
+                        <label>Photo</label>
+                        <p><a href={selectedStudent.photoURL} target="_blank" rel="noreferrer">View photo</a></p>
+                      </div>
+                    )}
+                    {selectedStudent.waiverURL && (
+                      <div className="asp-form-group">
+                        <label>Waiver / Consent Form</label>
+                        <p><a href={selectedStudent.waiverURL} target="_blank" rel="noreferrer">View waiver</a></p>
+                      </div>
+                    )}
                   </div>
-                )}
-                {selectedStudent.waiverURL && (
-                  <div className="asp-form-group">
-                    <label>Waiver / Consent Form</label>
-                    <p><a href={selectedStudent.waiverURL} target="_blank" rel="noreferrer">View waiver</a></p>
-                  </div>
-                )}
-              </div>
+                </section>
+              )}
+
               <div className="asp-form-actions">
                 {selectedStudent.regId && selectedStudent.status === 'pending' && (
                   <>
