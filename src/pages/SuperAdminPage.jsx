@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext, useMemo } from 'react';
+import { useState, useEffect, useCallback, useContext, useMemo } from 'react';
 import { AuthContext } from '../components/AuthContext';
 import { BrandingContext } from '../components/BrandingContext';
 import { collection, getDocs } from 'firebase/firestore';
@@ -363,7 +363,31 @@ function LineChart({ points, seriesNames, colors }) {
 function buildTimeSeries(seriesA, seriesB, days) {
   const now = new Date();
   const mode = days === null ? 'month' : days <= 7 ? 'day' : days <= 90 ? 'week' : 'month';
-  const count = mode === 'day' ? 7 : mode === 'week' ? Math.ceil(days / 7) : 12;
+
+  // 'All Time' (days === null) can't use the fixed 12-month window the
+  // '12m' range uses — that would silently drop anything older than a
+  // year while still showing the "All Time" label. Instead span from the
+  // earliest createdAt actually present in the charted data through the
+  // current month, capped so a single corrupt/far-past timestamp can't
+  // blow up the number of buckets rendered.
+  let count;
+  if (mode === 'day') {
+    count = 7;
+  } else if (mode === 'week') {
+    count = Math.ceil(days / 7);
+  } else if (days === null) {
+    const allDates = [...seriesA, ...seriesB];
+    if (allDates.length === 0) {
+      count = 1;
+    } else {
+      const earliest = allDates.reduce((min, d) => (d < min ? d : min), allDates[0]);
+      const monthsSpan = (now.getFullYear() - earliest.getFullYear()) * 12
+        + (now.getMonth() - earliest.getMonth()) + 1;
+      count = Math.min(120, Math.max(1, monthsSpan));
+    }
+  } else {
+    count = 12;
+  }
 
   const buckets = Array.from({ length: count }, (_, i) => {
     const offset = count - 1 - i;
@@ -704,6 +728,7 @@ export default function SuperAdminPage() {
                 loading={logsLoading}
                 error={logsError}
                 onRefresh={fetchLogs}
+                onUserRoleChanged={fetchAnalytics}
                 actorRole={userProfile?.role}
               />
             </>

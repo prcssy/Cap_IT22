@@ -1,4 +1,4 @@
-import React, { createContext, useEffect, useState } from 'react';
+import { createContext, useEffect, useRef, useState } from 'react';
 import { auth, db } from '../firebase';
 import {
   onAuthStateChanged,
@@ -63,6 +63,11 @@ export function AuthProvider({ children }) {
   // immediately — resolveStaffRole() below is only a ONE-SHOT lookup used
   // for the initial login/signup decision, it never re-fires on its own.
   const [staffDocs, setStaffDocs] = useState({ admin: false, moderator: false, superadmin: false });
+  // Bumped on every onAuthStateChanged invocation so a slow-resolving
+  // earlier call (e.g. the initial sign-in during an unverified login,
+  // which login() then immediately signs back out) can detect it's been
+  // superseded and skip overwriting the newer/correct state with stale data.
+  const authCallIdRef = useRef(0);
 
   /**
    * Check the "superadmins", "admins", and "moderators" Firestore collections
@@ -93,12 +98,18 @@ export function AuthProvider({ children }) {
     }
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      const callId = ++authCallIdRef.current;
       setCurrentUser(user);
       if (user && db) {
         try {
           const profile = await getUserProfile(user.uid);
           // Resolve staff role from Firestore (superadmins / admins / moderators)
           const staffRole = await resolveStaffRole(user.email);
+          // A newer auth event (e.g. login()'s forced sign-out of an
+          // unverified account, or signup()'s forced sign-out after
+          // account creation) has already fired and set the correct state
+          // — don't let this now-stale lookup overwrite it.
+          if (callId !== authCallIdRef.current) return;
           const isAdminRole = staffRole === 'admin' || staffRole === 'superadmin';
 
           // Seed the live-listener state from this same lookup, so the
@@ -129,16 +140,23 @@ export function AuthProvider({ children }) {
               name: user.displayName || '',
             });
           } else {
-            setUserProfile(null);
+            // No profile doc and not on any staff allowlist either — most
+            // likely signup() was interrupted between creating the Auth
+            // account and writing the users/{uid} doc (e.g. a transient
+            // Firestore error). Treat them as a plain student instead of
+            // permanently stranding them as userRole 'guest' with no
+            // self-heal path.
+            setUserProfile({ role: 'student', isAdmin: false, email: user.email, name: user.displayName || '' });
           }
         } catch (error) {
+          if (callId !== authCallIdRef.current) return;
           console.warn('Failed to load user profile:', error);
           setUserProfile(null);
         }
       } else {
         setUserProfile(null);
       }
-      setAuthLoading(false);
+      if (callId === authCallIdRef.current) setAuthLoading(false);
     });
 
     return unsubscribe;
@@ -261,7 +279,17 @@ export function AuthProvider({ children }) {
         role: staffRole,
         isAdmin: staffRole === 'admin' || staffRole === 'superadmin',
       };
-      await createUserProfile(user.uid, profileData);
+      try {
+        await createUserProfile(user.uid, profileData);
+      } catch (error) {
+        // Don't let this abort signup() — the Auth account already exists
+        // and the verification email was already sent, so the forced
+        // sign-out below must still run rather than stranding the account
+        // signed-in/unverified with no profile doc and no retry path. The
+        // missing users/{uid} doc is covered by onAuthStateChanged's own
+        // fallback profile once they verify and log in.
+        console.warn('Failed to create user profile after signup:', error);
+      }
     }
 
     // Sign back out immediately — createUserWithEmailAndPassword leaves

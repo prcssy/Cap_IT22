@@ -249,30 +249,32 @@ export default function VenuesManager() {
                 </button>
               </div>
 
-              {bookedMatches.length === 0 ? (
-                <p className="msf-empty">No matches booked at this venue yet.</p>
-              ) : (
-                <div className="vm-schedule-list">
-                  {bookedMatches.map(m => (
-                    <div key={`${m.level}-${m.id}`} className="vm-matchcard">
-                      <div className="vm-matchcard__top">
-                        <span className="vm-matchcard__date">
-                          {m.date ? `${m.date}${m.time ? ` · ${m.time}` : ''}` : 'Date TBD'}
-                        </span>
-                        <div className="vm-matchcard__pills">
-                          <span className="msf-pill-sport">{m.sport}</span>
-                          <span className="vm-pill-level">{LEVEL_LABELS[m.level] || m.level}</span>
+              <div className="vm-schedule-modal__body">
+                {bookedMatches.length === 0 ? (
+                  <p className="msf-empty">No matches booked at this venue yet.</p>
+                ) : (
+                  <div className="vm-schedule-list">
+                    {bookedMatches.map(m => (
+                      <div key={`${m.level}-${m.id}`} className="vm-matchcard">
+                        <div className="vm-matchcard__top">
+                          <span className="vm-matchcard__date">
+                            {m.date ? `${m.date}${m.time ? ` · ${m.time}` : ''}` : 'Date TBD'}
+                          </span>
+                          <div className="vm-matchcard__pills">
+                            <span className="msf-pill-sport">{m.sport}</span>
+                            <span className="vm-pill-level">{LEVEL_LABELS[m.level] || m.level}</span>
+                          </div>
+                        </div>
+                        <div className="vm-teams vm-matchcard__teams">
+                          <TeamBadge name={m.teamA} logo={m.teamALogo} />
+                          <span className="vm-teams__vs">vs</span>
+                          <TeamBadge name={m.teamB} logo={m.teamBLogo} />
                         </div>
                       </div>
-                      <div className="vm-teams vm-matchcard__teams">
-                        <TeamBadge name={m.teamA} logo={m.teamALogo} />
-                        <span className="vm-teams__vs">vs</span>
-                        <TeamBadge name={m.teamB} logo={m.teamBLogo} />
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           </div>
         );

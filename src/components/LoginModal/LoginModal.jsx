@@ -1,4 +1,4 @@
-import React, { useContext, useState } from 'react';
+import { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../AuthContext';
 import { BrandingContext } from '../BrandingContext';
@@ -476,15 +476,19 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
 function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
   const { logo } = useContext(BrandingContext);
   const [email, setEmail] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setSubmitting(true);
     try {
       await onResetPassword(email);
       alert('Password reset email sent. Please check your inbox.');
       onSwitchScreen('login');
     } catch (error) {
       alert(error.message || 'Could not send reset email.');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -509,8 +513,8 @@ function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
           />
         </div>
 
-        <button type="submit" className="auth-btn auth-btn-primary">
-          Continue
+        <button type="submit" className="auth-btn auth-btn-primary" disabled={submitting}>
+          {submitting ? 'Sending…' : 'Continue'}
         </button>
       </form>
 
@@ -663,47 +667,49 @@ export default function LoginModal() {
           </button>
 
           {/* Screen Content */}
-          {authModal.screen === 'login' && (
-            <LoginScreen
-              onSwitchScreen={switchScreen}
-              onLogin={login}
-              onResendVerification={resendVerificationEmail}
-              onSuccess={(role) => {
-                closeAuthModal();
-                // redirect based on the Firestore-verified role returned by login()
-                if (role === 'admin') navigate('/admin');
-                else if (role === 'moderator') navigate('/moderator');
-                else if (role === 'superadmin') navigate('/superadmin');
-                else navigate('/dashboard');
-              }}
-            />
-          )}
-          {authModal.screen === 'signup' && (
-            <SignUpScreen
-              onSwitchScreen={switchScreen}
-              onSignUp={signup}
-              onSuccess={() => {
-                // The new account is signed out and unverified at this
-                // point — send them to the login screen instead of the
-                // dashboard so they log in for real once they've
-                // clicked the gmail verification link.
-                switchScreen('login');
-              }}
-            />
-          )}
-          {authModal.screen === 'forgotPassword' && (
-            <ForgotPasswordScreen
-              onSwitchScreen={switchScreen}
-              onResetPassword={resetPassword}
-            />
-          )}
-          {authModal.screen === 'newPassword' && (
-            <NewPasswordScreen
-              onSwitchScreen={switchScreen}
-              onUpdatePassword={updatePassword}
-              currentUser={currentUser}
-            />
-          )}
+          <div className="auth-modal-card__body">
+            {authModal.screen === 'login' && (
+              <LoginScreen
+                onSwitchScreen={switchScreen}
+                onLogin={login}
+                onResendVerification={resendVerificationEmail}
+                onSuccess={(role) => {
+                  closeAuthModal();
+                  // redirect based on the Firestore-verified role returned by login()
+                  if (role === 'admin') navigate('/admin');
+                  else if (role === 'moderator') navigate('/moderator');
+                  else if (role === 'superadmin') navigate('/superadmin');
+                  else navigate('/dashboard');
+                }}
+              />
+            )}
+            {authModal.screen === 'signup' && (
+              <SignUpScreen
+                onSwitchScreen={switchScreen}
+                onSignUp={signup}
+                onSuccess={() => {
+                  // The new account is signed out and unverified at this
+                  // point — send them to the login screen instead of the
+                  // dashboard so they log in for real once they've
+                  // clicked the gmail verification link.
+                  switchScreen('login');
+                }}
+              />
+            )}
+            {authModal.screen === 'forgotPassword' && (
+              <ForgotPasswordScreen
+                onSwitchScreen={switchScreen}
+                onResetPassword={resetPassword}
+              />
+            )}
+            {authModal.screen === 'newPassword' && (
+              <NewPasswordScreen
+                onSwitchScreen={switchScreen}
+                onUpdatePassword={updatePassword}
+                currentUser={currentUser}
+              />
+            )}
+          </div>
         </div>
       </div>
     </>

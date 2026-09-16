@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef, useContext } from 'react';
+import { useState, useEffect, useRef, useContext } from 'react';
 import {
   FaRunning, FaUsers, FaPlus, FaTimes,
   FaEdit, FaCheck, FaSync,
@@ -22,6 +22,15 @@ const TEAM_COLORS = ['#b45309','#dc2626','#15803d','#6d28d9','#92400e','#9f1239'
 const uid = () => Math.random().toString(36).slice(2, 10);
 const norm = (v) => (v || '').trim().toLowerCase();
 const ensureId = (obj) => obj?.id ? obj : { ...obj, id: uid() };
+/* Two rows named "Basketball" and "basketball" in the same submitted batch
+   would otherwise both survive the merge-against-existing-list step below
+   and land in Firestore as two colliding entries. Keep the last row typed
+   for each name (case-insensitive) before that merge ever runs. */
+const dedupeByName = (rows) => {
+  const byName = new Map();
+  rows.forEach(r => byName.set(norm(r.name), r));
+  return [...byName.values()];
+};
 
 /* ═══════════════════════════════════════════
    LOGO UPLOAD
@@ -62,7 +71,19 @@ function LogoUpload({ logo, onUpload, onClear, showClearButton = false }) {
 
   return (
     <div className="stm-logo-upload-wrap">
-      <div className="stm-logo-upload" onClick={() => inputRef.current?.click()} title="Click to upload">
+      <div
+        className="stm-logo-upload"
+        onClick={() => inputRef.current?.click()}
+        title="Click to upload"
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === 'Enter' || e.key === ' ') {
+            e.preventDefault();
+            inputRef.current?.click();
+          }
+        }}
+      >
         {logo
           ? <img src={logo} alt="logo" className="stm-logo-img" />
           : <span className="stm-logo-placeholder">Upload Image</span>
@@ -97,7 +118,7 @@ function FormatModal({ initial, onDone, onClose }) {
             <h3>Choose Sport Format</h3>
             <p>Set the scoring format basis for your sports</p>
           </div>
-          <button className="stm-icon-btn" onClick={onClose}><FaTimes /></button>
+          <button className="stm-icon-btn" onClick={onClose} aria-label="Close"><FaTimes /></button>
         </div>
         <div className="stm-format-list">
           {FORMAT_OPTIONS.map(opt => (
@@ -197,7 +218,7 @@ function CategoryModal({ sport, onClose, onSave }) {
 
         {/* Header */}
         <div className="stm-catmod-head">
-          <button className="stm-icon-btn stm-catmod-close" onClick={onClose}><FaTimes /></button>
+          <button className="stm-icon-btn stm-catmod-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
           <h3>CATEGORY / DIVISION</h3>
           <p>Set the categories, divisions, and formats for your sports</p>
           {/* Stepper: [+  N  -] matching image 4 */}
@@ -208,7 +229,9 @@ function CategoryModal({ sport, onClose, onSave }) {
           </div>
         </div>
 
-        {/* Groups */}
+        {/* Groups — separately-scrolling body; keeps the header pinned and
+            the modal's rounded corners intact once this list overflows */}
+        <div className="stm-modal__body">
         <div className="stm-cat-groups">
           {groups.length === 0 && (
             <p className="stm-cat-groups__empty">
@@ -277,6 +300,7 @@ function CategoryModal({ sport, onClose, onSave }) {
             </div>
           ))}
         </div>
+        </div>
 
         {/* Bottom actions */}
         <div className="stm-catmod-actions">
@@ -328,7 +352,7 @@ function ViolationsAdminModal({ sport, onClose, onSave }) {
       <div className="stm-modal stm-modal--category" onClick={e => e.stopPropagation()}>
 
         <div className="stm-catmod-head">
-          <button className="stm-icon-btn stm-catmod-close" onClick={onClose}><FaTimes /></button>
+          <button className="stm-icon-btn stm-catmod-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
           <h3>VIOLATIONS</h3>
           <p>
             Set the violation types moderators can log for <strong>{sport.name || 'this sport'}</strong>.
@@ -336,6 +360,7 @@ function ViolationsAdminModal({ sport, onClose, onSave }) {
           </p>
         </div>
 
+        <div className="stm-modal__body">
         <div className="stm-cat-groups">
           <div className="stm-cat-group">
             {rows.length === 0 ? (
@@ -360,6 +385,7 @@ function ViolationsAdminModal({ sport, onClose, onSave }) {
               <FaPlus /> Add Violation
             </button>
           </div>
+        </div>
         </div>
 
         <div className="stm-catmod-actions">
@@ -396,11 +422,12 @@ function PositionsModal({ sport, onClose, onSave }) {
       <div className="stm-modal stm-modal--category" onClick={e => e.stopPropagation()}>
 
         <div className="stm-catmod-head">
-          <button className="stm-icon-btn stm-catmod-close" onClick={onClose}><FaTimes /></button>
+          <button className="stm-icon-btn stm-catmod-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
           <h3>POSITION TYPES</h3>
           <p>Set the player positions available for {sport.name || 'this sport'}. These are what students pick from on the registration form.</p>
         </div>
 
+        <div className="stm-modal__body">
         <div className="stm-cat-groups">
           {positions.length === 0 && (
             <p className="stm-cat-groups__empty">
@@ -423,6 +450,7 @@ function PositionsModal({ sport, onClose, onSave }) {
           <button type="button" className="stm-add-div-btn" onClick={addRow}>
             <FaPlus /> Add Position
           </button>
+        </div>
         </div>
 
         <div className="stm-catmod-actions">
@@ -461,11 +489,12 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
         <div className="stm-modal stm-modal--edit-sport" onClick={e => e.stopPropagation()}>
 
           <div className="stm-catmod-head">
-            <button className="stm-icon-btn stm-catmod-close" onClick={onClose}><FaTimes /></button>
+            <button className="stm-icon-btn stm-catmod-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
             <h3>EDIT SPORT</h3>
             <p>Update this sport's name, logo, categories, and format.</p>
           </div>
 
+          <div className="stm-modal__body">
           <div className="stm-edit-sport-body">
             <div className="stm-edit-sport-row">
               <LogoUpload logo={logo} onUpload={setLogo} onClear={() => setLogo(null)} showClearButton />
@@ -527,6 +556,7 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
                 </ul>
               )}
             </div>
+          </div>
           </div>
 
           <div className="stm-catmod-actions">
@@ -591,11 +621,12 @@ function EditTeamModal({ team, sportsList, saving, onClose, onSave }) {
         <div className="stm-modal stm-modal--edit-sport" onClick={e => e.stopPropagation()}>
 
           <div className="stm-catmod-head">
-            <button className="stm-icon-btn stm-catmod-close" onClick={onClose}><FaTimes /></button>
+            <button className="stm-icon-btn stm-catmod-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
             <h3>EDIT TEAM</h3>
             <p>Update this team's name, logo, and the sports it plays.</p>
           </div>
 
+          <div className="stm-modal__body">
           <div className="stm-edit-sport-body">
             <div className="stm-edit-sport-row">
               <LogoUpload logo={logo} onUpload={setLogo} onClear={() => setLogo(null)} showClearButton />
@@ -630,6 +661,7 @@ function EditTeamModal({ team, sportsList, saving, onClose, onSave }) {
                 </ul>
               )}
             </div>
+          </div>
           </div>
 
           <div className="stm-catmod-actions">
@@ -763,9 +795,10 @@ function TeamSportsPickerModal({ team, sportsList, onClose, onSave }) {
             <h3>Sports</h3>
             <p>Select sports for <strong>{team.name || 'this team'}</strong></p>
           </div>
-          <button className="stm-icon-btn" onClick={onClose}><FaTimes /></button>
+          <button className="stm-icon-btn" onClick={onClose} aria-label="Close"><FaTimes /></button>
         </div>
 
+        <div className="stm-modal__body">
         {sportsList.length === 0 ? (
           <p className="stm-empty-note" style={{ padding: '20px 0' }}>No sports added yet.</p>
         ) : (
@@ -787,6 +820,7 @@ function TeamSportsPickerModal({ team, sportsList, onClose, onSave }) {
             ))}
           </div>
         )}
+        </div>
 
         <button className="stm-btn-primary stm-btn-block" onClick={() => onSave([...selected])}>
           Submit
@@ -881,38 +915,50 @@ export default function SportsTeamsManager({ level }) {
   const [loading, setLoading] = useState(false);
   const [toast,   setToast]   = useState('');
 
-  /* ── Load from Firestore ── */
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const cfg = await getSportsTeamsConfig(level);
-      const sports = (cfg.sports || []).map(s => ({
-        ...ensureId(s),
-        logo: s.logo || null,
-        categoryGroups: (s.categoryGroups || (s.categories
-          ? [{ id: uid(), label: 'DIVISION', divisions: s.categories.map(ensureId) }]
-          : [])).map(g => ({ ...ensureId(g), divisions: (g.divisions || []).map(ensureId) })),
-        violations: (s.violations || []).map(ensureId),
-        positions: s.positions || [],
-      }));
-      const teams = (cfg.teams || []).map(t => ({
-        ...ensureId(t),
-        logo: t.logo || null,
-        sportIds: t.sportIds || [],
-        color: t.color || TEAM_COLORS[0],
-      }));
-      setSportsList(sports);
-      setTeamsList(teams);
-      setSportsRows([]);
-      setTeamsRows([]);
-    } catch (e) {
-      console.error('Load error:', e);
-    } finally {
-      setLoading(false);
-    }
-  }, [level]);
+  /* ── Load from Firestore ──
+     A stale, late-resolving fetch for a previously-viewed level must not
+     overwrite state after the admin has already switched to a different
+     level — otherwise the next save can write the wrong level's data over
+     another level's Firestore doc. Same cancelled-flag pattern as
+     MatchSchedulesPage.jsx / RankingPage.jsx / TeamAndSportsPage.jsx. */
+  useEffect(() => {
+    let cancelled = false;
 
-  useEffect(() => { load(); }, [load]);
+    async function load() {
+      setLoading(true);
+      try {
+        const cfg = await getSportsTeamsConfig(level);
+        if (cancelled) return;
+        const sports = (cfg.sports || []).map(s => ({
+          ...ensureId(s),
+          logo: s.logo || null,
+          categoryGroups: (s.categoryGroups || (s.categories
+            ? [{ id: uid(), label: 'DIVISION', divisions: s.categories.map(ensureId) }]
+            : [])).map(g => ({ ...ensureId(g), divisions: (g.divisions || []).map(ensureId) })),
+          violations: (s.violations || []).map(ensureId),
+          positions: s.positions || [],
+        }));
+        const teams = (cfg.teams || []).map(t => ({
+          ...ensureId(t),
+          logo: t.logo || null,
+          sportIds: t.sportIds || [],
+          color: t.color || TEAM_COLORS[0],
+        }));
+        if (cancelled) return;
+        setSportsList(sports);
+        setTeamsList(teams);
+        setSportsRows([]);
+        setTeamsRows([]);
+      } catch (e) {
+        console.error('Load error:', e);
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    }
+
+    load();
+    return () => { cancelled = true; };
+  }, [level]);
 
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2800); };
 
@@ -936,6 +982,9 @@ export default function SportsTeamsManager({ level }) {
 
   /* ── Edit a saved sport via popup ── */
   const saveEditedSport = async (updatedSport) => {
+    const collision = sportsList.some(s => s.id !== updatedSport.id && norm(s.name) === norm(updatedSport.name));
+    if (collision) { flash(`A sport named "${updatedSport.name}" already exists.`); return; }
+
     const previous = sportsList.find(s => s.id === updatedSport.id);
     const merged = sportsList.map(s => s.id === updatedSport.id ? updatedSport : s);
     setSportsList(merged);
@@ -971,6 +1020,9 @@ export default function SportsTeamsManager({ level }) {
 
   /* ── Edit a saved team via popup ── */
   const saveEditedTeam = async (updatedTeam) => {
+    const collision = teamsList.some(t => t.id !== updatedTeam.id && norm(t.name) === norm(updatedTeam.name));
+    if (collision) { flash(`A team named "${updatedTeam.name}" already exists.`); return; }
+
     const merged = teamsList.map(t => t.id === updatedTeam.id ? updatedTeam : t);
     setTeamsList(merged);
     setSavingEditTeam(true);
@@ -1004,7 +1056,7 @@ export default function SportsTeamsManager({ level }) {
     }
   };
   const saveSports = async () => {
-    const cleaned = sportsRows.filter(r => r.name.trim());
+    const cleaned = dedupeByName(sportsRows.filter(r => r.name.trim()));
     /* Re-submitting a name that is already saved updates that entry and
        KEEPS ITS ID. The old exact-string compare let "basketball" through
        as a second row next to "Basketball", and even an exact match got a
@@ -1049,7 +1101,7 @@ export default function SportsTeamsManager({ level }) {
   };
 
   const saveTeams = async () => {
-    const cleaned = teamsRows.filter(r => r.name.trim());
+    const cleaned = dedupeByName(teamsRows.filter(r => r.name.trim()));
     const merged = [
       ...teamsList.map(t => {
         const replacement = cleaned.find(c => norm(c.name) === norm(t.name));

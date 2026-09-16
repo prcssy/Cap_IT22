@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import { useEffect } from 'react';
 import { FaClipboardList, FaCalendarAlt, FaTimes, FaChevronRight } from 'react-icons/fa';
 import './SubmittedRegistrationsModal.css';
 

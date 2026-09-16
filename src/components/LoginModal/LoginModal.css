@@ -51,20 +51,30 @@
   max-width: 480px;
   max-height: calc(100vh - 2rem);
   max-height: calc(100dvh - 2rem);
-  overflow-y: auto;
-  overscroll-behavior: contain;
-  padding: 2.25rem 2.25rem;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
   z-index: 1;
   animation: modalSlideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
+/* Scrollable inner body — kept separate from .auth-modal-card so the
+   scrollbar track never renders flush against the card's rounded
+   corners (see CLAUDE.md "Known CSS gotchas"). */
+.auth-modal-card__body {
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2.25rem 2.25rem;
+}
+
 /* Slimmer scrollbar so it doesn't fight the rounded corners */
-.auth-modal-card::-webkit-scrollbar {
+.auth-modal-card__body::-webkit-scrollbar {
   width: 6px;
 }
 
-.auth-modal-card::-webkit-scrollbar-thumb {
+.auth-modal-card__body::-webkit-scrollbar-thumb {
   background: rgba(10, 29, 82, 0.25);
   border-radius: 10px;
 }
@@ -599,8 +609,11 @@
 @media (max-width: 480px) {
   .auth-modal-card {
     max-width: 100%;
-    padding: 2rem 1.5rem;
     border-radius: 16px;
+  }
+
+  .auth-modal-card__body {
+    padding: 2rem 1.5rem;
   }
 
   .auth-title {

@@ -186,14 +186,26 @@ function pairComputation({ mode, ownRating, oppRating, ownScore, oppScore, viola
 /* Full computation for a whole match: every team rated against every other
    team, changes summed, placements resolved from the raw scores. */
 function buildComputation({ rows, mode, winnerOverrideId }) {
-  const ordered = [...rows].sort((a, b) => (mode === 'points' ? b.score - a.score : a.score - b.score));
+  /* A manual winner override applies regardless of team count: the
+     overridden team is placed first (ties among the rest keep score order),
+     and it's treated as beating every other team head-to-head — not just
+     in a 2-team match. Previously this only applied when rows.length === 2,
+     so setting a winner in a 1-vs-many event (even to resolve a tied top
+     score, which the form itself requires) was silently discarded. */
+  const ordered = [...rows].sort((a, b) => {
+    if (winnerOverrideId) {
+      if (a.id === winnerOverrideId && b.id !== winnerOverrideId) return -1;
+      if (b.id === winnerOverrideId && a.id !== winnerOverrideId) return 1;
+    }
+    return mode === 'points' ? b.score - a.score : a.score - b.score;
+  });
   const placeById = {};
   ordered.forEach((r, i) => { placeById[r.id] = i + 1; });
 
   const teams = rows.map((t) => {
     const opponents = rows.filter((o) => o.id !== t.id);
     const pairings = opponents.map((o) => {
-      const sOverride = rows.length === 2 && winnerOverrideId
+      const sOverride = winnerOverrideId && (t.id === winnerOverrideId || o.id === winnerOverrideId)
         ? (winnerOverrideId === t.id ? 1 : 0)
         : null;
       const p = pairComputation({
@@ -224,7 +236,7 @@ function buildComputation({ rows, mode, winnerOverrideId }) {
     };
   });
 
-  const winnerId = winnerOverrideId && rows.length === 2
+  const winnerId = winnerOverrideId
     ? winnerOverrideId
     : (teams.find((t) => t.place === 1)?.id ?? null);
 
@@ -482,13 +494,21 @@ function computeEditFinalPoints(record, editDraft, isPoints) {
     const pA = editDraft.pointsA === '' ? record.teamA.points : Number(editDraft.pointsA);
     const pB = editDraft.pointsB === '' ? record.teamB.points : Number(editDraft.pointsB);
     const valid = pA != null && pB != null && !Number.isNaN(pA) && !Number.isNaN(pB);
-    f1A = valid ? pA : 0;
-    f1B = valid ? pB : 0;
+    // F1 is a DIFFERENCE (own − opponent), same as signedPerformance() used
+    // everywhere else — using the raw score here inflated every edit and
+    // flipped the sign of the losing team's rating change.
+    f1A = valid ? pA - pB : 0;
+    f1B = valid ? pB - pA : 0;
   } else {
-    const isWinnerA = record.winner === 'A';
-    const diff = record.diff || 0;
-    f1A = isWinnerA ? diff : -diff;
-    f1B = isWinnerA ? -diff : diff;
+    const mA = editDraft.minutesA === '' ? record.teamA.minutes : Number(editDraft.minutesA);
+    const mB = editDraft.minutesB === '' ? record.teamB.minutes : Number(editDraft.minutesB);
+    const valid = mA != null && mB != null && !Number.isNaN(mA) && !Number.isNaN(mB);
+    // Time: lower is better, so a team's performance is opponent time minus
+    // its own — matches signedPerformance('time', ...) and stays correct
+    // if the moderator edits the time values themselves, instead of always
+    // recomputing from the original record.diff.
+    f1A = valid ? mB - mA : 0;
+    f1B = valid ? mA - mB : 0;
   }
 
   const isWinnerA = record.winner === 'A';
@@ -2286,7 +2306,8 @@ export default function ModeratorPage() {
       teamBId: record.teamB.id,
       totalViolationsA: record.teamA.totalViolations,
       totalViolationsB: record.teamB.totalViolations,
-      minutes: record.teamA.minutes ?? '',
+      minutesA: record.teamA.minutes ?? '',
+      minutesB: record.teamB.minutes ?? '',
       pointsA: record.teamA.points ?? '',
       pointsB: record.teamB.points ?? '',
     });
@@ -2330,7 +2351,7 @@ export default function ModeratorPage() {
         ...record.teamA,
         id: teamAObj.id, name: teamAObj.name, logo: teamAObj.logo || null,
         totalViolations: parseInt(editDraft.totalViolationsA, 10) || 0,
-        minutes: isPoints ? record.teamA.minutes : (editDraft.minutes === '' ? record.teamA.minutes : Number(editDraft.minutes)),
+        minutes: isPoints ? record.teamA.minutes : (editDraft.minutesA === '' ? record.teamA.minutes : Number(editDraft.minutesA)),
         points: isPoints ? (editDraft.pointsA === '' ? record.teamA.points : Number(editDraft.pointsA)) : record.teamA.points,
         finalPoints: finalPointsA,
       },
@@ -2338,7 +2359,7 @@ export default function ModeratorPage() {
         ...record.teamB,
         id: teamBObj.id, name: teamBObj.name, logo: teamBObj.logo || null,
         totalViolations: parseInt(editDraft.totalViolationsB, 10) || 0,
-        minutes: isPoints ? record.teamB.minutes : (editDraft.minutes === '' ? record.teamB.minutes : Number(editDraft.minutes)),
+        minutes: isPoints ? record.teamB.minutes : (editDraft.minutesB === '' ? record.teamB.minutes : Number(editDraft.minutesB)),
         points: isPoints ? (editDraft.pointsB === '' ? record.teamB.points : Number(editDraft.pointsB)) : record.teamB.points,
         finalPoints: finalPointsB,
       },
@@ -2761,7 +2782,11 @@ export default function ModeratorPage() {
                               <input className="mp-edit-time" type="number" min="0" placeholder="pts" value={editDraft.pointsB} onChange={(e) => setEditDraft((d) => ({ ...d, pointsB: e.target.value }))} />
                             </div>
                           ) : (
-                            <input className="mp-edit-time" type="text" placeholder="mins" value={editDraft.minutes} onChange={(e) => setEditDraft((d) => ({ ...d, minutes: e.target.value }))} />
+                            <div className="mp-edit-form__score">
+                              <input className="mp-edit-time" type="text" placeholder="mins" value={editDraft.minutesA} onChange={(e) => setEditDraft((d) => ({ ...d, minutesA: e.target.value }))} />
+                              <span className="mp-vs-mini">-</span>
+                              <input className="mp-edit-time" type="text" placeholder="mins" value={editDraft.minutesB} onChange={(e) => setEditDraft((d) => ({ ...d, minutesB: e.target.value }))} />
+                            </div>
                           )}
                           <div className="mp-edit-form__score mp-edit-form__score--auto" title="Recalculated automatically from violations/score above">
                             <span>{fmtPts(editPreview.finalPointsA)}</span>

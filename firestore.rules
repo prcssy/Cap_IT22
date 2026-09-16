@@ -59,7 +59,12 @@ service cloud.firestore {
     // collection back (it holds addresses/emergency contacts). Staff
     // manage everything from AdminSchedulePage.
     match /registrations/{regId} {
-      allow create: if signedIn() && request.resource.data.uid == request.auth.uid;
+      // status must start 'pending' on create — only isStaff() (updateRegistrationStatus)
+      // may ever move it to 'approved'/'rejected'. Without this, a signed-in student could
+      // write a pre-approved registration directly via the SDK, bypassing staff review.
+      allow create: if signedIn()
+                    && request.resource.data.uid == request.auth.uid
+                    && request.resource.data.status == 'pending';
       allow read, update, delete: if isStaff();
     }
 

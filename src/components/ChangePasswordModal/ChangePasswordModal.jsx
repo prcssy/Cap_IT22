@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { FaTimes, FaEye, FaEyeSlash, FaSave } from 'react-icons/fa';
 import './ChangePasswordModal.css';
 
