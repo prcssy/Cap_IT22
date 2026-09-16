@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useContext } from 'react';
+import React, { useState, useEffect, useCallback, useContext, useRef } from 'react';
 import { FaSearch, FaTimes, FaUserGraduate } from 'react-icons/fa';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -26,6 +26,63 @@ const ALL_GRADES = [
    uses for its own event filter/chips. */
 function getEventBucket(r, eventList) {
   return getEventKey(r.eventKey || r.event, eventList) || 'unassigned';
+}
+
+/* Custom pill-style dropdown — replaces a native <select> so the open
+   popup can be themed (native <option> lists are OS-rendered and can't
+   be restyled cross-browser). */
+function FilterDropdown({ label, value, options, onChange }) {
+  const [open, setOpen] = useState(false);
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handleOutside = (e) => {
+      if (rootRef.current && !rootRef.current.contains(e.target)) setOpen(false);
+    };
+    const handleKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleKey);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleKey);
+    };
+  }, [open]);
+
+  const selected = options.find(o => o.value === value);
+
+  return (
+    <div className="asp-dropdown" ref={rootRef}>
+      <button
+        type="button"
+        className={`asp-filter-pill asp-filter-pill--btn${value ? ' asp-filter-pill--active' : ''}`}
+        onClick={() => setOpen(o => !o)}
+      >
+        {selected ? selected.label : label}
+      </button>
+      {open && (
+        <div className="asp-dropdown__menu">
+          <button
+            type="button"
+            className={`asp-dropdown__item${!value ? ' asp-dropdown__item--active' : ''}`}
+            onClick={() => { onChange(''); setOpen(false); }}
+          >
+            {label}
+          </button>
+          {options.map(opt => (
+            <button
+              key={opt.value}
+              type="button"
+              className={`asp-dropdown__item${value === opt.value ? ' asp-dropdown__item--active' : ''}`}
+              onClick={() => { onChange(opt.value); setOpen(false); }}
+            >
+              {opt.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export default function StudentRegistrationDetails() {
@@ -146,29 +203,43 @@ export default function StudentRegistrationDetails() {
 
         {/* Filter pills */}
         <div className="asp-filters">
-          <select className="asp-filter-pill" value={filterGrade} onChange={e => setFilterGrade(e.target.value)}>
-            <option value="">Grade/Year ▾</option>
-            {ALL_GRADES.map(g => <option key={g} value={g}>{g}</option>)}
-          </select>
-          <select className="asp-filter-pill" value={filterSection} onChange={e => setFilterSection(e.target.value)}>
-            <option value="">Section ▾</option>
-            {uniqueSections.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select className="asp-filter-pill" value={filterSport} onChange={e => setFilterSport(e.target.value)}>
-            <option value="">Sports ▾</option>
-            {uniqueSports.map(s => <option key={s} value={s}>{s}</option>)}
-          </select>
-          <select className="asp-filter-pill" value={filterGender} onChange={e => setFilterGender(e.target.value)}>
-            <option value="">Gender ▾</option>
-            <option value="Male">Male</option>
-            <option value="Female">Female</option>
-            <option value="Others">Others</option>
-          </select>
-          <select className="asp-filter-pill" value={filterEvent} onChange={e => setFilterEvent(e.target.value)}>
-            <option value="">Event ▾</option>
-            {events.map(ev => <option key={ev.key} value={ev.key}>{ev.label}</option>)}
-            <option value="unassigned">No Event</option>
-          </select>
+          <FilterDropdown
+            label="Grade/Year ▾"
+            value={filterGrade}
+            onChange={setFilterGrade}
+            options={ALL_GRADES.map(g => ({ value: g, label: g }))}
+          />
+          <FilterDropdown
+            label="Section ▾"
+            value={filterSection}
+            onChange={setFilterSection}
+            options={uniqueSections.map(s => ({ value: s, label: s }))}
+          />
+          <FilterDropdown
+            label="Sports ▾"
+            value={filterSport}
+            onChange={setFilterSport}
+            options={uniqueSports.map(s => ({ value: s, label: s }))}
+          />
+          <FilterDropdown
+            label="Gender ▾"
+            value={filterGender}
+            onChange={setFilterGender}
+            options={[
+              { value: 'Male', label: 'Male' },
+              { value: 'Female', label: 'Female' },
+              { value: 'Others', label: 'Others' },
+            ]}
+          />
+          <FilterDropdown
+            label="Event ▾"
+            value={filterEvent}
+            onChange={setFilterEvent}
+            options={[
+              ...events.map(ev => ({ value: ev.key, label: ev.label })),
+              { value: 'unassigned', label: 'No Event' },
+            ]}
+          />
           {hasFilters && (
             <button className="asp-clear-btn" onClick={clearFilters}>
               <FaTimes /> Clear Filter
@@ -248,7 +319,7 @@ export default function StudentRegistrationDetails() {
                 </div>
               </div>
               <div className="asp-form-row">
-                <div className="asp-form-group asp-form-group--center">
+                <div className="asp-form-group">
                   <label>Grade / Year Level</label>
                   <p>{selectedStudent.gradeLevel || '—'}</p>
                 </div>
