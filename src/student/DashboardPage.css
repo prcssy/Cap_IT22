@@ -175,13 +175,12 @@
   right: 0;
   z-index: 50;
   margin-top: 8px;
-  background: rgba(255, 255, 255, 0.1);
-  backdrop-filter: blur(14px);
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 9px;
+  background: #001529;
+  border: 1.5px solid rgba(255, 255, 255, 0.18);
+  border-radius: 12px;
   padding: 6px;
   width: 160px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
   opacity: 0;
   transform: translateY(-8px) scale(0.97);
   pointer-events: none;
@@ -194,25 +193,16 @@
   pointer-events: auto;
 }
 
-.dash-sport-filter__panel-label {
-  font-size: 0.6rem;
-  letter-spacing: 0.12em;
-  color: rgba(255, 255, 255, 0.5);
-  text-transform: uppercase;
-  margin: 2px 4px 6px;
-  font-weight: 700;
-}
-
 .dash-sport-filter__option {
   display: block;
   width: 100%;
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: 7px;
+  border-radius: 8px;
   padding: 0.5rem 0.7rem;
   font-family: "Inter", sans-serif;
-  font-weight: 500;
+  font-weight: 700;
   font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
@@ -221,7 +211,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .dash-sport-filter__option:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.1);
     color: #fff;
   }
 }
@@ -231,9 +221,8 @@
 }
 
 .dash-sport-filter__option--active {
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
-  font-weight: 700;
+  background: #FCBF19;
+  color: #001529;
 }
 
 .dash-body {

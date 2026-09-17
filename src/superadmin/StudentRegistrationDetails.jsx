@@ -576,41 +576,6 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
                     <td data-label="Action">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                         <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
-                        <button
-                          type="button"
-                          className="asp-btn-download"
-                          onClick={() => handleDownloadPdf(reg)}
-                        >
-                          <FaFilePdf /> PDF
-                        </button>
-                        {reg.regId && (
-                          <>
-                            <button
-                              type="button"
-                              className="asp-btn-approve"
-                              disabled={decidingId === reg.regId || reg.status === 'approved'}
-                              onClick={() => handleDecision(reg, 'approved')}
-                            >
-                              <FaCheck /> Approve
-                            </button>
-                            <button
-                              type="button"
-                              className="asp-btn-reject"
-                              disabled={decidingId === reg.regId || reg.status === 'rejected'}
-                              onClick={() => handleDecision(reg, 'rejected')}
-                            >
-                              <FaTimes /> Reject
-                            </button>
-                            <button
-                              type="button"
-                              className="asp-btn-delete"
-                              disabled={decidingId === reg.regId}
-                              onClick={() => handleDelete(reg)}
-                            >
-                              <FaTrash /> Delete
-                            </button>
-                          </>
-                        )}
                       </div>
                     </td>
                   </tr>

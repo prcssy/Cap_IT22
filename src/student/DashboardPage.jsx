@@ -459,7 +459,6 @@ function SportFilter({ sports, value, onChange }) {
         </button>
 
         <div className={`dash-sport-filter__panel ${open ? 'dash-sport-filter__panel--open' : ''}`}>
-          <div className="dash-sport-filter__panel-label">Sports option</div>
           {options.map((o) => (
             <button
               key={o.key}
