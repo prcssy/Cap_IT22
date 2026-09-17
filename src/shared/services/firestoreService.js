@@ -1275,6 +1275,28 @@ export async function updateTeamRankings(level, updater) {
   return updateDocFieldViaTransaction('teamRankings', level, 'points', {}, updater);
 }
 
+/**
+ * Live-subscribes to one level's team rankings. Used by the public landing
+ * page's "Potential Champion" highlight so a Moderator confirming a match
+ * updates the spotlighted team there right away, the same way
+ * subscribeSportsTeamsConfig already does for the Sports Available cards.
+ * Returns an unsubscribe function.
+ */
+export function subscribeTeamRankings(level, callback) {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot subscribe to team rankings.');
+    callback({});
+    return () => {};
+  }
+  const configRef = doc(db, 'teamRankings', level);
+  return onSnapshot(configRef, (snapshot) => {
+    callback(snapshot.exists() ? (snapshot.data().points || {}) : {});
+  }, (error) => {
+    console.warn('Team rankings listener failed:', error);
+    callback({});
+  });
+}
+
 /* ─────────────────────────────────────────────
    Live player-count counter for the public landing page.
    Stored at: siteCounters/liveCounters → { players: number, updatedAt }

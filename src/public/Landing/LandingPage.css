@@ -712,6 +712,108 @@
   background: rgba(255, 255, 255, 0.18);
 }
 
+/* ── Potential Champion spotlight ──
+   An eye-catching gold-glow banner between Sports Statistics and Sports
+   Available, calling out the single highest-rated team school-wide
+   (computed client-side in LandingPage.jsx from public teamRankings +
+   sportsTeamsConfig — see computeTopTeamForLevel). Two blurred "ray"
+   blobs drift behind the card and its border glow pulses, so it reads
+   as a live spotlight rather than a static banner easy to scroll past. */
+.champion-spotlight {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 2.5rem auto 0;
+  padding: 1.75rem 2.5rem;
+  max-width: 420px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #0a2a52 0%, #001529 100%);
+  border: 1px solid rgba(252, 191, 25, 0.5);
+  animation: championGlow 2.6s ease-in-out infinite;
+  text-align: center;
+}
+
+.champion-spotlight__ray {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 260px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(252, 191, 25, 0.35) 0%, rgba(252, 191, 25, 0) 70%);
+  z-index: -1;
+  pointer-events: none;
+}
+.champion-spotlight__ray--1 {
+  animation: championDrift1 6s ease-in-out infinite;
+}
+.champion-spotlight__ray--2 {
+  animation: championDrift2 7s ease-in-out infinite;
+}
+
+.champion-spotlight__crown {
+  font-size: 1.9rem;
+  color: #FCBF19;
+  filter: drop-shadow(0 0 6px rgba(252, 191, 25, 0.7));
+  animation: championBounce 1.8s ease-in-out infinite;
+}
+
+.champion-spotlight__eyebrow {
+  font-family: "Inter", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #FCBF19;
+}
+
+.champion-spotlight__team {
+  font-family: "Lalezar", sans-serif;
+  font-size: 1.9rem;
+  color: #fff;
+  margin: 0;
+  letter-spacing: 0.02em;
+}
+
+.champion-spotlight__meta {
+  font-family: "Inter", sans-serif;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: rgba(255, 255, 255, 0.65);
+}
+
+@keyframes championGlow {
+  0%, 100% { box-shadow: 0 0 14px rgba(252, 191, 25, 0.25); }
+  50% { box-shadow: 0 0 34px rgba(252, 191, 25, 0.6); }
+}
+
+@keyframes championBounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-4px); }
+}
+
+@keyframes championDrift1 {
+  0%, 100% { transform: translate(-70%, -60%) scale(1); }
+  50% { transform: translate(-55%, -50%) scale(1.15); }
+}
+
+@keyframes championDrift2 {
+  0%, 100% { transform: translate(-30%, -40%) scale(1); }
+  50% { transform: translate(-45%, -50%) scale(1.15); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .champion-spotlight,
+  .champion-spotlight__ray,
+  .champion-spotlight__crown {
+    animation: none;
+  }
+}
+
 /* ── Sports available ──
    Fixed tile size (not a %/1fr stretch) so the tiles are the same
    physical size on desktop and mobile — only the number per row
@@ -993,6 +1095,15 @@
 
   .stat-divider {
     display: none;
+  }
+
+  .champion-spotlight {
+    max-width: 100%;
+    padding: 1.4rem 1.5rem;
+  }
+
+  .champion-spotlight__team {
+    font-size: 1.5rem;
   }
 
   /* Hero — the fixed padding/nowrap text/side-by-side layout below was

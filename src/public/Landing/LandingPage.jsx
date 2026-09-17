@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useContext, useRef } from "react";
-import { FaCalendarAlt, FaTrophy, FaPaperPlane, FaChevronLeft, FaChevronRight, FaChevronDown } from "react-icons/fa";
+import { FaCalendarAlt, FaTrophy, FaPaperPlane, FaChevronLeft, FaChevronRight, FaChevronDown, FaCrown } from "react-icons/fa";
 import "./LandingPage.css";
 import HeaderWithLines from './HeaderWithLines';
 import HighlightsBanner from './HighlightsBanner';
@@ -7,16 +7,8 @@ import ImageCarousel from './ImageCarousel';
 import { AuthContext } from '../../shared/context/AuthContext';
 import { BrandingContext } from '../../shared/context/BrandingContext';
 import { FaArrowRightLong } from "react-icons/fa6";
-import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeMatchSchedules, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
+import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchSchedules, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
 import Contact from './Contact/Contact';
-import hi1 from '../../shared/img/hi-1.jpg';
-import hi2 from '../../shared/img/hi-2.jpg';
-import hi3 from '../../shared/img/hi-3.jpg';
-import hi4 from '../../shared/img/hi-4.jpg';
-import hi5 from '../../shared/img/hi-5.jpg';
-import hi6 from '../../shared/img/hi-6.jpg';
-import hi7 from '../../shared/img/hi-7.jpg';
-import hi8 from '../../shared/img/hi-8.jpg';
 
 /* ── NEW — additional icons for the scrollable content sections ── */
 import {
@@ -55,6 +47,54 @@ const LEVEL_KEY_TO_LABEL = { elementary: 'Elementary', highSchool: 'High School'
    Admin may have entered with different capitalization per level. */
 function norm(str) {
   return (str || '').trim().toLowerCase();
+}
+
+/* Must match Moderator's baseline rating for a brand-new team/scope
+   (see ModeratorPage's confirm-match flow) and RankingPage's own
+   DEFAULT_POINTS, so a team sitting untouched at the baseline never
+   gets treated as having "earned" a rating here. */
+const CHAMPION_BASELINE_POINTS = 1200;
+
+/* Finds this level's single highest-rated team across every sport, for
+   the landing page's "Potential Champion" spotlight. Deliberately a
+   simplified version of RankingPage's "All Sports" championData math
+   (same idea — average a team's scopes within a sport, then sum each
+   sport's CHANGE from the 1200 baseline — but skipping win/loss, which
+   needs matchRecords, a signed-in-only collection the public landing
+   page can't read). teamRankings/{level} and sportsTeamsConfig/{level}
+   are both public-read, so this needs no auth. Teams with no recorded
+   result anywhere are skipped entirely — an untouched roster shouldn't
+   crown an arbitrary team "potential champion". */
+function computeTopTeamForLevel(teams, rankingPoints) {
+  const scopes = Object.entries(rankingPoints || {}).map(([key, teamMap]) => {
+    const [sport] = String(key).split('::');
+    return { sport, teamMap: teamMap || {} };
+  });
+  if (!scopes.length) return null;
+
+  let best = null;
+  (teams || []).forEach((t) => {
+    if (!t?.name) return;
+    const bySport = new Map();
+    scopes.forEach(({ sport, teamMap }) => {
+      const entry = Object.entries(teamMap).find(([name]) => norm(name) === norm(t.name));
+      if (!entry) return;
+      const points = Number(entry[1]);
+      if (!Number.isFinite(points)) return;
+      if (!bySport.has(sport)) bySport.set(sport, []);
+      bySport.get(sport).push(points);
+    });
+    if (!bySport.size) return; // never scored anywhere — sits at the untouched baseline
+
+    const sportAverages = [...bySport.values()].map((pts) => pts.reduce((sum, p) => sum + p, 0) / pts.length);
+    const rating = Math.round(
+      CHAMPION_BASELINE_POINTS + sportAverages.reduce((sum, avg) => sum + (avg - CHAMPION_BASELINE_POINTS), 0)
+    );
+    if (!best || rating > best.rating) {
+      best = { id: t.id, team: t.name, logo: t.logo || null, rating };
+    }
+  });
+  return best;
 }
 
 /* Same assumed match length Admin/Moderator use to decide whether a
@@ -178,17 +218,6 @@ function iconForSportName(name) {
    title/description text is editable in the CMS. */
 const STEP_ICONS = [FaFileSignature, FaClipboardList, FaCheckCircle];
 
-/* Bundled fallback gallery images, used until a Super Admin uploads real
-   highlight photos via the CMS (siteConfig/landingPage.gallery.images).
-   These must be real ES imports (not bare "src/..." path strings) so Vite
-   actually processes/hashes/copies them into the production build — a
-   literal string src worked in dev (served straight off disk) but resolved
-   to nothing once built, silently breaking the fallback gallery for any
-   visitor before a Super Admin ever uploads real photos. */
-const DEFAULT_GALLERY_IMAGES = [
-  hi1, hi2, hi3, hi4, hi5, hi6, hi7, hi8,
-];
-
 const MATCHES = [
   {
     id: 1,
@@ -258,6 +287,7 @@ function LandingPage() {
   const [matches, setMatches] = useState(MATCHES);
   const [landingContent, setLandingContent] = useState(DEFAULT_LANDING_PAGE);
   const [hoveredSportKey, setHoveredSportKey] = useState(null);
+  const [topChampion, setTopChampion] = useState(null);
 
   const { openAuthModal = () => {} } = useContext(AuthContext);
   const { schoolName, tagline, motto, logo } = useContext(BrandingContext);
@@ -341,6 +371,7 @@ function LandingPage() {
   useEffect(() => {
     const configsByLevel = {};
     const schedulesByLevel = {};
+    const rankingsByLevel = {};
     let liveCounters = {};
 
     const recompute = () => {
@@ -373,11 +404,26 @@ function LandingPage() {
       if (typeof liveCounters.players === 'number') computed.Players = liveCounters.players;
       setStats((prev) => prev.map((s) => (s.label in computed ? { ...s, value: computed[s.label] } : s)));
       setSports(sportEntries);
+
+      /* "Potential Champion" spotlight: the single highest-rated team
+         across the whole school (all 3 levels), so it's visible the
+         instant the page loads rather than only after a visitor picks a
+         level in the Ongoing Matches dropdown. */
+      let overallBest = null;
+      ALL_LEVEL_KEYS.forEach((levelKey) => {
+        const cfg = configsByLevel[levelKey] || { teams: [] };
+        const top = computeTopTeamForLevel(cfg.teams || [], rankingsByLevel[levelKey] || {});
+        if (top && (!overallBest || top.rating > overallBest.rating)) {
+          overallBest = { ...top, level: LEVEL_KEY_TO_LABEL[levelKey] };
+        }
+      });
+      setTopChampion(overallBest);
     };
 
     const unsubscribers = ALL_LEVEL_KEYS.flatMap((levelKey) => [
       subscribeSportsTeamsConfig(levelKey, (cfg) => { configsByLevel[levelKey] = cfg; recompute(); }),
       subscribeMatchSchedules(levelKey, (matches) => { schedulesByLevel[levelKey] = matches; recompute(); }),
+      subscribeTeamRankings(levelKey, (points) => { rankingsByLevel[levelKey] = points; recompute(); }),
     ]);
     unsubscribers.push(subscribeLiveStatsCounters((counters) => { liveCounters = counters; recompute(); }));
 
@@ -646,6 +692,20 @@ function LandingPage() {
           ))}
         </div>
 
+        {/* ── Potential Champion spotlight — only appears once at least one
+            match has been scored anywhere, so it never crowns an arbitrary
+            untouched team. ── */}
+        {topChampion && (
+          <div className="champion-spotlight">
+            <span className="champion-spotlight__ray champion-spotlight__ray--1" aria-hidden="true" />
+            <span className="champion-spotlight__ray champion-spotlight__ray--2" aria-hidden="true" />
+            <FaCrown className="champion-spotlight__crown" aria-hidden="true" />
+            <span className="champion-spotlight__eyebrow">#1 Potential Champion</span>
+            <h3 className="champion-spotlight__team">{topChampion.team}</h3>
+            <span className="champion-spotlight__meta">{topChampion.level} &middot; {topChampion.rating} RATING</span>
+          </div>
+        )}
+
         {/* ── Sports available ── */}
         <div className="section-heading">
           <span className="heading-line" />
@@ -724,7 +784,7 @@ function LandingPage() {
           <div className="carousel-stage">
             <HighlightsBanner />
             <ImageCarousel
-              images={landingContent.gallery.images.length ? landingContent.gallery.images : DEFAULT_GALLERY_IMAGES}
+              images={landingContent.gallery.images}
               duration={20} // loop duration in seconds (smaller = faster)
             />
           </div>
