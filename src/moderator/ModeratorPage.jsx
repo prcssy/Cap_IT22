@@ -769,154 +769,10 @@ function ViolationsModal({ sideLabel, teamLabel, teamLogo, initialRows, violatio
 }
 
 /* ═══════════════════════════════════════════
-   FORMULA BLOCKS (confirmation screen)
-═══════════════════════════════════════════ */
-function ExpectedFormula({ tag, ownRating, oppRating, E }) {
-  const d = oppRating - ownRating;
-  const exponent = d / 400;
-  const pow = Math.pow(10, exponent);
-  return (
-    <div className="mp-fx">
-      <div className="mp-fx__cap">
-        <span className="mp-fx__dot" /> Expected score formula
-        <InfoTip caption="Expected score">
-          The Elo expectation — how likely this team was to win, judged only from the two ratings before the game.
-        </InfoTip>
-      </div>
-      <div className="mp-fx__main">
-        E<sub>{tag}</sub> = <span className="mp-frac"><span className="mp-frac__t">1</span><span className="mp-frac__b">1 + 10<sup>(R<sub>opp</sub> − R<sub>{tag}</sub>) / 400</sup></span></span>
-      </div>
-      <div className="mp-fx__steps">
-        <div>E<sub>{tag}</sub> = 1 / (1 + 10<sup>({fmtPts(oppRating)} − {fmtPts(ownRating)}) / 400</sup>)</div>
-        <div>E<sub>{tag}</sub> = 1 / (1 + 10<sup>{fmtPts(d)} / 400</sup>)</div>
-        <div>E<sub>{tag}</sub> = 1 / (1 + 10<sup>{exponent.toFixed(4)}</sup>)</div>
-        <div>E<sub>{tag}</sub> = 1 / (1 + {pow.toFixed(4)})</div>
-        <div>E<sub>{tag}</sub> = 1 / {(1 + pow).toFixed(4)}</div>
-      </div>
-      <div className="mp-fx__result">E<sub>{tag}</sub> = {E.toFixed(4)} or {(E * 100).toFixed(2)}%</div>
-    </div>
-  );
-}
-
-function FinalFormula({ tag, base, pairing, showBase = true }) {
-  const { S, E, f1, f2, f3, change } = pairing;
-  const kTerm = K_FACTOR * (S - E);
-  const perf = f1 - f2 + f3;
-  const pTerm = PPU * perf;
-  return (
-    <div className="mp-fx">
-      <div className="mp-fx__cap">
-        <span className="mp-fx__dot" /> Final score formula
-        <InfoTip caption="Final score">
-          Previous rating + K(S − E) + Ppu(team score/time performance − violations + comeback bonus).
-        </InfoTip>
-      </div>
-      <div className="mp-fx__main">
-        R<sub>{tag}</sub><sup>′</sup> = R<sub>{tag}</sub> + K(S − E<sub>{tag}</sub>) + Ppu(F<sub>1</sub> − F<sub>2</sub> + F<sub>3</sub>)
-      </div>
-      <div className="mp-fx__steps">
-        <div>R<sub>{tag}</sub><sup>′</sup> = {fmtPts(base)} + {K_FACTOR}({S} − {E.toFixed(4)}) + {PPU}({Number(f1.toFixed(4))} − {f2} + {f3})</div>
-        <div>R<sub>{tag}</sub><sup>′</sup> = {fmtPts(base)} + {K_FACTOR}({(S - E).toFixed(4)}) + {PPU}({Number(perf.toFixed(4))})</div>
-        <div>R<sub>{tag}</sub><sup>′</sup> = {fmtPts(base)} + {kTerm.toFixed(4)} + {pTerm.toFixed(4)}</div>
-        <div>R<sub>{tag}</sub><sup>′</sup> = {fmtPts(base)} {change >= 0 ? '+' : '−'} {Math.abs(change).toFixed(4)}</div>
-      </div>
-      {showBase && <div className="mp-fx__result">R<sub>{tag}</sub><sup>′</sup> = {fmtPts(base + change)}</div>}
-      {!showBase && (
-        <div className="mp-fx__result">
-          Change = <span className={change >= 0 ? 'mp-gain' : 'mp-loss'}>{fmtSigned(change)}</span>
-        </div>
-      )}
-    </div>
-  );
-}
-
-/* Formula key matching the moderator's rating worksheet. */
-function FormulaKey({ mode }) {
-  const differenceLabel = mode === 'time'
-    ? 'Time performance value (opponent time − team time)'
-    : 'Team points / score';
-  return (
-    <div className="mp-formula-key">
-      <div className="mp-formula-key__title">Formula Key:</div>
-      <div className="mp-formula-key__section">
-        <div><b>E<sub>A</sub></b> = Expected score of Team B</div>
-        <div><b>E<sub>B</sub></b> = Expected score of Team A</div>
-        <div><b>R<sub>B</sub></b> = Rating of Opponent</div>
-        <div><b>R<sub>A</sub></b> = Rating of Team</div>
-      </div>
-      <div className="mp-formula-key__title mp-formula-key__title--final">Formula Key of Final Score</div>
-      <div className="mp-formula-key__section">
-        <div><b>R<sub>A</sub><sup>′</sup></b> = Final Rating</div>
-        <div><b>K</b> = Maximum possible rating gain or loss per match (standard {K_FACTOR})</div>
-        <div><b>S</b> = Standing: 1 = Win, 0.5 = Draw, 0 = Lose</div>
-        <div><b>Ppu</b> = Point per unit ({PPU})</div>
-        <div><b>F<sub>1</sub></b> = {differenceLabel}</div>
-        <div><b>F<sub>2</sub></b> = Violation (1 violation is equivalent to 1 point)</div>
-        <div><b>F<sub>3</sub></b> = Comeback (if yes +{COMEBACK_BONUS}, if no 0 points)</div>
-      </div>
-    </div>
-  );
-}
-
-/* Per-team computation column — one expected-score block, then one final
-   score block per opponent, then the summed total for multi events. */
-function TeamComputation({ team, tag, multi }) {
-  return (
-    <div className={`mp-compute-card mp-compute-card--${tag === 'A' ? 'a' : 'b'}`}>
-      <div className="mp-compute-card__name">{team.name}</div>
-
-      {!multi && (
-        <>
-          <ExpectedFormula tag={tag} ownRating={team.prevPoints} oppRating={team.pairings[0].oppRating} E={team.pairings[0].E} />
-          <FinalFormula tag={tag} base={team.prevPoints} pairing={team.pairings[0]} />
-        </>
-      )}
-
-      {multi && (
-        <>
-          {team.pairings.map((p) => (
-            <div className="mp-compute-pair" key={p.oppId}>
-              <div className="mp-compute-pair__title">{team.name} vs {p.oppName}</div>
-              <ExpectedFormula tag={tag} ownRating={p.ownRating} oppRating={p.oppRating} E={p.E} />
-              <FinalFormula tag={tag} base={team.prevPoints} pairing={p} showBase={false} />
-            </div>
-          ))}
-          <div className="mp-compute-total">
-            <div>Total change = {team.pairings.map((p) => fmtSigned(p.change, 2)).join(' ')} = <b className={team.change >= 0 ? 'mp-gain' : 'mp-loss'}>{fmtSigned(team.change)}</b></div>
-            <div>Final rating = {fmtPts(team.prevPoints)} {team.change >= 0 ? '+' : '−'} {Math.abs(team.change).toFixed(4)} = <b>{fmtPts(team.finalPoints)}</b></div>
-          </div>
-        </>
-      )}
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
-   FULL COMPUTATION MODAL (1 vs many)
-═══════════════════════════════════════════ */
-function PairingsModal({ teams, onClose }) {
-  return (
-    <div className="mp-modal-overlay" onClick={onClose}>
-      <div className="mp-modal mp-modal--wide" onClick={(e) => e.stopPropagation()}>
-        <button className="mp-format-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
-        <h2 className="mp-confirm__title" style={{ textAlign: 'left' }}>Summary computation</h2>
-        <p className="mp-card__sub" style={{ marginTop: -8 }}>Detailed computation for each team</p>
-        <div className="mp-compute-grid mp-compute-grid--scroll">
-          {teams.map((t, i) => (
-            <TeamComputation key={t.id} team={t} tag={i % 2 === 0 ? 'A' : 'B'} multi />
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/* ═══════════════════════════════════════════
    CONFIRMATION RECEIPT
 ═══════════════════════════════════════════ */
 function ConfirmModal({ pending, levelLabel, onCancel, onConfirm, saving }) {
   const { sportName, category, mode, multi, teams, winnerId, formatLabel } = pending;
-  const [pairingsOpen, setPairingsOpen] = useState(false);
   const winnerTeam = teams.find((t) => t.id === winnerId) || teams[0];
   const diffLabel = mode === 'points' ? 'Total points difference' : 'Total time difference';
   const statLabel = mode === 'points' ? 'Points/Score' : 'Time';
@@ -987,42 +843,6 @@ function ConfirmModal({ pending, levelLabel, onCancel, onConfirm, saving }) {
           ))}
         </div>
 
-        <div className="mp-receipt__compute-head">
-          <div>
-            <h3 className="mp-receipt__compute-title">Summary computation</h3>
-            <p className="mp-receipt__compute-sub">Detailed computation for each team</p>
-          </div>
-          {multi && (
-            <button type="button" className="mp-btn mp-btn--navy" onClick={() => setPairingsOpen(true)}>
-              <FaCalculator /> View full computation
-            </button>
-          )}
-        </div>
-
-        <FormulaKey mode={mode} />
-
-        {!multi && (
-          <div className="mp-compute-grid">
-            {teams.map((t, i) => (
-              <TeamComputation key={t.id} team={t} tag={i === 0 ? 'A' : 'B'} multi={false} />
-            ))}
-          </div>
-        )}
-
-        {multi && (
-          <div className="mp-compute-mini">
-            {teams.map((t) => (
-              <div className="mp-compute-mini__row" key={t.id}>
-                <span className="mp-compute-mini__name">{t.name}</span>
-                <span>
-                  {fmtPts(t.prevPoints)} {t.change >= 0 ? '+' : '−'} {Math.abs(t.change).toFixed(4)} ={' '}
-                  <b>{fmtPts(t.finalPoints)}</b>
-                </span>
-              </div>
-            ))}
-          </div>
-        )}
-
         <div className="mp-confirm__warn"><FaExclamationTriangle /> This action cannot be undone. Please review all details before confirming.</div>
 
         <div className="mp-confirm__actions">
@@ -1031,8 +851,6 @@ function ConfirmModal({ pending, levelLabel, onCancel, onConfirm, saving }) {
             <FaLock /> {saving ? 'Saving…' : 'Confirm update'}
           </button>
         </div>
-
-        {pairingsOpen && <PairingsModal teams={teams} onClose={() => setPairingsOpen(false)} />}
       </div>
     </div>
   );
