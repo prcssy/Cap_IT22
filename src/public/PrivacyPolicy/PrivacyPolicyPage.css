@@ -1,0 +1,149 @@
+.pp-page {
+  height: 100vh;
+  height: 100dvh;
+  overflow-y: auto;
+  overflow-x: hidden;
+  scroll-behavior: smooth;
+  background: #f5f7fb;
+  padding: 2.5rem 1.5rem 4rem;
+}
+
+.pp-page::-webkit-scrollbar {
+  width: 8px;
+}
+
+.pp-page::-webkit-scrollbar-track {
+  background: #f5f7fb;
+}
+
+.pp-page::-webkit-scrollbar-thumb {
+  background: #c3cbe0;
+  border-radius: 999px;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .pp-page::-webkit-scrollbar-thumb:hover {
+    background: #a6b0d1;
+  }
+}
+
+.pp-container {
+  max-width: 48rem;
+  margin: 0 auto;
+  background: #fff;
+  border-radius: 12px;
+  padding: 2.5rem 3rem 3rem;
+  box-shadow: 0 4px 24px rgba(10, 29, 82, 0.08);
+}
+
+.pp-back-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: #0A1D52;
+  text-decoration: none;
+  font-family: "Inter";
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-bottom: 1.75rem;
+  transition: color 0.2s;
+}
+
+.pp-back-link:hover {
+  color: #FCBF19;
+}
+
+.pp-header {
+  border-bottom: 1px solid rgba(10, 29, 82, 0.1);
+  padding-bottom: 1.25rem;
+  margin-bottom: 1.5rem;
+}
+
+.pp-header h1 {
+  color: #0A1D52;
+  font-family: "Inter";
+  font-size: 2rem;
+  font-weight: 800;
+  margin: 0 0 0.4rem;
+}
+
+.pp-updated {
+  color: rgba(10, 29, 82, 0.55);
+  font-family: "Inter";
+  font-size: 0.85rem;
+  margin: 0;
+}
+
+.pp-intro {
+  color: #333;
+  font-family: "Inter";
+  font-size: 0.98rem;
+  line-height: 1.65;
+  margin-bottom: 2rem;
+}
+
+.pp-section {
+  margin-bottom: 1.85rem;
+}
+
+.pp-section h2 {
+  color: #0A1D52;
+  font-family: "Inter";
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin: 0 0 0.75rem;
+}
+
+.pp-section h3 {
+  color: #0A1D52;
+  font-family: "Inter";
+  font-size: 0.98rem;
+  font-weight: 700;
+  margin: 1rem 0 0.4rem;
+}
+
+.pp-section p {
+  color: #333;
+  font-family: "Inter";
+  font-size: 0.95rem;
+  line-height: 1.65;
+  margin: 0 0 0.75rem;
+}
+
+.pp-section ul {
+  margin: 0 0 0.75rem;
+  padding-left: 1.4rem;
+  color: #333;
+  font-family: "Inter";
+  font-size: 0.95rem;
+  line-height: 1.65;
+}
+
+.pp-section li {
+  margin-bottom: 0.35rem;
+}
+
+.pp-section a {
+  color: #0A1D52;
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+.pp-section a:hover {
+  color: #FCBF19;
+}
+
+@media (max-width: 640px) {
+  .pp-page {
+    padding: 1.5rem 0.75rem 3rem;
+  }
+
+  .pp-container {
+    padding: 1.75rem 1.25rem 2.25rem;
+    border-radius: 8px;
+  }
+
+  .pp-header h1 {
+    font-size: 1.6rem;
+  }
+}

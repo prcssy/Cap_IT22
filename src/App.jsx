@@ -25,6 +25,7 @@ const RegistrationPage = lazy(() => import('./student/RegistrationPage'));
 const TeamAndSportsPage = lazy(() => import('./student/TeamAndSportsPage'));
 const MatchSchedulesPage = lazy(() => import('./student/MatchSchedulesPage'));
 const RankingPage = lazy(() => import('./student/RankingPage'));
+const PrivacyPolicyPage = lazy(() => import('./public/PrivacyPolicy/PrivacyPolicyPage'));
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
           <Suspense fallback={<div>Loading...</div>}>
           <Routes>
             <Route path="/" element={<PublicLayout />} />
+            <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
 
             <Route
               element={

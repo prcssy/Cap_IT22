@@ -1458,6 +1458,16 @@
   font-weight: 500;
 }
 
+.contact-copyright-link {
+  color: rgba(10, 29, 82, 0.6);
+  text-decoration: underline;
+  transition: color 0.2s;
+}
+
+.contact-copyright-link:hover {
+  color: #0A1D52;
+}
+
 .contact-divider {
   width: 1px;
   height: 24px;

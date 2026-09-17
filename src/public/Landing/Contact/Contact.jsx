@@ -1,4 +1,5 @@
 import React, { useContext, useMemo } from 'react';
+import { Link } from 'react-router-dom';
 import { FaMapMarkerAlt, FaPhoneAlt, FaEnvelope, FaFacebookF } from 'react-icons/fa';
 import HeaderWithLines from '../HeaderWithLines';
 import { BrandingContext } from '../../../shared/context/BrandingContext';
@@ -60,7 +61,11 @@ export default function ContactFooter({ items, contactFooterRef }) {
           );
         })}
       </div>
-      {copyrightText && <p className="contact-copyright">{copyrightText}</p>}
+      <p className="contact-copyright">
+        {copyrightText}
+        {copyrightText && ' · '}
+        <Link to="/privacy-policy" className="contact-copyright-link">Privacy Policy</Link>
+      </p>
     </footer>
   );
 }
