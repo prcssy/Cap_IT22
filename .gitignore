@@ -23,3 +23,8 @@ dist-ssr
 *.sln
 *.sw?
 serviceAccountKey.json
+
+# Environment variables (Firebase config etc.) — never commit
+.env
+.env.*
+!.env.example
