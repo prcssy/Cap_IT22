@@ -383,8 +383,15 @@ function LandingPage() {
           if (!s?.name) return;
           const key = norm(s.name);
           const existing = sportsByKey.get(key);
-          if (existing) existing.levels.add(levelKey);
-          else sportsByKey.set(key, { name: s.name.trim(), levels: new Set([levelKey]) });
+          if (existing) {
+            existing.levels.add(levelKey);
+            // First level's uploaded logo wins if more than one level
+            // configured the same sport with different (or no) logos —
+            // keeps one sport = one consistent tile image on this page.
+            if (!existing.logo && s.logo) existing.logo = s.logo;
+          } else {
+            sportsByKey.set(key, { name: s.name.trim(), logo: s.logo || null, levels: new Set([levelKey]) });
+          }
         });
         (cfg.teams || []).forEach((t) => { if (t?.name) teamNames.add(norm(t.name)); });
       });
@@ -395,6 +402,7 @@ function LandingPage() {
       const sportEntries = [...sportsByKey.values()]
         .map((entry) => ({
           name: entry.name,
+          logo: entry.logo,
           icon: iconForSportName(entry.name),
           levels: ALL_LEVEL_KEYS.filter((lvl) => entry.levels.has(lvl)).map((lvl) => LEVEL_KEY_TO_LABEL[lvl]),
         }))
@@ -726,7 +734,13 @@ function LandingPage() {
                 onMouseLeave={() => setHoveredSportKey((k) => (k === sportKey ? null : k))}
                 onClick={() => setHoveredSportKey((k) => (k === sportKey ? null : sportKey))}
               >
-                <sport.icon className="sport-tile-icon" />
+                {sport.logo ? (
+                  <span className="sport-tile-logo">
+                    <img src={sport.logo} alt="" />
+                  </span>
+                ) : (
+                  <sport.icon className="sport-tile-icon" />
+                )}
                 <span className="sport-tile-name">{sport.name.toUpperCase()}</span>
                 {isHovered && availableLevels.length > 0 && (
                   <div className="sport-tile-tooltip" role="tooltip">
