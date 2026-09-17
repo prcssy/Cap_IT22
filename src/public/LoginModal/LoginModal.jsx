@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../shared/context/AuthContext';
 import { BrandingContext } from '../../shared/context/BrandingContext';
 import { FaTimes, FaEye, FaEyeSlash, FaArrowLeft } from 'react-icons/fa';
-import { findStaffAllowlistEntry } from '../../shared/services/firestoreService';
 import './LoginModal.css';
 
 // Every one of these is a React.lazy() page in App.jsx, so the very first
@@ -166,16 +165,8 @@ const GRADE_LEVEL_GROUPS = [
   },
 ];
 
-const ROLE_LABELS = {
-  student: 'Student',
-  admin: 'Admin',
-  moderator: 'Moderator',
-  superadmin: 'Super Admin',
-};
-
 function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
   const { logo } = useContext(BrandingContext);
-  const [role, setRole] = useState('student'); // student | admin | moderator | superadmin
   const [formData, setFormData] = useState({
     name: '',
     email: '',
@@ -189,27 +180,10 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
 
-  const isStaffRole = role !== 'student';
-
   const handleChange = (e) => {
     setFormData({
       ...formData,
       [e.target.name]: e.target.value,
-    });
-  };
-
-  const handleRoleChange = (e) => {
-    // Switching roles clears the form so a half-filled student form
-    // can't leak into a staff signup (and vice versa).
-    setRole(e.target.value);
-    setFormData({
-      name: '',
-      email: '',
-      password: '',
-      confirmPassword: '',
-      gender: '',
-      gradeLevel: '',
-      section: '',
     });
   };
 
@@ -222,33 +196,26 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
 
     setSubmitting(true);
     try {
-      if (isStaffRole) {
-        // Staff (admin / moderator / super admin) don't fill out the
-        // full student form — just the gmail they were pre-cleared
-        // with, plus a password. Confirm that gmail is on the
-        // allowlist for the role they picked before creating the account.
-        const staffEntry = await findStaffAllowlistEntry(formData.email, role);
-        if (!staffEntry) {
-          alert(
-            'That email is not authorized to sign up as ' +
-            ROLE_LABELS[role] +
-            '. Please check the email or contact a super admin.'
-          );
-          return;
-        }
-
-        await onSignUp(staffEntry.name || '', formData.email, formData.password, {
-          role,
-          isStaff: true,
-        });
-      } else {
-        await onSignUp(formData.name, formData.email, formData.password, {
-          role: 'student',
-          gender: formData.gender,
-          gradeLevel: formData.gradeLevel,
-          section: formData.section,
-        });
-      }
+      // This form only ever creates student accounts. Admin/Moderator/
+      // Super Admin accounts are never self-service: letting anyone
+      // create a Firebase Auth account for an arbitrary email — even one
+      // pre-cleared on the staff allowlist — meant an attacker could
+      // "claim" a staff member's email with a password of their own
+      // choosing before the real owner ever signed up, and Firebase still
+      // sends the verification link to the real inbox regardless of who
+      // created the account. If the real owner later clicked that link
+      // (thinking it was their own signup), it would verify the
+      // attacker's account instead — full account takeover. Staff
+      // accounts are now provisioned directly by a Super Admin (see
+      // create-staff-account.cjs), the same trusted, console/CLI-only
+      // process already used for the admins/moderators/superadmins
+      // allowlist docs themselves.
+      await onSignUp(formData.name, formData.email, formData.password, {
+        role: 'student',
+        gender: formData.gender,
+        gradeLevel: formData.gradeLevel,
+        section: formData.section,
+      });
 
       alert(
         `Account created successfully! We sent a verification link to ${formData.email} — ` +
@@ -280,82 +247,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
       <h2 className="auth-title">Sign up to Dashboard</h2>
 
       <form onSubmit={handleSubmit} className="auth-form">
-        <div className="form-group">
-          <label htmlFor="role">Sign up as</label>
-          <select id="role" name="role" value={role} onChange={handleRoleChange}>
-            <option value="student">Student</option>
-            <option value="admin">Admin</option>
-            <option value="moderator">Moderator</option>
-            <option value="superadmin">Super Admin</option>
-          </select>
-        </div>
-
-        <div className="auth-fields" key={role}>
-        {isStaffRole ? (
-          <>
-            {/* Staff accounts are pre-approved by gmail — no need to
-                re-collect personal/academic info that's already on file. */}
-            <div className="form-group">
-              <label htmlFor="email">{ROLE_LABELS[role]} Gmail</label>
-              <input
-                type="email"
-                id="email"
-                name="email"
-                placeholder="Enter your authorized gmail"
-                value={formData.email}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="password">Create Password</label>
-              <div className="password-input-wrapper">
-                <input
-                  type={showPassword ? 'text' : 'password'}
-                  id="password"
-                  name="password"
-                  placeholder="Create a password"
-                  value={formData.password}
-                  onChange={handleChange}
-                  required
-                />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  onClick={() => setShowPassword(!showPassword)}
-                  aria-label={showPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showPassword ? <FaEyeSlash /> : <FaEye />}
-                </button>
-              </div>
-            </div>
-
-            <div className="form-group">
-              <label htmlFor="confirmPassword">Confirm Password</label>
-              <div className="password-input-wrapper">
-                <input
-                  type={showConfirmPassword ? 'text' : 'password'}
-                  id="confirmPassword"
-                  name="confirmPassword"
-                  placeholder="Confirm password"
-                  value={formData.confirmPassword}
-                  onChange={handleChange}
-                  required
-                />
-                <button
-                  type="button"
-                  className="password-toggle"
-                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
-                  aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
-                >
-                  {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
-                </button>
-              </div>
-            </div>
-          </>
-        ) : (
-          <>
+        <div className="auth-fields">
             <div className="form-group">
               <label htmlFor="name">Create Name</label>
               <input
@@ -481,14 +373,16 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
                 </div>
               </div>
             </div>
-          </>
-        )}
         </div>
 
         <button type="submit" className="auth-btn auth-btn-primary" disabled={submitting}>
           {submitting ? 'Submitting…' : 'Submit'}
         </button>
       </form>
+
+      <p className="auth-staff-note">
+        Staff account? Ask your Super Admin to set one up for you.
+      </p>
     </div>
   );
 }

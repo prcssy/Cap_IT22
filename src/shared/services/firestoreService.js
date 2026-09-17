@@ -151,45 +151,6 @@ export async function getUserProfile(uid) {
 }
 
 /* ─────────────────────────────────────────────
-   Staff allowlist lookup.
-
-   Used by the sign-up form's "Admin / Moderator / Super Admin"
-   path: staff don't fill out the full student form, they just
-   enter the gmail they were pre-registered with + a password.
-   We look that email up in the SAME collections AuthContext uses
-   to resolve roles (`admins` / `moderators` / `superadmins`, doc id
-   = lowercase email) — this is the one place staff emails are
-   managed (Firebase Console → Firestore → admins/moderators/superadmins),
-   so sign-up and login always agree on who's authorized.
-
-   Expected doc shape (doc id = lowercase email):
-     { email: 'someone@gmail.com' }  — additional fields like name are optional.
-
-   @param {string} email
-   @param {string} role  one of 'admin' | 'moderator' | 'superadmin'
-   @returns {object|null} the matching doc if the email is cleared for that role, else null
-───────────────────────────────────────────── */
-const ROLE_TO_COLLECTION = {
-  admin: 'admins',
-  moderator: 'moderators',
-  superadmin: 'superadmins',
-};
-
-export async function findStaffAllowlistEntry(email, role) {
-  if (!db) {
-    console.warn('Firestore not initialized. Cannot verify staff email.');
-    return null;
-  }
-  const collectionName = ROLE_TO_COLLECTION[role];
-  if (!collectionName) return null;
-
-  const normalizedEmail = email.trim().toLowerCase();
-  const snapshot = await getDoc(doc(db, collectionName, normalizedEmail));
-  if (!snapshot.exists()) return null;
-  return { id: snapshot.id, ...snapshot.data() };
-}
-
-/* ─────────────────────────────────────────────
    Activity logs — a single, append-only audit trail written by every
    part of the app that performs a "named" action (login/logout, role
    changes, registrations, schedule/tournament and match-record CRUD).

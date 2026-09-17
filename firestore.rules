@@ -23,10 +23,39 @@ service cloud.firestore {
       return signedIn() && exists(/databases/$(database)/documents/superadmins/$(staffEmail()));
     }
 
+    // True if `claimedRole` is a role the CALLER'S OWN email is actually
+    // entitled to — 'student' always is, anything else requires the
+    // matching allowlist doc to exist for request.auth.token.email (never
+    // client-supplied, comes from the signed Firebase ID token).
+    function ownEmailIsAllowedRole(claimedRole) {
+      return claimedRole == 'student'
+        || (claimedRole == 'admin' && exists(/databases/$(database)/documents/admins/$(staffEmail())))
+        || (claimedRole == 'moderator' && exists(/databases/$(database)/documents/moderators/$(staffEmail())))
+        || (claimedRole == 'superadmin' && exists(/databases/$(database)/documents/superadmins/$(staffEmail())));
+    }
+
     // ── User profiles ──────────────────────────────────────────
     match /users/{uid} {
-      allow read, write: if signedIn() && request.auth.uid == uid;
+      allow read: if signedIn() && request.auth.uid == uid;
       allow read: if isStaff();
+      // A signed-in user may create/update their OWN profile doc, but
+      // ONLY with a role/isAdmin combination their email is actually
+      // entitled to (checked server-side above, against the SAME
+      // admins/moderators/superadmins collections AuthContext resolves
+      // roles from) — not whatever role/isAdmin they put in the write.
+      // Before this, `allow read, write: if ... uid == uid` let any
+      // signed-in student set role:'admin'/isAdmin:true on their own doc
+      // directly via the SDK (e.g. devtools), which AuthContext's role
+      // merge would then display as if they were staff, bypassing
+      // ProtectedRoute's role gate — contained only because every
+      // actually-sensitive collection checks isStaff()/isSuperAdmin()
+      // against the allowlist instead of trusting this field, but still
+      // a real broken-access-control gap at the source.
+      allow create, update: if signedIn() && request.auth.uid == uid
+                            && ownEmailIsAllowedRole(request.resource.data.role)
+                            && request.resource.data.isAdmin == (
+                                 request.resource.data.role == 'admin' || request.resource.data.role == 'superadmin'
+                               );
       // A Super Admin assigning/removing a staff role (Roles & Permissions
       // tab) mirrors that change onto the TARGET user's own profile doc —
       // a different uid than the Super Admin's own, so the rule above

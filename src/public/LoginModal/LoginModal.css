@@ -500,6 +500,14 @@
   font-family: "Inter", sans-serif;
 }
 
+.auth-staff-note {
+  text-align: center;
+  margin-top: 1rem;
+  font-size: 0.8rem;
+  font-family: "Inter", sans-serif;
+  color: #999;
+}
+
 /* Animations */
 @keyframes fadeIn {
   from {
