@@ -13,6 +13,7 @@ import {
   getEventRegistrationCounts,
   getEventKey,
 } from '../shared/services/firestoreService';
+import { resizeImageToBlob } from '../shared/utils/resizeImage';
 import {
   getAllProvinces,
   getProvinceByCode,
@@ -615,9 +616,27 @@ export default function RegistrationPage() {
     });
   };
 
-  const handleFile = (setter, key, allowedTypes) => (e) => {
-    const file = e.target.files?.[0];
+  const handleFile = (setter, key, allowedTypes) => async (e) => {
+    let file = e.target.files?.[0];
     if (!file) return;
+
+    // Photos are recompressed client-side before every other check — a
+    // phone-camera original easily runs 3-8 MB, well past the 5 MB rule
+    // cap, and at full size 1,400 registrants' worth would blow past this
+    // project's storage budget. Shrinking to a ~1000px JPEG here keeps
+    // each upload in the tens-to-low-hundreds of KB instead.
+    if (key === 'photo') {
+      try {
+        const blob = await resizeImageToBlob(file, { maxWidth: 1000, maxHeight: 1000, format: 'jpeg', quality: 0.75 });
+        if (blob.size < file.size) {
+          file = new File([blob], file.name, { type: blob.type });
+        }
+      } catch {
+        // Compression failed (corrupt/unreadable image) — fall back to the
+        // original file so the normal size/type validation below can
+        // still catch it and show a proper error.
+      }
+    }
 
     const validationError = validateUpload(file, allowedTypes);
     if (validationError) {

@@ -1,27 +1,14 @@
-/* Resizes an image file client-side (via a <canvas>) and returns a base64
- * data URL, so it can be stored directly on a Firestore document instead
- * of Firebase Storage — same approach SportsTeamsManager.jsx's LogoUpload
- * already uses for sport/team logos (which works reliably), used here for
- * Branding's school logo and the Landing Page CMS's hero/gallery images,
- * neither of which worked when they depended on Firebase Storage being
- * provisioned (uploadBytes/getDownloadURL silently failing).
+/* Resizes an image file client-side via a <canvas>.
  *
  * - mode: 'contain' (default) scales down to fit within maxWidth/maxHeight,
  *   preserving aspect ratio, no cropping — for photos (hero banners,
- *   gallery images).
+ *   gallery images, registration photos).
  * - mode: 'square' crops/pads to a maxWidth×maxWidth square against
  *   `background`, matching LogoUpload's behavior — for logos/icons.
  * - format 'png' keeps transparency (logos); 'jpeg' compresses harder via
  *   `quality` (0-1) — better for photos, which don't need transparency.
  */
-export function resizeImageToDataUrl(file, {
-  maxWidth = 800,
-  maxHeight = 800,
-  mode = 'contain',
-  format = 'jpeg',
-  quality = 0.7,
-  background = '#ffffff',
-} = {}) {
+function drawResizedImage(file, { maxWidth = 800, maxHeight = 800, mode = 'contain', format = 'jpeg', background = '#ffffff' } = {}) {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const objectUrl = URL.createObjectURL(file);
@@ -51,13 +38,40 @@ export function resizeImageToDataUrl(file, {
       }
 
       URL.revokeObjectURL(objectUrl);
-      const mime = format === 'png' ? 'image/png' : 'image/jpeg';
-      resolve(canvas.toDataURL(mime, quality));
+      resolve(canvas);
     };
     img.onerror = () => {
       URL.revokeObjectURL(objectUrl);
       reject(new Error('Could not read this image file.'));
     };
     img.src = objectUrl;
+  });
+}
+
+// Returns a base64 data URL — for images stored directly on a Firestore
+// document instead of Firebase Storage (Branding's school logo, Landing
+// Page CMS hero/gallery images, Sports & Teams logos).
+export async function resizeImageToDataUrl(file, options = {}) {
+  const { format = 'jpeg', quality = 0.7 } = options;
+  const canvas = await drawResizedImage(file, options);
+  const mime = format === 'png' ? 'image/png' : 'image/jpeg';
+  return canvas.toDataURL(mime, quality);
+}
+
+// Returns a Blob — for images uploaded to Firebase Storage (e.g. the
+// registration photo), where a data URL would need decoding back to
+// binary first. Shrinking large phone-camera photos before upload keeps
+// Storage usage well under the 5 MB/file rule cap and the project's
+// overall storage budget.
+export async function resizeImageToBlob(file, options = {}) {
+  const { format = 'jpeg', quality = 0.7 } = options;
+  const canvas = await drawResizedImage(file, options);
+  const mime = format === 'png' ? 'image/png' : 'image/jpeg';
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error('Could not compress this image.'))),
+      mime,
+      quality
+    );
   });
 }
