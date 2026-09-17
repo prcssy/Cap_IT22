@@ -182,7 +182,7 @@
   border-radius: 9px;
   padding: 6px;
   width: 160px;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.35);
   opacity: 0;
   transform: translateY(-8px) scale(0.97);
   pointer-events: none;
@@ -195,25 +195,16 @@
   pointer-events: auto;
 }
 
-.dash-sport-filter__panel-label {
-  font-size: 0.6rem;
-  letter-spacing: 0.12em;
-  color: rgba(255, 255, 255, 0.5);
-  text-transform: uppercase;
-  margin: 2px 4px 6px;
-  font-weight: 700;
-}
-
 .dash-sport-filter__option {
   display: block;
   width: 100%;
   text-align: left;
   background: transparent;
   border: none;
-  border-radius: 7px;
+  border-radius: 8px;
   padding: 0.5rem 0.7rem;
   font-family: "Inter", sans-serif;
-  font-weight: 500;
+  font-weight: 700;
   font-size: 0.72rem;
   color: rgba(255, 255, 255, 0.75);
   cursor: pointer;
@@ -222,7 +213,7 @@
 
 @media (hover: hover) and (pointer: fine) {
   .dash-sport-filter__option:hover {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.1);
     color: #fff;
   }
 }
@@ -232,9 +223,8 @@
 }
 
 .dash-sport-filter__option--active {
-  background: rgba(255, 255, 255, 0.22);
-  color: #fff;
-  font-weight: 700;
+  background: #FCBF19;
+  color: #001529;
 }
 
 .dash-body {
@@ -737,9 +727,17 @@
 
 /* ══════════════════════════════════════════
    FINISHED MATCHES CAROUSEL
+   Redesigned as a dramatic "fight poster" card — deep navy-to-black
+   background with two soft gold/blue spotlight glows behind the teams,
+   circular team medallions instead of square logo tiles, oversized
+   display type for names, and a glowing gold-ringed score medallion for
+   the winner. Purely visual — same fixed 400x480 track/slide geometry
+   the coverflow math in DashboardPage.jsx depends on (see
+   FinishedCarousel/POS_STYLE), so nothing here changes how matches are
+   chosen, filtered, or paged.
    ══════════════════════════════════════════ */
 .dash-section--finished {
-  background-color: #0A1D52;
+  background: linear-gradient(180deg, #0A1D52 0%, #071842 100%);
   padding-bottom: 24px;
   overflow: hidden;
 }
@@ -768,12 +766,19 @@
   justify-content: center;
 }
 
-/* Track is a fixed-size anchor; slides are positioned absolutely inside it */
+/* Track is a fixed-size anchor; slides are positioned absolutely inside it.
+   Height must comfortably fit the tallest a card can actually render: up
+   to 4 highlight bars (both teams each with a comeback AND violations)
+   stacked under a two-line wrapped team name on both sides. The old
+   480px was sized for the previous (shorter) light scoreboard design —
+   too short for the highlight-bar stack added later, so .finished-carousel's
+   `overflow: hidden` (which takes its height from this track) was
+   silently cropping the bottom of the card instead of letting it show. */
 .finished-carousel__track {
   position: relative;
   /* wide enough so all 5 slots fit without clipping inside the track itself */
   width: 400px;
-  height: 480px;
+  height: 620px;
 }
 
 /* Each slide transitions its own transform/opacity/filter every render */
@@ -789,18 +794,63 @@
   will-change: transform, opacity, filter;
 }
 
-/* ── Finished Card ── */
+/* ── Finished Card — dark "fight poster" shell ── */
 .finished-card {
+  position: relative;
   width: 400px;
-  background: #fff;
-  border-radius: 16px;
-  padding: 18px 22px 20px;
+  background: radial-gradient(120% 90% at 50% -10%, #16306b 0%, #0a1c47 45%, #050d24 100%);
+  border-radius: 20px;
+  padding: 20px 20px 18px;
+  box-sizing: border-box;
+  color: #fff;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 22px 46px rgba(0, 0, 0, 0.5), 0 2px 10px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+/* Tournament-result accent bar — navy fading into gold like a medal
+   ribbon, instead of a plain top edge. */
+.finished-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 5px;
+  background: linear-gradient(90deg, #0A1D52 0%, #3a63d8 45%, #FCBF19 100%);
+  z-index: 2;
+}
+
+/* Soft "spotlight" glows behind the two teams — the poster-style
+   atmosphere (fog/rim-light) rendered as pure CSS instead of an image,
+   sitting behind .fc-content (z-index 1) so it never obscures text. */
+.finished-card__glow {
+  position: absolute;
+  top: 6%;
+  width: 62%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  filter: blur(30px);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.finished-card__glow--a {
+  left: -12%;
+  background: radial-gradient(circle, rgba(252, 191, 25, 0.16) 0%, rgba(252, 191, 25, 0) 70%);
+}
+
+.finished-card__glow--b {
+  right: -12%;
+  background: radial-gradient(circle, rgba(58, 99, 216, 0.22) 0%, rgba(58, 99, 216, 0) 70%);
+}
+
+.fc-content {
+  position: relative;
+  z-index: 1;
   display: flex;
   flex-direction: column;
   gap: 14px;
-  box-sizing: border-box;
-  color: #001529;
-  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
 }
 
 .finished-card--active {
@@ -816,16 +866,19 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
+  margin-top: 2px;
 }
 
 .fc-sport {
   font-size: 12px;
   font-weight: 900;
-  color: #001529;
-  letter-spacing: 0.08em;
+  color: #fff;
+  letter-spacing: 0.1em;
   text-transform: uppercase;
 }
 
+/* A solid green badge so "Finished" reads as a clear status chip
+   against the dark card instead of blending in. */
 .fc-status {
   display: inline-flex;
   align-items: center;
@@ -834,133 +887,264 @@
   font-weight: 800;
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: #1a9457;
-  background: rgba(26, 148, 87, 0.1);
-  padding: 4px 9px;
+  color: #fff;
+  background: linear-gradient(135deg, #1fae6b 0%, #178a55 100%);
+  padding: 5px 11px;
   border-radius: 999px;
+  box-shadow: 0 3px 8px rgba(26, 148, 87, 0.4);
 }
 
-.fc-status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #1a9457;
+.fc-status-icon {
+  font-size: 11px;
   flex-shrink: 0;
 }
 
 .fc-datetime {
   font-size: 11px;
-  color: #8899aa;
-  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.55);
+  letter-spacing: 0.03em;
   text-align: center;
-  margin-top: -6px;
+  font-weight: 600;
 }
 
 .fc-match {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  padding: 4px 0 8px;
-  border-bottom: 1px solid #eef1f6;
+  gap: 6px;
+  padding: 6px 0 8px;
 }
 
 .fc-team {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 6px;
+  gap: 9px;
   flex: 1;
   min-width: 0;
 }
 
-.fc-team-name {
+/* Wraps the team banner so the crown badge below can be positioned
+   relative to it without touching the shared TeamBanner component. */
+.fc-banner-wrap {
+  position: relative;
+}
+
+/* Circular "medallion" portraits instead of square logo tiles — the
+   poster-closeup feel, on a light backing disc so any uploaded logo
+   (usually designed for a light background) still stays legible. */
+.team-banner--fc,
+.team-banner--fc-small {
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, #ffffff 0%, #e9eefa 100%);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.14), 0 10px 22px rgba(0, 0, 0, 0.4);
+}
+
+.fc-team--winner .team-banner--fc,
+.fc-team--winner .team-banner--fc-small {
+  box-shadow: 0 0 0 3px #FCBF19, 0 0 22px rgba(252, 191, 25, 0.45), 0 10px 22px rgba(0, 0, 0, 0.4);
+}
+
+/* Gentle breathing glow on the winner's medallion — only on the
+   front-facing card (the side/peek cards stay still), same pulsing-glow
+   language as the Landing page's Potential Champion spotlight so the
+   two "winner" moments read as one consistent visual idea site-wide. */
+.finished-card--active .fc-team--winner .team-banner--fc,
+.finished-card--active .fc-team--winner .team-banner--fc-small {
+  animation: fcWinnerPulse 2.4s ease-in-out infinite;
+}
+
+@keyframes fcWinnerPulse {
+  0%, 100% { box-shadow: 0 0 0 3px #FCBF19, 0 0 14px rgba(252, 191, 25, 0.35), 0 10px 22px rgba(0, 0, 0, 0.4); }
+  50% { box-shadow: 0 0 0 3px #FCBF19, 0 0 28px rgba(252, 191, 25, 0.65), 0 10px 22px rgba(0, 0, 0, 0.4); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .finished-card--active .fc-team--winner .team-banner--fc,
+  .finished-card--active .fc-team--winner .team-banner--fc-small {
+    animation: none;
+  }
+}
+
+.fc-team--loser .team-banner--fc,
+.fc-team--loser .team-banner--fc-small {
+  filter: grayscale(0.35) brightness(0.82);
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.08), 0 8px 18px rgba(0, 0, 0, 0.4);
+}
+
+/* Small gold crown badge popped onto the corner of the winning team's
+   medallion — the sports-trophy visual cue for "this side won", on top
+   of the WIN/LOSE pill below. */
+.fc-crown {
+  position: absolute;
+  top: -6px;
+  right: -4px;
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  background: #FCBF19;
+  color: #7a5400;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   font-size: 11px;
-  font-weight: 800;
-  color: #001529;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45), 0 0 0 2.5px #0a1c47;
+  z-index: 3;
+}
+
+/* Big display-font team names — the poster's oversized stacked
+   typography, scaled down to fit a compact card. */
+.fc-team-name {
+  font-family: 'Lalezar', 'Inter', sans-serif;
+  font-size: 15px;
+  font-weight: 400;
+  color: #fff;
   text-transform: uppercase;
-  letter-spacing: 0.04em;
+  letter-spacing: 0.03em;
   text-align: center;
+  line-height: 1.05;
+}
+
+.fc-team--winner .fc-team-name {
+  text-shadow: 0 0 14px rgba(252, 191, 25, 0.5);
+}
+
+.fc-team--loser .fc-team-name {
+  color: rgba(255, 255, 255, 0.38);
 }
 
 .fc-result {
-  font-size: 12px;
+  font-size: 10px;
   font-weight: 900;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.08em;
+  padding: 3px 10px;
+  border-radius: 999px;
 }
 
 .fc-result--win {
-  color: #1a9457;
+  color: #0a1c47;
+  background: #3ddc8a;
 }
 
 .fc-result--lose {
-  color: #c0392b;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.1);
 }
 
 .fc-result--draw {
-  color: #8899aa;
+  color: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.12);
 }
 
+/* Glowing "medallion" score chip — the poster's championship-belt
+   moment: a gold-rimmed dark disc holding the final score, brighter
+   than the card around it so it's the clear focal point. */
 .fc-score {
   display: flex;
   align-items: baseline;
-  gap: 6px;
+  gap: 7px;
   flex-shrink: 0;
-  font-weight: 900;
-  color: #0A1D52;
+  background: linear-gradient(160deg, #14265c 0%, #0a1633 100%);
+  border-radius: 14px;
+  border: 1px solid rgba(252, 191, 25, 0.35);
+  padding: 10px 13px;
   font-variant-numeric: tabular-nums;
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45), 0 0 20px rgba(252, 191, 25, 0.12);
 }
 
 .fc-score-val {
-  font-size: 26px;
+  font-size: 24px;
+  font-weight: 900;
   line-height: 1;
-  min-width: 24px;
+  min-width: 22px;
   text-align: center;
+  color: #fff;
+  transition: color 0.2s ease;
+}
+
+.fc-score-val--win {
+  color: #FCBF19;
+  text-shadow: 0 0 12px rgba(252, 191, 25, 0.55);
+}
+
+.fc-score-val--lose {
+  color: rgba(255, 255, 255, 0.4);
 }
 
 .fc-score-sep {
-  font-size: 16px;
-  color: #c3cbd6;
+  font-size: 14px;
+  color: rgba(255, 255, 255, 0.3);
 }
 
-.fc-stats {
+/* Highlight callouts — full-width bold banners (one per notable stat a
+   team actually has), instead of a plain mirrored "Yes/No" or "3 | 2"
+   comparison row. A team with nothing to call out (no comeback, zero
+   violations) simply contributes no bar, so the stack only ever shows
+   what's actually notable. */
+.fc-highlights {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  padding-top: 12px;
+  border-top: 1px dashed rgba(255, 255, 255, 0.14);
 }
 
-.fc-stat-row {
+.fc-highlight {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 10px;
   font-size: 11px;
 }
 
-.fc-stat-val {
-  font-weight: 700;
-  color: #667788;
-  min-width: 50px;
-  text-align: center;
+.fc-highlight-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  flex-shrink: 0;
 }
 
-.fc-stat-val--win {
-  color: #0A1D52;
+.fc-highlight-text {
+  color: rgba(255, 255, 255, 0.92);
+  font-weight: 700;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.fc-highlight-text strong {
   font-weight: 900;
 }
 
-.fc-stat-label {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  color: #556677;
-  font-weight: 600;
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.03em;
+/* Comeback — the card's celebratory gold moment, echoing the crown/win
+   glow used elsewhere on this card. */
+.fc-highlight--comeback {
+  background: linear-gradient(90deg, rgba(252, 191, 25, 0.24) 0%, rgba(252, 191, 25, 0.08) 100%);
+  border: 1px solid rgba(252, 191, 25, 0.4);
+  box-shadow: 0 0 14px rgba(252, 191, 25, 0.12);
 }
 
-.fc-stat-icon {
-  font-size: 11px;
+.fc-highlight--comeback .fc-highlight-icon {
+  color: #FCBF19;
+}
+
+.fc-highlight--comeback .fc-highlight-text strong {
+  color: #FCBF19;
+}
+
+/* Violation — a warning-red callout instead of a neutral number. */
+.fc-highlight--violation {
+  background: linear-gradient(90deg, rgba(255, 90, 90, 0.2) 0%, rgba(255, 90, 90, 0.06) 100%);
+  border: 1px solid rgba(255, 90, 90, 0.35);
+}
+
+.fc-highlight--violation .fc-highlight-icon {
+  color: #ff8a80;
+}
+
+.fc-highlight--violation .fc-highlight-text strong {
+  color: #ff8a80;
 }
 
 /* ══════════════════════════════════════════
@@ -1054,6 +1238,66 @@
 
   .dash-section--upcoming {
     height: auto;
+  }
+
+  /* Finished Matches card scales its internal padding/type down to suit
+     the narrower cardW FinishedCarousel computes on phones (its width
+     stays JS-driven — see FinishedCarousel's ResizeObserver — only the
+     spacing/typography inside is adjusted here). */
+  .finished-card {
+    padding: 16px 14px 14px;
+    border-radius: 16px;
+  }
+
+  .fc-content {
+    gap: 10px;
+  }
+
+  .fc-match {
+    padding: 12px 6px;
+    gap: 4px;
+  }
+
+  .fc-score {
+    padding: 7px 10px;
+    gap: 5px;
+  }
+
+  .fc-score-val {
+    font-size: 21px;
+    min-width: 20px;
+  }
+
+  .fc-team-name {
+    font-size: 10px;
+  }
+
+  .team-banner--fc {
+    width: 72px;
+    height: 72px;
+  }
+
+  .team-banner--fc-small {
+    width: 48px;
+    height: 48px;
+  }
+
+  .fc-highlights {
+    gap: 6px;
+    padding-top: 8px;
+  }
+
+  .fc-highlight {
+    padding: 7px 10px;
+    gap: 6px;
+  }
+
+  .fc-highlight-text {
+    font-size: 10px;
+  }
+
+  .fc-highlight-icon {
+    font-size: 12px;
   }
 }
 /* ── Mobile: leaves room for the floating hamburger button (Sidebar.css

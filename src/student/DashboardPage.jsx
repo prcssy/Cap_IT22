@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo, useContext } from 'react';
-import { FiAward, FiAlertTriangle, FiChevronLeft, FiChevronRight, FiChevronDown, FiTrendingUp, FiClock, FiMapPin } from 'react-icons/fi';
+import { FiAlertTriangle, FiChevronLeft, FiChevronRight, FiChevronDown, FiTrendingUp, FiClock, FiMapPin, FiCheckCircle } from 'react-icons/fi';
+import { FaCrown } from 'react-icons/fa';
 import './DashboardPage.css';
 import Contact from '../public/Landing/Contact/Contact';
 import { BrandingContext } from '../shared/context/BrandingContext';
@@ -228,12 +229,18 @@ function UpcomingCard({ match }) {
   );
 }
 
-function StatRow({ label, icon: Icon, aVal, bVal, aWin, bWin }) {
+/* Full-width callout bar for a single team's notable stat (comeback or
+   violation count) — a bold colored banner naming the team, instead of
+   the old plain "Yes/No" or "3 | 2" two-column comparison row. Only
+   rendered for a team that actually has something to call out (no
+   "No"/"0" line for the side with nothing to show). */
+function HighlightBar({ tone, icon: Icon, team, text }) {
   return (
-    <div className="fc-stat-row">
-      <span className={`fc-stat-val ${aWin ? 'fc-stat-val--win' : ''}`}>{aVal}</span>
-      <span className="fc-stat-label"><span className="fc-stat-icon"><Icon /></span>{label}</span>
-      <span className={`fc-stat-val ${bWin ? 'fc-stat-val--win' : ''}`}>{bVal}</span>
+    <div className={`fc-highlight fc-highlight--${tone}`}>
+      <span className="fc-highlight-icon"><Icon /></span>
+      <span className="fc-highlight-text">
+        <strong>{team}</strong> {text}
+      </span>
     </div>
   );
 }
@@ -251,34 +258,70 @@ function FinishedCard({ match, isActive, width }) {
       className={`finished-card ${isActive ? 'finished-card--active' : 'finished-card--side'}`}
       style={{ width }}
     >
-      <div className="fc-header">
-        <span className="fc-sport">{match.sport} {match.gender}</span>
-        <span className="fc-status"><span className="fc-status-dot" />Finished</span>
-      </div>
-      <div className="fc-datetime">{match.date}{hasTime ? ` · ${match.time}` : ''}</div>
+      {/* Ambient glow blobs sit behind everything else on the card (see
+          .finished-card__glow in CSS) — .fc-content is the actual layout,
+          kept in its own stacking layer above them. */}
+      <span className="finished-card__glow finished-card__glow--a" aria-hidden="true" />
+      <span className="finished-card__glow finished-card__glow--b" aria-hidden="true" />
 
-      <div className="fc-match">
-        <div className="fc-team">
-          <TeamBanner team={match.teamA} size={isActive ? 'fc' : 'fc-small'} />
-          <span className="fc-team-name">{match.teamA.label}</span>
-          <span className={`fc-result ${resultClass(winnerA)}`}>{resultLabel(winnerA)}</span>
+      <div className="fc-content">
+        <div className="fc-header">
+          <span className="fc-sport">{match.sport} {match.gender}</span>
+          <span className="fc-status"><FiCheckCircle className="fc-status-icon" />Finished</span>
         </div>
-        <div className="fc-score">
-          <span className="fc-score-val">{match.teamAStats.score}</span>
-          <span className="fc-score-sep">–</span>
-          <span className="fc-score-val">{match.teamBStats.score}</span>
-        </div>
-        <div className="fc-team">
-          <TeamBanner team={match.teamB} size={isActive ? 'fc' : 'fc-small'} />
-          <span className="fc-team-name">{match.teamB.label}</span>
-          <span className={`fc-result ${resultClass(winnerB)}`}>{resultLabel(winnerB)}</span>
-        </div>
-      </div>
+        <div className="fc-datetime">{match.date}{hasTime ? ` · ${match.time}` : ''}</div>
 
-      <div className="fc-stats">
-        <StatRow label="Violation"   icon={FiAlertTriangle} aVal={match.teamAStats.violation}              bVal={match.teamBStats.violation}              aWin={winnerA} bWin={winnerB} />
-        <StatRow label="Comeback"    icon={FiTrendingUp}    aVal={match.teamAStats.comeback ? 'Yes' : 'No'} bVal={match.teamBStats.comeback ? 'Yes' : 'No'} aWin={winnerA} bWin={winnerB} />
-        <StatRow label="Win Chance"  icon={FiAward}         aVal={match.teamAStats.winChance}               bVal={match.teamBStats.winChance}               aWin={winnerA} bWin={winnerB} />
+        <div className="fc-match">
+          <div className={`fc-team ${winnerA ? 'fc-team--winner' : !drawn ? 'fc-team--loser' : ''}`}>
+            <div className="fc-banner-wrap">
+              {winnerA && <span className="fc-crown"><FaCrown /></span>}
+              <TeamBanner team={match.teamA} size={isActive ? 'fc' : 'fc-small'} />
+            </div>
+            <span className="fc-team-name">{match.teamA.label}</span>
+            <span className={`fc-result ${resultClass(winnerA)}`}>{resultLabel(winnerA)}</span>
+          </div>
+          <div className="fc-score">
+            <span className={`fc-score-val ${winnerA ? 'fc-score-val--win' : !drawn ? 'fc-score-val--lose' : ''}`}>{match.teamAStats.score}</span>
+            <span className="fc-score-sep">–</span>
+            <span className={`fc-score-val ${winnerB ? 'fc-score-val--win' : !drawn ? 'fc-score-val--lose' : ''}`}>{match.teamBStats.score}</span>
+          </div>
+          <div className={`fc-team ${winnerB ? 'fc-team--winner' : !drawn ? 'fc-team--loser' : ''}`}>
+            <div className="fc-banner-wrap">
+              {winnerB && <span className="fc-crown"><FaCrown /></span>}
+              <TeamBanner team={match.teamB} size={isActive ? 'fc' : 'fc-small'} />
+            </div>
+            <span className="fc-team-name">{match.teamB.label}</span>
+            <span className={`fc-result ${resultClass(winnerB)}`}>{resultLabel(winnerB)}</span>
+          </div>
+        </div>
+
+        {(match.teamAStats.comeback || match.teamBStats.comeback
+          || match.teamAStats.violation > 0 || match.teamBStats.violation > 0) && (
+          <div className="fc-highlights">
+            {match.teamAStats.comeback && (
+              <HighlightBar tone="comeback" icon={FiTrendingUp} team={match.teamA.label} text="ULTIMATE COMEBACK" />
+            )}
+            {match.teamBStats.comeback && (
+              <HighlightBar tone="comeback" icon={FiTrendingUp} team={match.teamB.label} text="ULTIMATE COMEBACK" />
+            )}
+            {match.teamAStats.violation > 0 && (
+              <HighlightBar
+                tone="violation"
+                icon={FiAlertTriangle}
+                team={match.teamA.label}
+                text={`${match.teamAStats.violation} VIOLATION${match.teamAStats.violation > 1 ? 'S' : ''}`}
+              />
+            )}
+            {match.teamBStats.violation > 0 && (
+              <HighlightBar
+                tone="violation"
+                icon={FiAlertTriangle}
+                team={match.teamB.label}
+                text={`${match.teamBStats.violation} VIOLATION${match.teamBStats.violation > 1 ? 'S' : ''}`}
+              />
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -459,7 +502,6 @@ function SportFilter({ sports, value, onChange }) {
         </button>
 
         <div className={`dash-sport-filter__panel ${open ? 'dash-sport-filter__panel--open' : ''}`}>
-          <div className="dash-sport-filter__panel-label">Sports option</div>
           {options.map((o) => (
             <button
               key={o.key}

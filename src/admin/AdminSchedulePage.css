@@ -1129,10 +1129,108 @@
   word-break: break-word;
 }
 
-.asp-form-group p a {
+/* ── Attachments (Student Details modal) ──
+   Photo gets a real thumbnail, the waiver gets a file-type card (PDF or
+   Word icon + its original filename) — both link out to the file in a
+   new tab, replacing the old plain "View photo"/"View waiver" text
+   links so the file type is obvious before clicking. */
+.asp-attach-photo {
+  display: block;
+  width: fit-content;
+  border-radius: 10px;
+  overflow: hidden;
+  border: 1.5px solid #e2e8f0;
+  text-decoration: none;
+  position: relative;
+}
+
+.asp-attach-photo img {
+  display: block;
+  width: 140px;
+  height: 140px;
+  object-fit: cover;
+}
+
+.asp-attach-photo__hint {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  justify-content: center;
+  padding: 6px 8px;
+  font-size: 0.7rem;
+  font-weight: 700;
   color: #1d4ed8;
+  background: #f1f5fb;
+  border-top: 1px solid #e2e8f0;
+}
+
+.asp-attach-file {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1.5px solid #e2e8f0;
+  border-radius: 10px;
+  text-decoration: none;
+  max-width: 280px;
+  transition: border-color 0.15s, background 0.15s;
+  /* Now a <button> (fetch-based download, see downloadWaiver), not an
+     <a> — reset the button-specific defaults so it keeps reading as the
+     same file card. */
+  background: #fff;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  width: 100%;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .asp-attach-file:hover {
+    border-color: #1d4ed8;
+    background: #f8fafc;
+  }
+}
+
+.asp-attach-file__icon {
+  flex-shrink: 0;
+  width: 34px;
+  height: 34px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #eef2ff;
+  color: #1d4ed8;
+  font-size: 1rem;
+}
+
+.asp-attach-file__meta {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.asp-attach-file__name {
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #001529;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.asp-attach-file__kind {
+  font-size: 0.68rem;
   font-weight: 600;
-  text-decoration: underline;
+  color: #64748b;
+}
+
+.asp-attach-file__open {
+  flex-shrink: 0;
+  margin-left: auto;
+  font-size: 0.72rem;
+  color: #94a3b8;
 }
 
 /* Used in the Student Details modal for Gender, Age, Section, Position and

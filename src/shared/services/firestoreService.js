@@ -352,7 +352,7 @@ const UPLOAD_TIMEOUT_MS = 15 * 1000;
    "Storage not set up" message. Race against a short local timeout
    so failure surfaces quickly regardless of the SDK's own retry budget.
 ───────────────────────────────────────────── */
-async function uploadFile(file, storagePath) {
+async function uploadFile(file, storagePath, metadata) {
   if (!file) return null;
   try {
     const storage = getStorage();
@@ -360,12 +360,28 @@ async function uploadFile(file, storagePath) {
     const timeout = new Promise((_, reject) => {
       setTimeout(() => reject(new Error('Upload timed out — Cloud Storage may not be set up for this project yet.')), UPLOAD_TIMEOUT_MS);
     });
-    await Promise.race([uploadBytes(fileRef, file), timeout]);
+    await Promise.race([uploadBytes(fileRef, file, metadata), timeout]);
     return await Promise.race([getDownloadURL(fileRef), timeout]);
   } catch (error) {
     console.warn(`File upload skipped (Firebase Storage not set up yet): ${storagePath}`, error);
     return null;
   }
+}
+
+/* Content-Disposition: attachment (set as Storage object metadata at
+   upload time, not just a client-side link attribute) is what makes the
+   browser actually download a cross-origin Firebase Storage file with
+   its real name/extension instead of just navigating to it — the HTML
+   anchor `download` attribute is silently ignored for cross-origin URLs,
+   which firebasestorage.googleapis.com always is. This is Storage-level
+   metadata, so it applies no matter which browser or client opens the
+   link later, not just this app's own <a> tag. */
+function forceDownloadMetadata(file) {
+  if (!file) return undefined;
+  return {
+    contentType: file.type || undefined,
+    contentDisposition: `attachment; filename="${file.name}"`,
+  };
 }
 
 /* ─────────────────────────────────────────────
@@ -384,11 +400,14 @@ async function uploadFile(file, storagePath) {
 export async function createRegistration(uid, email, formData, photoFile, waiverFile, actorRole = 'student', eventList = EVENT_TYPES) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  // Upload both files in parallel — either can be null (optional)
+  // Upload both files in parallel — either can be null (optional).
+  // Only the waiver forces a download (see forceDownloadMetadata) — the
+  // photo must stay inline-viewable so Admin's thumbnail preview and
+  // "View full size" link keep working.
   const timestamp = Date.now();
   const [photoURL, waiverURL] = await Promise.all([
     uploadFile(photoFile,  `registrations/${uid}/${timestamp}_photo`),
-    uploadFile(waiverFile, `registrations/${uid}/${timestamp}_waiver`),
+    uploadFile(waiverFile, `registrations/${uid}/${timestamp}_waiver`, forceDownloadMetadata(waiverFile)),
   ]);
 
   const registrationData = {
@@ -426,6 +445,12 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
     // File URLs — null if student skipped the upload
     photoURL,
     waiverURL,
+    // Original filenames — Storage download URLs carry no extension (the
+    // object path is just "<timestamp>_waiver" with none appended), so
+    // without these Admin's Attachments view has no way to tell a PDF
+    // waiver from a Word one, or show the student's actual filename.
+    photoFileName:  photoFile?.name  || null,
+    waiverFileName: waiverFile?.name || null,
 
     // Metadata
     status:    'pending',
@@ -1273,6 +1298,28 @@ export async function getTeamRankings(level) {
 export async function updateTeamRankings(level, updater) {
   if (!db) throw new Error('Firestore not initialized.');
   return updateDocFieldViaTransaction('teamRankings', level, 'points', {}, updater);
+}
+
+/**
+ * Live-subscribes to one level's team rankings. Used by the public landing
+ * page's "Potential Champion" highlight so a Moderator confirming a match
+ * updates the spotlighted team there right away, the same way
+ * subscribeSportsTeamsConfig already does for the Sports Available cards.
+ * Returns an unsubscribe function.
+ */
+export function subscribeTeamRankings(level, callback) {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot subscribe to team rankings.');
+    callback({});
+    return () => {};
+  }
+  const configRef = doc(db, 'teamRankings', level);
+  return onSnapshot(configRef, (snapshot) => {
+    callback(snapshot.exists() ? (snapshot.data().points || {}) : {});
+  }, (error) => {
+    console.warn('Team rankings listener failed:', error);
+    callback({});
+  });
 }
 
 /* ─────────────────────────────────────────────
