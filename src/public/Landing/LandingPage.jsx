@@ -9,6 +9,14 @@ import { BrandingContext } from '../../shared/context/BrandingContext';
 import { FaArrowRightLong } from "react-icons/fa6";
 import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeMatchSchedules, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
 import Contact from './Contact/Contact';
+import hi1 from '../../shared/img/hi-1.jpg';
+import hi2 from '../../shared/img/hi-2.jpg';
+import hi3 from '../../shared/img/hi-3.jpg';
+import hi4 from '../../shared/img/hi-4.jpg';
+import hi5 from '../../shared/img/hi-5.jpg';
+import hi6 from '../../shared/img/hi-6.jpg';
+import hi7 from '../../shared/img/hi-7.jpg';
+import hi8 from '../../shared/img/hi-8.jpg';
 
 /* ── NEW — additional icons for the scrollable content sections ── */
 import {
@@ -171,16 +179,14 @@ function iconForSportName(name) {
 const STEP_ICONS = [FaFileSignature, FaClipboardList, FaCheckCircle];
 
 /* Bundled fallback gallery images, used until a Super Admin uploads real
-   highlight photos via the CMS (siteConfig/landingPage.gallery.images). */
+   highlight photos via the CMS (siteConfig/landingPage.gallery.images).
+   These must be real ES imports (not bare "src/..." path strings) so Vite
+   actually processes/hashes/copies them into the production build — a
+   literal string src worked in dev (served straight off disk) but resolved
+   to nothing once built, silently breaking the fallback gallery for any
+   visitor before a Super Admin ever uploads real photos. */
 const DEFAULT_GALLERY_IMAGES = [
-  'src/shared/img/hi-1.jpg',
-  'src/shared/img/hi-2.jpg',
-  'src/shared/img/hi-3.jpg',
-  'src/shared/img/hi-4.jpg',
-  'src/shared/img/hi-5.jpg',
-  'src/shared/img/hi-6.jpg',
-  'src/shared/img/hi-7.jpg',
-  'src/shared/img/hi-8.jpg',
+  hi1, hi2, hi3, hi4, hi5, hi6, hi7, hi8,
 ];
 
 const MATCHES = [
@@ -229,7 +235,7 @@ function TeamBadge({ team }) {
     <div className="team-badge">
       {team.logo ? (
         // Real logo — place file in src/assets/teams/ and set team.logo above
-        <img src={team.logo} alt={team.name} className="team-logo-img" />
+        <img src={team.logo} alt={team.name} className="team-logo-img" loading="lazy" decoding="async" />
       ) : (
         // Fallback colored circle until real logos are provided
         <div className="team-logo-placeholder" style={{ background: team.color }}>

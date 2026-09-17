@@ -1,9 +1,8 @@
 import { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
-import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../shared/firebase';
-import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, getActivityLogs } from '../shared/services/firestoreService';
+import { getAllUsers, getAllRegistrations, getSportsTeamsConfig, getMatchSchedules, getMatchRecords, getActivityLogs } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
 import ActivityLogsAndRoles from './ActivityLogsAndRoles';
 import StudentRegistrationDetails from './StudentRegistrationDetails';
@@ -619,16 +618,19 @@ export default function SuperAdminPage() {
     setError('');
 
     try {
-      const [userSnap, regSnap, configs, schedules, records] = await Promise.all([
-        getDocs(collection(db, 'users')),
-        getDocs(collection(db, 'registrations')),
+      // getAllUsers/getAllRegistrations share an in-flight de-dupe cache
+      // with the embedded StudentRegistrationDetails table's own fetch of
+      // the same 2 collections, so loading this tab doesn't double them up.
+      const [users, registrations, configs, schedules, records] = await Promise.all([
+        getAllUsers(),
+        getAllRegistrations(),
         Promise.all(LEVELS.map(l => getSportsTeamsConfig(l).catch(() => ({ sports: [], teams: [] })))),
         Promise.all(LEVELS.map(l => getMatchSchedules(l).catch(() => []))),
         Promise.all(LEVELS.map(l => getMatchRecords(l).catch(() => []))),
       ]);
 
-      setUsers(userSnap.docs.map(d => ({ id: d.id, ...d.data() })));
-      setRegistrations(regSnap.docs.map(d => ({ id: d.id, ...d.data() })));
+      setUsers(users);
+      setRegistrations(registrations);
 
       const configMap = {};
       const scheduleMap = {};
@@ -728,10 +730,16 @@ export default function SuperAdminPage() {
   }, [registeredUids]);
 
   /* ── Tiles ── */
-  const pendingCount = rangedRegs.filter(r => (r.status || 'pending') === 'pending').length;
+  const pendingCount = useMemo(
+    () => rangedRegs.filter(r => (r.status || 'pending') === 'pending').length,
+    [rangedRegs]
+  );
   // A rejected registration no longer holds a spot, so it shouldn't keep
   // counting toward Total Players once an admin has rejected it.
-  const activePlayerCount = rangedRegs.filter(r => r.status !== 'rejected').length;
+  const activePlayerCount = useMemo(
+    () => rangedRegs.filter(r => r.status !== 'rejected').length,
+    [rangedRegs]
+  );
 
   const tiles = [
     { icon: FaUsers,       label: 'Total Users',        value: rangedUsers.length,   color: '#6d28d9' },

@@ -715,10 +715,16 @@
 /* ── Sports available ──
    Fixed tile size (not a %/1fr stretch) so the tiles are the same
    physical size on desktop and mobile — only the number per row
-   changes as the viewport narrows, via auto-fill wrapping. */
+   changes as the viewport narrows, via flex-wrap.
+   Flexbox (not CSS Grid) on purpose: Grid's justify-content centers
+   the shared column tracks, not each row's actual content, so a
+   wrapped last row with fewer tiles than a full row stayed hugged to
+   the left instead of centering under the rows above it. Flexbox
+   centers every wrapped line independently, so a partial last row
+   centers correctly too. */
 .sports-row {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, 82px);
+  display: flex;
+  flex-wrap: wrap;
   justify-content: center;
   gap: 0.85rem;
   max-width: 100%;
@@ -728,6 +734,7 @@
 .sport-tile {
   position: relative;
   display: flex;
+  flex: 0 0 82px;
   flex-direction: column;
   align-items: center;
   justify-content: center;

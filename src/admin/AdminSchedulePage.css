@@ -676,6 +676,33 @@
 }
 }
 
+/* Download PDF button — same pill sizing as View/Approve/Reject/Delete,
+   its own blue so it reads as a neutral/informational action rather than
+   a decision. */
+.asp-btn-download {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #eff6ff;
+  color: #1d4ed8;
+  border: 1px solid #bfdbfe;
+  border-radius: 5px;
+  padding: 4px 12px;
+  font-family: 'Inter', sans-serif;
+  font-size: 0.72rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .asp-btn-download:hover {
+    background: #1d4ed8;
+    color: #fff;
+    border-color: #1d4ed8;
+  }
+}
+
 /* ══════════════════════════════════════════
    EMPTY / LOADING STATE
    ══════════════════════════════════════════ */

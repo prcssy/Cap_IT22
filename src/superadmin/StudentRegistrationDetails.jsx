@@ -1,8 +1,9 @@
-import { useState, useEffect, useCallback, useContext, useRef } from 'react';
-import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash } from 'react-icons/fa';
-import { collection, getDocs } from 'firebase/firestore';
+import { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
+import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf } from 'react-icons/fa';
+// jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf below),
+// not imported statically here.
 import { db } from '../shared/firebase';
-import { getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration } from '../shared/services/firestoreService';
+import { getAllRegistrations, getAllUsers, getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration } from '../shared/services/firestoreService';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { AuthContext } from '../shared/context/AuthContext';
 import '../admin/AdminSchedulePage.css';
@@ -123,7 +124,7 @@ function FilterDropdown({ label, value, options, onChange }) {
 // every signed-up student account whether or not they registered as a
 // player, used on the Super Admin page (its original, pre-fix behavior).
 export default function StudentRegistrationDetails({ scope = 'registrants', onStatusChange, onDeleted }) {
-  const { events } = useContext(BrandingContext);
+  const { events, schoolName } = useContext(BrandingContext);
   const { userProfile } = useContext(AuthContext);
   const [allRegistrations, setAllRegistrations] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -153,11 +154,14 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
     setError('');
 
     try {
-      const regSnap = await getDocs(collection(db, 'registrations'));
-      const registrations = regSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
-
-      const userSnap = await getDocs(collection(db, 'users'));
-      const users = userSnap.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+      // getAllRegistrations/getAllUsers share an in-flight de-dupe cache
+      // with whatever fetch the page embedding this table (AdminSchedulePage
+      // or SuperAdminPage) does for the same two collections on the same
+      // load, so this doesn't double the network round trips.
+      const [registrations, users] = await Promise.all([
+        getAllRegistrations(),
+        getAllUsers(),
+      ]);
 
       // This table is the STUDENT registration tabulation — staff accounts
       // (admin / moderator / super admin) manage it, they don't belong as
@@ -306,12 +310,128 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
     }
   }, [userProfile, onDeleted, fetchStudents]);
 
-  const uniqueSections = [...new Set(allRegistrations.map(r => r.section).filter(Boolean))].sort();
-  const uniqueSports   = [...new Set(allRegistrations.map(r => r.sport).filter(Boolean))].sort();
+  /* ── Download one student's registration as a PDF ──
+     Same jsPDF + jspdf-autotable combo AdminSchedulePage already uses for
+     match schedule/bracket exports (see handleDownloadPdf there) — a plain
+     key/value table per section, laid out like the Student Details modal
+     above. Photo/waiver aren't embedded as images: fetching a Firebase
+     Storage URL into a canvas for jsPDF's addImage can fail on CORS, and a
+     clickable link the reviewer can open is more reliable than a PDF
+     export that silently breaks. */
+  const handleDownloadPdf = async (reg) => {
+    const { jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pageWidth = doc.internal.pageSize.getWidth();
 
-  const filteredStudents = allRegistrations.filter(r => {
-    const q = searchQuery.toLowerCase();
-    return (
+    doc.setFontSize(14);
+    doc.setFont(undefined, 'bold');
+    doc.text(schoolName, pageWidth / 2, 40, { align: 'center' });
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'normal');
+    doc.text('Student Player Registration', pageWidth / 2, 58, { align: 'center' });
+    doc.setFontSize(9);
+    doc.setTextColor(110);
+    doc.text(`Generated ${new Date().toLocaleString()}`, pageWidth / 2, 72, { align: 'center' });
+    doc.setTextColor(0);
+
+    let cursorY = 92;
+    const section = (title, rows) => {
+      const body = rows.filter(([, value]) => value !== undefined);
+      if (body.length === 0) return;
+
+      autoTable(doc, {
+        startY: cursorY,
+        head: [[title, '']],
+        body: [],
+        theme: 'plain',
+        styles: { fontSize: 11, fontStyle: 'bold' },
+        margin: { left: 40, right: 40 },
+      });
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY,
+        body,
+        theme: 'grid',
+        styles: { fontSize: 10, cellPadding: 6 },
+        columnStyles: { 0: { fontStyle: 'bold', cellWidth: 150 } },
+        margin: { left: 40, right: 40 },
+      });
+      cursorY = doc.lastAutoTable.finalY + 20;
+    };
+
+    const level = LEVEL_LABELS[getSchoolLevel(reg.gradeLevel)] || '—';
+    const statusLabel = reg.status ? reg.status.charAt(0).toUpperCase() + reg.status.slice(1) : 'N/A';
+
+    section('Registration Status', [
+      ['Status', statusLabel],
+      ['Registered For', reg.event || 'N/A'],
+    ]);
+    section('Basic Information', [
+      ['Full Name', reg.fullName || '—'],
+      ['Gender', reg.gender || '—'],
+      ['Date of Birth', reg.dob || '—'],
+      ['Age', reg.age || '—'],
+    ]);
+    section('Academic Information', [
+      ['Grade / Year Level', reg.gradeLevel || '—'],
+      ['Level', level],
+      ['Section', reg.section || '—'],
+    ]);
+    section('Contact Information', [
+      ['Contact Number', reg.contactNumber || '—'],
+      ['Email', reg.email || reg.studentEmail || '—'],
+      ['Address', reg.address || '—'],
+      ['Emergency Contact', reg.emergencyContact || '—'],
+    ]);
+    section('Sports & Team', [
+      ['Sport', reg.sport || 'N/A'],
+      ['Position', reg.position || 'N/A'],
+      ['Team Name', reg.teamName || 'N/A'],
+    ]);
+    if (reg.message) {
+      section('Message', [['Message', reg.message]]);
+    }
+
+    if (reg.photoURL || reg.waiverURL) {
+      doc.setFontSize(10);
+      doc.setTextColor(29, 78, 216);
+      if (reg.photoURL) {
+        doc.textWithLink('View uploaded photo', 40, cursorY, { url: reg.photoURL });
+        cursorY += 16;
+      }
+      if (reg.waiverURL) {
+        doc.textWithLink('View uploaded waiver / consent form', 40, cursorY, { url: reg.waiverURL });
+        cursorY += 16;
+      }
+      doc.setTextColor(0);
+    }
+
+    const safeName = (reg.fullName || 'student').trim().replace(/[^a-z0-9]+/gi, '_').toLowerCase();
+    doc.save(`registration-${safeName || 'student'}.pdf`);
+  };
+
+  const uniqueSections = useMemo(
+    () => [...new Set(allRegistrations.map(r => r.section).filter(Boolean))].sort(),
+    [allRegistrations]
+  );
+  const uniqueSports = useMemo(
+    () => [...new Set(allRegistrations.map(r => r.sport).filter(Boolean))].sort(),
+    [allRegistrations]
+  );
+
+  // Debounced so filtering a large registration list doesn't run on every
+  // single keystroke — the input itself stays bound to `searchQuery` so
+  // typing still feels instant, only the (potentially expensive) filter
+  // pass waits for a short pause.
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState('');
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedSearchQuery(searchQuery), 200);
+    return () => clearTimeout(t);
+  }, [searchQuery]);
+
+  const filteredStudents = useMemo(() => {
+    const q = debouncedSearchQuery.toLowerCase();
+    return allRegistrations.filter(r => (
       (!q             || (r.fullName || '').toLowerCase().includes(q)) &&
       (!filterLevel   || getSchoolLevel(r.gradeLevel) === filterLevel) &&
       (!filterGrade   || r.gradeLevel === filterGrade) &&
@@ -319,8 +439,8 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
       (!filterSport   || r.sport      === filterSport) &&
       (!filterGender  || (r.gender || '').toLowerCase() === filterGender.toLowerCase()) &&
       (!filterEvent   || getEventBucket(r, events) === filterEvent)
-    );
-  });
+    ));
+  }, [allRegistrations, debouncedSearchQuery, filterLevel, filterGrade, filterSection, filterSport, filterGender, filterEvent, events]);
 
   const hasFilters = searchQuery || filterLevel || filterGrade || filterSection || filterSport || filterGender || filterEvent;
   const clearFilters = () => { setSearchQuery(''); setFilterLevel(''); setFilterGrade(''); setFilterSection(''); setFilterSport(''); setFilterGender(''); setFilterEvent(''); };
@@ -456,6 +576,13 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
                     <td data-label="Action">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                         <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
+                        <button
+                          type="button"
+                          className="asp-btn-download"
+                          onClick={() => handleDownloadPdf(reg)}
+                        >
+                          <FaFilePdf /> PDF
+                        </button>
                         {reg.regId && (
                           <>
                             <button
@@ -584,6 +711,13 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
               )}
 
               <div className="asp-form-actions">
+                <button
+                  type="button"
+                  className="asp-btn-download"
+                  onClick={() => handleDownloadPdf(selectedStudent)}
+                >
+                  <FaFilePdf /> Download PDF
+                </button>
                 {selectedStudent.regId && (
                   <>
                     <button

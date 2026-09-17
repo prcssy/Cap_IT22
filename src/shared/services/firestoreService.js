@@ -14,6 +14,7 @@ import {
   serverTimestamp,
   increment,
   onSnapshot,
+  runTransaction,
 } from 'firebase/firestore';
 import {
   getStorage,
@@ -22,6 +23,51 @@ import {
   getDownloadURL,
 } from 'firebase/storage';
 import { db, auth } from '../firebase';
+
+/**
+ * Shared per-level/per-doc "list" fields (matchSchedules/{level}.matches,
+ * matchRecords/{level}.records, scheduleRequests/all.requests,
+ * teamRankings/{level}.points, ...) used to be read with a plain `getDoc`,
+ * merged in JS, then written back with `setDoc(..., {merge:true})`. Two
+ * staff members editing the same doc within a few hundred ms of each other
+ * (e.g. two moderators each confirming a different match at the same level)
+ * could each read the same pre-write snapshot and have one write silently
+ * clobber the other's — a classic lost update.
+ *
+ * `runTransaction` fixes this: `updater` is re-run against a fresh read
+ * every time Firestore detects the doc changed between this transaction's
+ * read and its commit, so the merge is always computed against current
+ * data, never a stale snapshot. Every read-modify-write helper below is
+ * built on this instead of a bare getDoc+setDoc pair.
+ */
+async function updateDocFieldViaTransaction(collectionName, docId, fieldName, defaultValue, updater) {
+  const ref = doc(db, collectionName, docId);
+  return runTransaction(db, async (tx) => {
+    const snap = await tx.get(ref);
+    const current = snap.exists() ? (snap.data()[fieldName] ?? defaultValue) : defaultValue;
+    const next = updater(current);
+    tx.set(ref, { [fieldName]: next, updatedAt: serverTimestamp() }, { merge: true });
+    return next;
+  });
+}
+
+/**
+ * Collapses concurrent calls for the same key into a single in-flight
+ * request — e.g. two components mounting at nearly the same moment (a
+ * page's own summary fetch and an embedded child component both reading
+ * `registrations`, or several screens each calling
+ * `getSportsTeamsConfig('college')` on their own mount) cause one network
+ * round trip instead of one each. The entry is removed the instant the
+ * request settles — success or failure — so nothing is ever served stale;
+ * only genuinely-simultaneous callers share a result.
+ */
+const inFlightReads = new Map();
+function dedupeRead(key, fetcher) {
+  if (inFlightReads.has(key)) return inFlightReads.get(key);
+  const promise = fetcher().finally(() => inFlightReads.delete(key));
+  inFlightReads.set(key, promise);
+  return promise;
+}
 
 /* ─────────────────────────────────────────────
    Registration events
@@ -503,30 +549,64 @@ export async function getMyRegistrations(uid) {
     .sort((a, b) => (b.createdAt?.toMillis?.() ?? 0) - (a.createdAt?.toMillis?.() ?? 0));
 }
 
+/**
+ * Every registration doc, staff-only (AdminSchedulePage's Registration tab,
+ * the embedded StudentRegistrationDetails table, SuperAdminPage's
+ * analytics all need the full collection). Previously each of those 3
+ * places called `getDocs(collection(db,'registrations'))` inline, bypassing
+ * this file — that meant the same full-collection read could fire two or
+ * three times for the exact same page load. Routing it through here and
+ * `dedupeRead` collapses those into one request when they overlap.
+ */
+export async function getAllRegistrations() {
+  return dedupeRead('allRegistrations', async () => {
+    if (!db) {
+      console.warn('Firestore not initialized. Cannot load registrations.');
+      return [];
+    }
+    const snap = await getDocs(collection(db, 'registrations'));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  });
+}
+
+/** Every user account doc — same duplicate-read story as getAllRegistrations. */
+export async function getAllUsers() {
+  return dedupeRead('allUsers', async () => {
+    if (!db) {
+      console.warn('Firestore not initialized. Cannot load users.');
+      return [];
+    }
+    const snap = await getDocs(collection(db, 'users'));
+    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  });
+}
+
 /* ─────────────────────────────────────────────
    Sports & Teams management (per school level)
    Stored at: sportsTeamsConfig/{level}
    level: 'elementary' | 'highSchool' | 'college'
 ───────────────────────────────────────────── */
 export async function getSportsTeamsConfig(level) {
-  if (!db) {
-    console.warn('Firestore not initialized. Cannot load sports/teams config.');
-    return { sports: [], teams: [] };
-  }
+  return dedupeRead(`sportsTeamsConfig:${level}`, async () => {
+    if (!db) {
+      console.warn('Firestore not initialized. Cannot load sports/teams config.');
+      return { sports: [], teams: [] };
+    }
 
-  const configRef = doc(db, 'sportsTeamsConfig', level);
-  const snapshot = await getDoc(configRef);
+    const configRef = doc(db, 'sportsTeamsConfig', level);
+    const snapshot = await getDoc(configRef);
 
-  if (!snapshot.exists()) {
-    return { sports: [], teams: [] };
-  }
+    if (!snapshot.exists()) {
+      return { sports: [], teams: [] };
+    }
 
-  const data = snapshot.data();
+    const data = snapshot.data();
 
-  return {
-    sports: data.sports || [],
-    teams: data.teams || [],
-  };
+    return {
+      sports: data.sports || [],
+      teams: data.teams || [],
+    };
+  });
 }
 
 /**
@@ -615,14 +695,16 @@ export async function saveTeamsConfig(level, teams, actorRole) {
    }
 ───────────────────────────────────────────── */
 export async function getMatchSchedules(level) {
-  if (!db) {
-    console.warn('Firestore not initialized. Cannot load match schedules.');
-    return [];
-  }
-  const configRef = doc(db, 'matchSchedules', level);
-  const snapshot  = await getDoc(configRef);
-  if (!snapshot.exists()) return [];
-  return snapshot.data().matches || [];
+  return dedupeRead(`matchSchedules:${level}`, async () => {
+    if (!db) {
+      console.warn('Firestore not initialized. Cannot load match schedules.');
+      return [];
+    }
+    const configRef = doc(db, 'matchSchedules', level);
+    const snapshot  = await getDoc(configRef);
+    if (!snapshot.exists()) return [];
+    return snapshot.data().matches || [];
+  });
 }
 
 /**
@@ -661,21 +743,13 @@ export function subscribeMatchSchedules(level, callback) {
 export async function saveGeneratedSchedule(level, matches, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const configRef = doc(db, 'matchSchedules', level);
-  const existing  = await getMatchSchedules(level);
-  const sport      = matches[0]?.sport;
-  const category   = matches[0]?.category;
+  const sport    = matches[0]?.sport;
+  const category = matches[0]?.category;
 
-  const merged = [
+  const merged = await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (existing) => [
     ...existing.filter(m => !(m.sport === sport && m.category === category)),
     ...matches,
-  ];
-
-  await setDoc(
-    configRef,
-    { matches: merged, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  ]);
 
   logActivity({
     actorRole,
@@ -698,16 +772,9 @@ export async function saveGeneratedSchedule(level, matches, actorRole) {
 async function deleteMatchRecordsByScheduleIds(level, scheduleIds) {
   if (!scheduleIds.length) return;
   const ids = new Set(scheduleIds.map(String));
-  const existing = await getMatchRecords(level);
-  const remaining = existing.filter(r => !r.scheduleId || !ids.has(String(r.scheduleId)));
-  if (remaining.length === existing.length) return;
-
-  const configRef = doc(db, 'matchRecords', level);
-  await setDoc(
-    configRef,
-    { records: remaining, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  await updateDocFieldViaTransaction('matchRecords', level, 'records', [], (existing) => (
+    existing.filter(r => !r.scheduleId || !ids.has(String(r.scheduleId)))
+  ));
 }
 
 /**
@@ -720,18 +787,14 @@ async function deleteMatchRecordsByScheduleIds(level, scheduleIds) {
 export async function deleteScheduleSet(level, sport, category, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const existing = await getMatchSchedules(level);
-  const removed = existing.filter(m => m.sport === sport && m.category === category);
-  const remaining = existing.filter(
-    m => !(m.sport === sport && m.category === category)
-  );
-
-  const configRef = doc(db, 'matchSchedules', level);
-  await setDoc(
-    configRef,
-    { matches: remaining, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  // Set (possibly more than once, if the transaction retries after a
+  // concurrent write) by the updater below — only the winning attempt's
+  // value matters once updateDocFieldViaTransaction resolves.
+  let removed = [];
+  const remaining = await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (existing) => {
+    removed = existing.filter(m => m.sport === sport && m.category === category);
+    return existing.filter(m => !(m.sport === sport && m.category === category));
+  });
 
   await deleteMatchRecordsByScheduleIds(level, removed.map(m => m.id));
   await deleteScheduleRequestsByIds(removed.map(m => m.requestId).filter(Boolean));
@@ -755,18 +818,15 @@ export async function deleteScheduleSet(level, sport, category, actorRole) {
 export async function upsertMatchSchedule(level, match, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const existing = await getMatchSchedules(level);
-  const idx = existing.findIndex(m => m.id === match.id);
-  const merged = idx >= 0
-    ? existing.map(m => (m.id === match.id ? match : m))
-    : [...existing, match];
-
-  const configRef = doc(db, 'matchSchedules', level);
-  await setDoc(
-    configRef,
-    { matches: merged, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  // Set (possibly more than once on a transaction retry) inside the
+  // updater — only the winning attempt's value matters for the log below.
+  let idx = -1;
+  const merged = await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (existing) => {
+    idx = existing.findIndex(m => m.id === match.id);
+    return idx >= 0
+      ? existing.map(m => (m.id === match.id ? match : m))
+      : [...existing, match];
+  });
 
   logActivity({
     actorRole,
@@ -791,16 +851,11 @@ export async function upsertMatchSchedule(level, match, actorRole) {
 export async function deleteMatchSchedule(level, matchId, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const existing = await getMatchSchedules(level);
-  const removed = existing.find(m => m.id === matchId);
-  const remaining = existing.filter(m => m.id !== matchId);
-
-  const configRef = doc(db, 'matchSchedules', level);
-  await setDoc(
-    configRef,
-    { matches: remaining, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  let removed = null;
+  const remaining = await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (existing) => {
+    removed = existing.find(m => m.id === matchId);
+    return existing.filter(m => m.id !== matchId);
+  });
 
   await deleteMatchRecordsByScheduleIds(level, [matchId]);
   if (removed?.requestId) {
@@ -879,7 +934,9 @@ export function subscribeScheduleRequests(callback) {
 export async function createScheduleRequest(request, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const existing = await getScheduleRequests();
+  // Minting the id is just local generation (no network round trip), so it
+  // can happen before the transaction — only the array merge itself needs
+  // to run against a fresh read.
   const newRequest = {
     id: doc(collection(db, 'scheduleRequests')).id,
     status: 'pending',
@@ -887,12 +944,10 @@ export async function createScheduleRequest(request, actorRole) {
     ...request,
   };
 
-  const configRef = doc(db, 'scheduleRequests', 'all');
-  await setDoc(
-    configRef,
-    { requests: [...existing, newRequest], updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  await updateDocFieldViaTransaction('scheduleRequests', 'all', 'requests', [], (existing) => [
+    ...existing,
+    newRequest,
+  ]);
 
   logActivity({
     actorRole,
@@ -915,18 +970,13 @@ export async function createScheduleRequest(request, actorRole) {
 export async function updateScheduleRequest(requestId, patch, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const existing = await getScheduleRequests();
-  const target = existing.find((r) => r.id === requestId);
-  const merged = existing.map((r) => (
-    r.id === requestId ? { ...r, ...patch, resolvedAt: Date.now() } : r
-  ));
-
-  const configRef = doc(db, 'scheduleRequests', 'all');
-  await setDoc(
-    configRef,
-    { requests: merged, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  let target = null;
+  const merged = await updateDocFieldViaTransaction('scheduleRequests', 'all', 'requests', [], (existing) => {
+    target = existing.find((r) => r.id === requestId);
+    return existing.map((r) => (
+      r.id === requestId ? { ...r, ...patch, resolvedAt: Date.now() } : r
+    ));
+  });
 
   if (patch.status === 'scheduled' || patch.status === 'declined') {
     logActivity({
@@ -963,16 +1013,9 @@ export async function deleteScheduleRequest(requestId) {
 async function deleteScheduleRequestsByIds(requestIds) {
   if (!requestIds.length) return;
   const ids = new Set(requestIds.map(String));
-  const existing = await getScheduleRequests();
-  const remaining = existing.filter(r => !ids.has(String(r.id)));
-  if (remaining.length === existing.length) return;
-
-  const configRef = doc(db, 'scheduleRequests', 'all');
-  await setDoc(
-    configRef,
-    { requests: remaining, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  await updateDocFieldViaTransaction('scheduleRequests', 'all', 'requests', [], (existing) => (
+    existing.filter(r => !ids.has(String(r.id)))
+  ));
 }
 
 /* ─────────────────────────────────────────────
@@ -989,14 +1032,16 @@ async function deleteScheduleRequestsByIds(requestIds) {
    time someone picks one; it never rewrites existing matches.
 ───────────────────────────────────────────── */
 export async function getVenues() {
-  if (!db) {
-    console.warn('Firestore not initialized. Cannot load venues.');
-    return [];
-  }
-  const configRef = doc(db, 'venuesConfig', 'global');
-  const snapshot = await getDoc(configRef);
-  if (!snapshot.exists()) return [];
-  return snapshot.data().venues || [];
+  return dedupeRead('venues', async () => {
+    if (!db) {
+      console.warn('Firestore not initialized. Cannot load venues.');
+      return [];
+    }
+    const configRef = doc(db, 'venuesConfig', 'global');
+    const snapshot = await getDoc(configRef);
+    if (!snapshot.exists()) return [];
+    return snapshot.data().venues || [];
+  });
 }
 
 export async function saveVenues(venues, actorRole) {
@@ -1059,14 +1104,16 @@ export async function getAllMatchSchedules() {
    }
 ───────────────────────────────────────────── */
 export async function getMatchRecords(level) {
-  if (!db) {
-    console.warn('Firestore not initialized. Cannot load match records.');
-    return [];
-  }
-  const configRef = doc(db, 'matchRecords', level);
-  const snapshot = await getDoc(configRef);
-  if (!snapshot.exists()) return [];
-  return snapshot.data().records || [];
+  return dedupeRead(`matchRecords:${level}`, async () => {
+    if (!db) {
+      console.warn('Firestore not initialized. Cannot load match records.');
+      return [];
+    }
+    const configRef = doc(db, 'matchRecords', level);
+    const snapshot = await getDoc(configRef);
+    if (!snapshot.exists()) return [];
+    return snapshot.data().records || [];
+  });
 }
 
 /**
@@ -1115,28 +1162,28 @@ async function advanceBracketWinner(level, record) {
 
     const placeholder = `Winner ${source.matchLabel}`;
     const winnerLogo = record.winner === 'A' ? (record.teamA?.logo || null) : (record.teamB?.logo || null);
-    let changed = false;
-    const updated = schedules.map((m) => {
-      if (m.sport !== source.sport || m.category !== source.category) return m;
-      const hitA = m.teamA === placeholder;
-      const hitB = m.teamB === placeholder;
-      if (!hitA && !hitB) return m;
-      changed = true;
-      return {
-        ...m,
-        teamA: hitA ? winnerName : m.teamA,
-        teamALogo: hitA ? winnerLogo : m.teamALogo,
-        teamB: hitB ? winnerName : m.teamB,
-        teamBLogo: hitB ? winnerLogo : m.teamBLogo,
-      };
-    });
-    if (!changed) return;
 
-    await setDoc(
-      doc(db, 'matchSchedules', level),
-      { matches: updated, updatedAt: serverTimestamp() },
-      { merge: true },
-    );
+    // Re-checked against a fresh read inside the transaction below: the
+    // `schedules` snapshot above was only used to decide whether it's worth
+    // attempting this at all (bracket match with a real winner and a
+    // matching placeholder somewhere) — the actual find-and-replace runs
+    // again on whatever the doc currently holds when the transaction
+    // commits, in case another confirmed match changed it in the meantime.
+    await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (current) => (
+      current.map((m) => {
+        if (m.sport !== source.sport || m.category !== source.category) return m;
+        const hitA = m.teamA === placeholder;
+        const hitB = m.teamB === placeholder;
+        if (!hitA && !hitB) return m;
+        return {
+          ...m,
+          teamA: hitA ? winnerName : m.teamA,
+          teamALogo: hitA ? winnerLogo : m.teamALogo,
+          teamB: hitB ? winnerName : m.teamB,
+          teamBLogo: hitB ? winnerLogo : m.teamBLogo,
+        };
+      })
+    ));
   } catch (error) {
     console.warn('Could not advance bracket winner:', error);
   }
@@ -1148,18 +1195,12 @@ async function advanceBracketWinner(level, record) {
 export async function upsertMatchRecord(level, record, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const existing = await getMatchRecords(level);
-  const idx = existing.findIndex(r => r.id === record.id);
-  const merged = idx >= 0
-    ? existing.map(r => (r.id === record.id ? record : r))
-    : [...existing, record];
-
-  const configRef = doc(db, 'matchRecords', level);
-  await setDoc(
-    configRef,
-    { records: merged, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  const merged = await updateDocFieldViaTransaction('matchRecords', level, 'records', [], (existing) => {
+    const idx = existing.findIndex(r => r.id === record.id);
+    return idx >= 0
+      ? existing.map(r => (r.id === record.id ? record : r))
+      : [...existing, record];
+  });
 
   await advanceBracketWinner(level, record);
 
@@ -1182,16 +1223,11 @@ export async function upsertMatchRecord(level, record, actorRole) {
 export async function deleteMatchRecord(level, recordId, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const existing = await getMatchRecords(level);
-  const removed = existing.find(r => r.id === recordId);
-  const remaining = existing.filter(r => r.id !== recordId);
-
-  const configRef = doc(db, 'matchRecords', level);
-  await setDoc(
-    configRef,
-    { records: remaining, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  let removed = null;
+  const remaining = await updateDocFieldViaTransaction('matchRecords', level, 'records', [], (existing) => {
+    removed = existing.find(r => r.id === recordId);
+    return existing.filter(r => r.id !== recordId);
+  });
 
   logActivity({
     actorRole,
@@ -1214,25 +1250,29 @@ export async function deleteMatchRecord(level, recordId, actorRole) {
    Admin's Ranking page can eventually read the same source.
 ───────────────────────────────────────────── */
 export async function getTeamRankings(level) {
-  if (!db) {
-    console.warn('Firestore not initialized. Cannot load team rankings.');
-    return {};
-  }
-  const configRef = doc(db, 'teamRankings', level);
-  const snapshot = await getDoc(configRef);
-  if (!snapshot.exists()) return {};
-  return snapshot.data().points || {};
+  return dedupeRead(`teamRankings:${level}`, async () => {
+    if (!db) {
+      console.warn('Firestore not initialized. Cannot load team rankings.');
+      return {};
+    }
+    const configRef = doc(db, 'teamRankings', level);
+    const snapshot = await getDoc(configRef);
+    if (!snapshot.exists()) return {};
+    return snapshot.data().points || {};
+  });
 }
 
-export async function saveTeamRankings(level, points) {
+/**
+ * `updater(currentPoints) => nextPoints` runs against whatever the doc
+ * currently holds at commit time (not a value the caller read earlier),
+ * so two moderators confirming different matches at the same level around
+ * the same moment each get their own scope/team keys merged in rather than
+ * one's write silently overwriting the other's. Returns the merged
+ * `points` map that was written.
+ */
+export async function updateTeamRankings(level, updater) {
   if (!db) throw new Error('Firestore not initialized.');
-
-  const configRef = doc(db, 'teamRankings', level);
-  await setDoc(
-    configRef,
-    { points, updatedAt: serverTimestamp() },
-    { merge: true }
-  );
+  return updateDocFieldViaTransaction('teamRankings', level, 'points', {}, updater);
 }
 
 /* ─────────────────────────────────────────────

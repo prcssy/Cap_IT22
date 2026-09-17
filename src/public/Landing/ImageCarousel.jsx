@@ -19,7 +19,7 @@ export default function ImageCarousel({ images = [], duration = 20 }) {
         <div className="carousel-row">
           {doubled.map((src, idx) => (
             <div className="carousel-slide" key={`r1-${idx}`}>
-              <img src={src} alt={`highlight-${idx}`} />
+              <img src={src} alt={`highlight-${idx}`} loading="lazy" decoding="async" />
             </div>
           ))}
         </div>
@@ -28,7 +28,7 @@ export default function ImageCarousel({ images = [], duration = 20 }) {
         <div className="carousel-row carousel-row--offset">
           {doubled.map((src, idx) => (
             <div className="carousel-slide" key={`r2-${idx}`}>
-              <img src={src} alt={`highlight-2-${idx}`} />
+              <img src={src} alt={`highlight-2-${idx}`} loading="lazy" decoding="async" />
             </div>
           ))}
         </div>

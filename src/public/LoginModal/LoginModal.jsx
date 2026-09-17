@@ -6,6 +6,25 @@ import { FaTimes, FaEye, FaEyeSlash, FaArrowLeft } from 'react-icons/fa';
 import { findStaffAllowlistEntry } from '../../shared/services/firestoreService';
 import './LoginModal.css';
 
+// Every one of these is a React.lazy() page in App.jsx, so the very first
+// time a session visits one, the browser has to fetch its JS chunk before
+// anything can render — normally invisible, but landing right on login
+// (the very first authenticated navigation) turned into a new, visible
+// "why is this taking a while" delay that didn't exist before route
+// splitting. login() itself already takes a moment (Firebase Auth +
+// Firestore role lookups), so kicking these off in parallel with that,
+// rather than only after it resolves and we know which one we actually
+// need, means the right chunk is usually already loaded (or loading) by
+// the time we know where to redirect — dynamic import() calls for the same
+// module are deduped/cached by the browser, so prefetching all 4 possible
+// destinations costs nothing extra once the real one is needed.
+function prefetchPostLoginRoutes() {
+  import('../../student/DashboardPage').catch(() => {});
+  import('../../admin/AdminSchedulePage').catch(() => {});
+  import('../../moderator/ModeratorPage').catch(() => {});
+  import('../../superadmin/SuperAdminPage').catch(() => {});
+}
+
 function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification }) {
   const { logo } = useContext(BrandingContext);
   const [email, setEmail] = useState('');
@@ -19,6 +38,7 @@ function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification 
     e.preventDefault();
     setSubmitting(true);
     setNeedsVerification(false);
+    prefetchPostLoginRoutes();
     try {
       const { role } = await onLogin(email, password);
       onSuccess(role);

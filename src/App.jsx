@@ -1,35 +1,47 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './shared/context/AuthContext';
 import { BrandingProvider } from './shared/context/BrandingContext';
+import { ScheduleRequestsProvider } from './shared/context/ScheduleRequestsContext';
 import { SidebarProvider } from './shared/components/Sidebar/SidebarContext';
 import PublicLayout from './public/PublicLayout';
 import AuthenticatedLayout from './shared/layouts/AuthenticatedLayout';
-import DashboardPage from './student/DashboardPage';
-import AdminSchedulePage from './admin/AdminSchedulePage';
-import ModeratorPage from './moderator/ModeratorPage';
-import SuperAdminPage from './superadmin/SuperAdminPage';
 import NotFoundPage from './shared/NotFoundPage';
-import ProfilePage from './student/ProfilePage';
 import ProtectedRoute from './shared/components/ProtectedRoute';
 import LoginModal from './public/LoginModal/LoginModal';
-import RegistrationPage from './student/RegistrationPage';
-import TeamAndSportsPage from './student/TeamAndSportsPage';
-import MatchSchedulesPage from './student/MatchSchedulesPage';
-import RankingPage from './student/RankingPage';
+
+// Route-level code splitting: these used to be static imports, which meant
+// every visitor's very first page load — even just the public landing page
+// or a student's dashboard — downloaded the entire app in one ~2MB bundle,
+// including the Admin console, Moderator match-entry tooling, and Super
+// Admin analytics they may never open. Each of these now only loads once
+// its own route is actually visited.
+const DashboardPage = lazy(() => import('./student/DashboardPage'));
+const AdminSchedulePage = lazy(() => import('./admin/AdminSchedulePage'));
+const ModeratorPage = lazy(() => import('./moderator/ModeratorPage'));
+const SuperAdminPage = lazy(() => import('./superadmin/SuperAdminPage'));
+const ProfilePage = lazy(() => import('./student/ProfilePage'));
+const RegistrationPage = lazy(() => import('./student/RegistrationPage'));
+const TeamAndSportsPage = lazy(() => import('./student/TeamAndSportsPage'));
+const MatchSchedulesPage = lazy(() => import('./student/MatchSchedulesPage'));
+const RankingPage = lazy(() => import('./student/RankingPage'));
 
 function App() {
   return (
     <BrandingProvider>
       <AuthProvider>
         <BrowserRouter>
+          <Suspense fallback={<div>Loading...</div>}>
           <Routes>
             <Route path="/" element={<PublicLayout />} />
 
             <Route
               element={
-                <SidebarProvider>
-                  <AuthenticatedLayout />
-                </SidebarProvider>
+                <ScheduleRequestsProvider>
+                  <SidebarProvider>
+                    <AuthenticatedLayout />
+                  </SidebarProvider>
+                </ScheduleRequestsProvider>
               }
             >
               <Route
@@ -122,6 +134,7 @@ function App() {
 
             <Route path="*" element={<NotFoundPage />} />
           </Routes>
+          </Suspense>
           <LoginModal />
         </BrowserRouter>
       </AuthProvider>

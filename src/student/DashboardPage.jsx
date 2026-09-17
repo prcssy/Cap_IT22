@@ -4,7 +4,7 @@ import './DashboardPage.css';
 import Contact from '../public/Landing/Contact/Contact';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import LevelTabs from '../shared/components/LevelTabs';
-import { getMatchSchedules, subscribeMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '../shared/services/firestoreService';
+import { subscribeMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '../shared/services/firestoreService';
 
 /* ═══════════════════════════════════════════
    LIVE MATCH STATUS
@@ -497,17 +497,20 @@ export default function DashboardPage() {
 
   const levelKey = LEVEL_KEY_BY_LABEL[levelLabel];
 
-  // Reload whenever the selected level changes
+  // Reload whenever the selected level changes (or the 30s poll below
+  // ticks). `matches` itself is NOT fetched here — the live listener right
+  // below already keeps it current from the moment it subscribes (onSnapshot
+  // fires immediately with the current data, then again on every change),
+  // so re-fetching schedules here on every poll would just be the exact
+  // same read the listener already made, twice over for every user, every
+  // 30 seconds.
   useEffect(() => {
     let cancelled = false;
     setLoading(true);
     setLoadError('');
     (async () => {
       try {
-        const [scheduleMatches, cfg] = await Promise.all([
-          getMatchSchedules(levelKey),
-          getSportsTeamsConfig(levelKey),
-        ]);
+        const cfg = await getSportsTeamsConfig(levelKey);
         if (cancelled) return;
         let matchRecords = [];
         try {
@@ -517,16 +520,14 @@ export default function DashboardPage() {
           // because of permissions, an older service build, or a transient error.
           console.warn('Finished match records unavailable:', recordError);
         }
-        setMatches(scheduleMatches);
         setRecords(matchRecords || []);
         const byName = {};
         (cfg.teams || []).forEach(t => { byName[t.name] = t; });
         setTeamsByName(byName);
         setAvailableSports((cfg.sports || []).map(sport => (sport.name || '').trim().toUpperCase()).filter(Boolean).sort());
       } catch (e) {
-        console.error('Failed to load matches for dashboard:', e);
+        console.error('Failed to load dashboard data:', e);
         if (!cancelled) {
-          setMatches([]);
           setRecords([]);
           setTeamsByName({});
           setAvailableSports([]);
@@ -539,9 +540,9 @@ export default function DashboardPage() {
     return () => { cancelled = true; };
   }, [levelKey, refreshKey]);
 
-  // Live on top of the fetch above — an admin deleting/editing a schedule
-  // (or fulfilling a moderator's request) should drop off the dashboard
-  // right away rather than waiting for the next 30s poll.
+  // The sole source of `matches` — an admin deleting/editing a schedule (or
+  // fulfilling a moderator's request) drops off the dashboard right away
+  // rather than waiting for the next 30s poll.
   useEffect(() => {
     const unsubscribe = subscribeMatchSchedules(levelKey, setMatches);
     return unsubscribe;

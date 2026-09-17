@@ -13,13 +13,13 @@ import {
   getMatchRecords,
   upsertMatchRecord,
   getTeamRankings,
-  saveTeamRankings,
+  updateTeamRankings,
   createScheduleRequest,
-  subscribeScheduleRequests,
 } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { ScheduleRequestsContext } from '../shared/context/ScheduleRequestsContext';
 
 /* ═══════════════════════════════════════════
    CONSTANTS
@@ -1656,15 +1656,14 @@ export default function ModeratorPage() {
   const [requestTeamBId, setRequestTeamBId] = useState('');
   const [requestReason, setRequestReason] = useState('');
   const [requestSubmitting, setRequestSubmitting] = useState(false);
-  const [allScheduleRequests, setAllScheduleRequests] = useState([]);
   const [requestToast, setRequestToast] = useState(null);
 
-  // Live so a newly-sent request (or the admin resolving one) shows up
-  // in "Your requests" without needing a page refresh.
-  useEffect(() => {
-    const unsubscribe = subscribeScheduleRequests(setAllScheduleRequests);
-    return unsubscribe;
-  }, []);
+  // Sourced from the one shared listener ScheduleRequestsProvider owns for
+  // the whole authenticated session (see App.jsx) — a newly-sent request
+  // (or the admin resolving one) still shows up in "Your requests" without
+  // a page refresh, just without this page opening its own second
+  // `onSnapshot` on the same doc.
+  const { scheduleRequests: allScheduleRequests } = useContext(ScheduleRequestsContext);
 
   const myScheduleRequests = useMemo(() => {
     const email = (currentUser?.email || '').toLowerCase();
@@ -2288,10 +2287,15 @@ export default function ModeratorPage() {
       setRecords(merged);
 
       const confirmScopeKey = rankingScopeKey(pending.sportName, pending.category);
-      const scope = { ...(rankings[confirmScopeKey] || {}) };
-      cTeams.forEach((t) => { scope[t.name] = round4(t.finalPoints); });
-      const newRankings = { ...rankings, [confirmScopeKey]: scope };
-      await saveTeamRankings(level, newRankings);
+      // Runs against whatever teamRankings/{level} holds at commit time
+      // (not the `rankings` state read earlier), so a different moderator
+      // confirming a different match/scope at the same moment can't have
+      // their write silently overwritten by this one or vice versa.
+      const newRankings = await updateTeamRankings(level, (current) => {
+        const scope = { ...(current[confirmScopeKey] || {}) };
+        cTeams.forEach((t) => { scope[t.name] = round4(t.finalPoints); });
+        return { ...current, [confirmScopeKey]: scope };
+      });
       setRankings(newRankings);
 
       setPending(null);
@@ -2394,15 +2398,14 @@ export default function ModeratorPage() {
     setRecords(merged);
 
     const editScopeKey = rankingScopeKey(updated.sportName, updated.category);
-    const newRankings = {
-      ...rankings,
+    const newRankings = await updateTeamRankings(level, (current) => ({
+      ...current,
       [editScopeKey]: {
-        ...(rankings[editScopeKey] || {}),
+        ...(current[editScopeKey] || {}),
         [updated.teamA.name]: updated.teamA.finalPoints,
         [updated.teamB.name]: updated.teamB.finalPoints,
       },
-    };
-    await saveTeamRankings(level, newRankings);
+    }));
     setRankings(newRankings);
 
     setEditingId(null);

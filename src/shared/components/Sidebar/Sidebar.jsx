@@ -1,9 +1,9 @@
-import { useContext, useState, useEffect } from "react";
+import { useContext } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { FaBars, FaTimes, FaUserCircle, FaHome, FaFlag, FaEdit, FaCalendarAlt, FaMedal, FaShieldAlt, FaUserShield, FaChartPie } from "react-icons/fa";
 import { SidebarContext } from "./SidebarContext";
 import { AuthContext } from "../../context/AuthContext";
-import { subscribeScheduleRequests } from "../../services/firestoreService";
+import { ScheduleRequestsContext } from "../../context/ScheduleRequestsContext";
 import "./Sidebar.css";
 
 function Sidebar() {
@@ -13,18 +13,10 @@ function Sidebar() {
   const { openAuthModal = () => {}, currentUser, userProfile, logout } = useContext(AuthContext);
 
   // Live pending-request count so an admin sees a schedule request was
-  // filed even before opening the Admin Panel itself.
-  const [pendingRequestCount, setPendingRequestCount] = useState(0);
-  useEffect(() => {
-    // Not rendered at all when the viewer isn't an admin (see the Admin
-    // Panel button/link below), so a stale count sitting unused in state
-    // is harmless — no need to reset it back to 0 here.
-    if (!userProfile?.isAdmin) return;
-    const unsubscribe = subscribeScheduleRequests((requests) => {
-      setPendingRequestCount(requests.filter((r) => r.status === 'pending').length);
-    });
-    return unsubscribe;
-  }, [userProfile?.isAdmin]);
+  // filed even before opening the Admin Panel itself. Sourced from the one
+  // shared listener ScheduleRequestsProvider owns for the whole
+  // authenticated session, instead of opening a second one here.
+  const { pendingRequestCount } = useContext(ScheduleRequestsContext);
 
   return (
     <>

@@ -1,4 +1,4 @@
-import { createContext, useEffect, useRef, useState } from 'react';
+import { createContext, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { auth, db } from '../firebase';
 import {
   onAuthStateChanged,
@@ -49,6 +49,43 @@ export const AuthContext = createContext({
   logout: async () => {},
 });
 
+/**
+ * Check the "superadmins", "admins", and "moderators" Firestore collections
+ * (document ID = lowercase email) to resolve a staff role for this email.
+ * Returns 'superadmin' | 'admin' | 'moderator' | 'student'.
+ * This is the single source of truth for role/security checks — a user
+ * cannot claim a privileged role unless their email exists in Firestore.
+ *
+ * Module-level rather than defined inside AuthProvider: it only ever reads
+ * the module-scoped `db`, never any component state, so keeping it outside
+ * means `login`/`signup` below can depend on a reference that never changes,
+ * instead of a fresh closure every render.
+ */
+async function resolveStaffRole(email) {
+  if (!db || !email) return 'student';
+  const lower = email.toLowerCase();
+  // The 3 checks are independent reads (different docs, different
+  // collections) — firing them in parallel instead of one-at-a-time in a
+  // for-loop turns "up to 3 sequential round trips" into 1, which matters
+  // a lot here since this runs at least twice on every login (once inside
+  // login() itself, once again from the onAuthStateChanged handler below).
+  // Priority (superadmin > admin > moderator) is preserved by picking the
+  // highest-priority collection that came back `exists`, regardless of
+  // which promise happened to settle first.
+  const results = await Promise.all(
+    ROLE_COLLECTIONS.map(async ({ role, collection }) => {
+      try {
+        const snap = await getDoc(doc(db, collection, lower));
+        return snap.exists() ? role : null;
+      } catch (error) {
+        console.warn(`Failed to check ${collection} status:`, error);
+        return null;
+      }
+    })
+  );
+  return results.find(Boolean) || 'student';
+}
+
 export function AuthProvider({ children }) {
   const [authModal, setAuthModal] = useState({
     isOpen: false,
@@ -68,27 +105,6 @@ export function AuthProvider({ children }) {
   // which login() then immediately signs back out) can detect it's been
   // superseded and skip overwriting the newer/correct state with stale data.
   const authCallIdRef = useRef(0);
-
-  /**
-   * Check the "superadmins", "admins", and "moderators" Firestore collections
-   * (document ID = lowercase email) to resolve a staff role for this email.
-   * Returns 'superadmin' | 'admin' | 'moderator' | 'student'.
-   * This is the single source of truth for role/security checks — a user
-   * cannot claim a privileged role unless their email exists in Firestore.
-   */
-  const resolveStaffRole = async (email) => {
-    if (!db || !email) return 'student';
-    const lower = email.toLowerCase();
-    for (const { role, collection } of ROLE_COLLECTIONS) {
-      try {
-        const snap = await getDoc(doc(db, collection, lower));
-        if (snap.exists()) return role;
-      } catch (error) {
-        console.warn(`Failed to check ${collection} status:`, error);
-      }
-    }
-    return 'student';
-  };
 
   useEffect(() => {
     if (!auth) {
@@ -205,17 +221,17 @@ export function AuthProvider({ children }) {
     });
   }, [staffDocs, currentUser]);
 
-  const openAuthModal = (screen = 'login') => {
+  const openAuthModal = useCallback((screen = 'login') => {
     setAuthModal({ isOpen: true, screen });
-  };
+  }, []);
 
-  const closeAuthModal = () => {
+  const closeAuthModal = useCallback(() => {
     setAuthModal({ isOpen: false, screen: 'login' });
-  };
+  }, []);
 
-  const switchScreen = (screen) => {
+  const switchScreen = useCallback((screen) => {
     setAuthModal({ isOpen: true, screen });
-  };
+  }, []);
 
   /**
    * @param {string} email
@@ -225,7 +241,7 @@ export function AuthProvider({ children }) {
    * The person never has to pick a role — the system already knows it.
    * Returns { user, role }.
    */
-  const login = async (email, password) => {
+  const login = useCallback(async (email, password) => {
     if (!auth) throw new Error('Firebase Auth not configured. Please add Firebase credentials to .env');
     const credential = await signInWithEmailAndPassword(auth, email, password);
     const user = credential.user;
@@ -243,9 +259,13 @@ export function AuthProvider({ children }) {
     }
 
     const resolvedRole = await resolveStaffRole(user.email);
-    await logActivity({ actorRole: resolvedRole, type: 'Login', details: `${user.email} logged in` });
+    // Fire-and-forget, like every other logActivity call in the app
+    // (logActivity already swallows its own errors) — the person shouldn't
+    // wait an extra network round trip for an audit-log write before they
+    // see the post-login redirect.
+    logActivity({ actorRole: resolvedRole, type: 'Login', details: `${user.email} logged in` });
     return { user, role: resolvedRole };
-  };
+  }, []);
 
   /**
    * @param {string} name
@@ -254,7 +274,7 @@ export function AuthProvider({ children }) {
    * @param {object} [extra] Optional player/student details captured at sign-up:
    *   { gender, gradeLevel, section }
    */
-  const signup = async (name, email, password, extra = {}) => {
+  const signup = useCallback(async (name, email, password, extra = {}) => {
     if (!auth) throw new Error('Firebase Auth not configured. Please add Firebase credentials to .env');
     const credential = await createUserWithEmailAndPassword(auth, email, password);
     const user = credential.user;
@@ -301,7 +321,7 @@ export function AuthProvider({ children }) {
     await signOut(auth);
 
     return user;
-  };
+  }, []);
 
   /**
    * Signs in just long enough to re-send the gmail verification link,
@@ -309,7 +329,7 @@ export function AuthProvider({ children }) {
    * shown after a login attempt fails because the account isn't
    * verified yet.
    */
-  const resendVerificationEmail = async (email, password) => {
+  const resendVerificationEmail = useCallback(async (email, password) => {
     if (!auth) throw new Error('Firebase Auth not configured. Please add Firebase credentials to .env');
     const credential = await signInWithEmailAndPassword(auth, email, password);
     const user = credential.user;
@@ -319,50 +339,61 @@ export function AuthProvider({ children }) {
     }
     await sendEmailVerification(user);
     await signOut(auth);
-  };
+  }, []);
 
-  const resetPassword = async (email) => {
+  const resetPassword = useCallback(async (email) => {
     if (!auth) throw new Error('Firebase Auth not configured. Please add Firebase credentials to .env');
     await sendPasswordResetEmail(auth, email);
-  };
+  }, []);
 
-  const updatePassword = async (newPassword) => {
+  const updatePassword = useCallback(async (newPassword) => {
     if (!auth) throw new Error('Firebase Auth not configured. Please add Firebase credentials to .env');
     const user = auth.currentUser;
     if (!user) throw new Error('No authenticated user available. Please log in first.');
     await firebaseUpdatePassword(user, newPassword);
-  };
+  }, []);
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     if (!auth) return;
-    // Logged BEFORE signOut — logActivity needs a still-valid session to
-    // attribute the write to (auth.currentUser is cleared once signOut
-    // resolves), so it's awaited here rather than fired-and-forgotten.
-    await logActivity({ actorRole: userProfile?.role || 'student', type: 'Logout' });
+    // Called (not awaited) BEFORE signOut: logActivity reads
+    // auth.currentUser synchronously as soon as it's invoked, before its
+    // own first `await` — calling it here still captures a still-valid
+    // session even though we don't wait for the write to finish, same as
+    // every other fire-and-forget logActivity call in the app (it already
+    // swallows its own errors).
+    logActivity({ actorRole: userProfile?.role || 'student', type: 'Logout' });
     await signOut(auth);
     setUserProfile(null);
-  };
+  }, [userProfile]);
+
+  // Memoized so consumers only re-render when a field they actually read
+  // changes — without this, every AuthContext consumer app-wide (Sidebar,
+  // every page/ProtectedRoute) re-rendered on every AuthProvider state
+  // change, including ones unrelated to auth (e.g. the login modal opening).
+  const contextValue = useMemo(() => ({
+    authModal,
+    openAuthModal,
+    closeAuthModal,
+    switchScreen,
+    currentUser,
+    userProfile,
+    userRole: userProfile?.role ?? 'guest',
+    isAdmin: userProfile?.isAdmin ?? false,
+    authLoading,
+    login,
+    signup,
+    resendVerificationEmail,
+    resetPassword,
+    updatePassword,
+    logout,
+  }), [
+    authModal, openAuthModal, closeAuthModal, switchScreen,
+    currentUser, userProfile, authLoading,
+    login, signup, resendVerificationEmail, resetPassword, updatePassword, logout,
+  ]);
 
   return (
-    <AuthContext.Provider
-      value={{
-        authModal,
-        openAuthModal,
-        closeAuthModal,
-        switchScreen,
-        currentUser,
-        userProfile,
-        userRole: userProfile?.role ?? 'guest',
-        isAdmin: userProfile?.isAdmin ?? false,
-        authLoading,
-        login,
-        signup,
-        resendVerificationEmail,
-        resetPassword,
-        updatePassword,
-        logout,
-      }}
-    >
+    <AuthContext.Provider value={contextValue}>
       {children}
     </AuthContext.Provider>
   );

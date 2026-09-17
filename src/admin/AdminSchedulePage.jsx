@@ -1,17 +1,17 @@
-import { useState, useContext, useEffect, useCallback, useRef } from 'react';
+import { useState, useContext, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { ScheduleRequestsContext } from '../shared/context/ScheduleRequestsContext';
 import { useNavigate } from 'react-router-dom';
 import './AdminSchedulePage.css';
 // Recent Registrations (moved here from Super Admin) reuses SuperAdminPage's
 // sa-* table/card classes unchanged, so it looks exactly as it did there.
 import '../superadmin/SuperAdminPage.css';
 import { FaTimes, FaSync, FaUsers, FaChevronDown, FaCheck, FaEdit, FaPlus, FaMapMarkerAlt, FaTrophy, FaTrash, FaExclamationTriangle, FaDownload, FaBell, FaArrowRight } from 'react-icons/fa';
-import { jsPDF } from 'jspdf';
-import autoTable from 'jspdf-autotable';
-import { collection, getDocs } from 'firebase/firestore';
+// jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf /
+// handleDownloadBracketPdf below), not imported statically here.
 import { db } from '../shared/firebase';
-import { getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, EVENT_TYPES, getVenues, getAllMatchSchedules, subscribeScheduleRequests, updateScheduleRequest, deleteScheduleRequest } from '../shared/services/firestoreService';
+import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, EVENT_TYPES, getVenues, getAllMatchSchedules, updateScheduleRequest, deleteScheduleRequest } from '../shared/services/firestoreService';
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../shared/components/LevelTabs';
@@ -1203,7 +1203,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
      a blank draft row that slipped through, would show up as a selectable
      "team" the admin never actually added. ── */
   const norm = (s) => (s || '').trim().toLowerCase();
-  const teamsForSport = (sportName) => {
+  const teamsForSport = useCallback((sportName) => {
     if (!sportName) return [];
     return Array.from(
       new Map(
@@ -1215,9 +1215,12 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
           .map(t => [t.id || t.name, t])
       ).values()
     );
-  };
+  }, [teamsList]);
 
-  const eligibleTeams = teamsForSport(selSport?.name);
+  const eligibleTeams = useMemo(
+    () => teamsForSport(selSport?.name),
+    [teamsForSport, selSport]
+  );
 
   const handlePickSport = (opt) => {
     setSelSport(opt.raw);
@@ -1252,11 +1255,21 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
      intentionally does NOT key on level, because savedSchedules is
      already scoped to the current level's own `matchSchedules/{level}`
      document. */
-  const lockedMatches = (selSport && selCategory)
-    ? savedSchedules.filter(m => m.sport === selSport.name && m.category === selCategory.label)
-    : [];
+  const lockedMatches = useMemo(() => (
+    (selSport && selCategory)
+      ? savedSchedules.filter(m => m.sport === selSport.name && m.category === selCategory.label)
+      : []
+  ), [selSport, selCategory, savedSchedules]);
   const isLocked = lockedMatches.length > 0;
-  const lockedResultsCount = lockedMatches.filter(m => matchRecords.some(r => recordMatchesSchedule(r, m))).length;
+  const lockedResultsCount = useMemo(
+    () => lockedMatches.filter(m => matchRecords.some(r => recordMatchesSchedule(r, m))).length,
+    [lockedMatches, matchRecords]
+  );
+  // Bracket-tree layout is rebuilt from scratch (rounds, byes, connector
+  // math) every time it runs — only worth doing again when the underlying
+  // matches actually change, not on every unrelated re-render of this page.
+  const savedBracketStages = useMemo(() => buildSavedBracketStages(lockedMatches), [lockedMatches]);
+  const savedDoubleBracketStages = useMemo(() => buildSavedDoubleBracketStages(lockedMatches), [lockedMatches]);
 
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [resettingSchedule, setResettingSchedule] = useState(false);
@@ -1547,8 +1560,8 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
   const sportSlug = (s) => (s || 'other').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
-  const scheduleSportOrder = sportsList.map(s => s.name);
-  const sportSections = Object.entries(
+  const scheduleSportOrder = useMemo(() => sportsList.map(s => s.name), [sportsList]);
+  const sportSections = useMemo(() => Object.entries(
     savedSchedules.reduce((acc, m) => {
       const key = m.sport || 'Other';
       (acc[key] = acc[key] || []).push(m);
@@ -1571,12 +1584,18 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
         (acc[m.date] = acc[m.date] || []).push(m);
         return acc;
       }, {}),
-    }));
+    })), [savedSchedules, scheduleSportOrder]);
 
   /* ── Download the visible schedule list as a PDF ──
      Mirrors the on-screen grouping (sport → date), one table per sport,
-     so the printout matches what the admin is looking at. */
-  const handleDownloadPdf = () => {
+     so the printout matches what the admin is looking at. jsPDF/autoTable
+     are loaded on demand here rather than imported statically at the top
+     of the file — they're a sizeable chunk of code that most admin
+     sessions never touch, since exporting a PDF is one action among many
+     on this page. */
+  const handleDownloadPdf = async () => {
+    const { jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -1631,9 +1650,11 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
      + elbow connectors), same column layout as SavedBracketTree on screen,
      translated into jsPDF's line/rect/text primitives — a plain match-list
      table (like handleDownloadPdf above) wouldn't read as "a bracket". */
-  const handleDownloadBracketPdf = () => {
+  const handleDownloadBracketPdf = async () => {
     const stages = buildSavedBracketStages(lockedMatches);
     if (!stages.length) return;
+
+    const { jsPDF } = await import('jspdf');
 
     const NODE_W = 150, NODE_H = 46, ROW_H = 60, LINE_GAP = 46;
     const COL_W = NODE_W + LINE_GAP;
@@ -1830,7 +1851,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               </button>
             </div>
             <SavedBracketTree
-              stages={buildSavedBracketStages(lockedMatches)}
+              stages={savedBracketStages}
               matchRecords={matchRecords}
             />
           </>
@@ -1839,7 +1860,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
         {isLocked && lockedMatches[0]?.format === 'Double Bracket' && (
           <div className="msf-dbracket">
             <div className="msf-dbracket__scroll">
-              <DoubleBracketTree {...buildSavedDoubleBracketStages(lockedMatches)} />
+              <DoubleBracketTree {...savedDoubleBracketStages} />
             </div>
           </div>
         )}
@@ -2738,9 +2759,11 @@ export default function AdminSchedulePage() {
   const [summaryError,     setSummaryError]     = useState('');
 
   // Schedule requests — moderators asking for a fixture to be arranged.
-  // Subscribed live (not just fetched on tab open) so the pending badge
-  // on the tab + sidebar updates the moment one comes in.
-  const [scheduleRequests, setScheduleRequests] = useState([]);
+  // Sourced from the one shared listener ScheduleRequestsProvider owns for
+  // the whole authenticated session (see App.jsx), instead of opening a
+  // second `onSnapshot` on the same `scheduleRequests/all` doc here —
+  // Sidebar (always mounted alongside this page) used to have its own.
+  const { scheduleRequests } = useContext(ScheduleRequestsContext);
   const [decliningRequestId, setDecliningRequestId] = useState(null);
   const [declineReasonDraft, setDeclineReasonDraft] = useState('');
   const [requestActionToast, setRequestActionToast] = useState(null);
@@ -2751,18 +2774,19 @@ export default function AdminSchedulePage() {
   const clearPrefillFromRequest = useCallback(() => setPrefillFromRequest(null), []);
 
   useEffect(() => {
-    const unsubscribe = subscribeScheduleRequests(setScheduleRequests);
-    return unsubscribe;
-  }, []);
-
-  useEffect(() => {
     if (!requestActionToast) return;
     const t = setTimeout(() => setRequestActionToast(null), 3500);
     return () => clearTimeout(t);
   }, [requestActionToast]);
 
-  const pendingRequestCount = scheduleRequests.filter((r) => r.status === 'pending').length;
-  const sortedScheduleRequests = [...scheduleRequests].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+  const pendingRequestCount = useMemo(
+    () => scheduleRequests.filter((r) => r.status === 'pending').length,
+    [scheduleRequests]
+  );
+  const sortedScheduleRequests = useMemo(
+    () => [...scheduleRequests].sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0)),
+    [scheduleRequests]
+  );
 
   const handleOpenRequestInSchedules = (request) => {
     setLevel(request.level);
@@ -2815,19 +2839,14 @@ const fetchSummary = useCallback(async () => {
   setSummaryError("");
 
   try {
-    // Load player registrations
-    const regSnap = await getDocs(collection(db, "registrations"));
-    const registrations = regSnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
-
-    // Load ALL registered users
-    const userSnap = await getDocs(collection(db, "users"));
-    const users = userSnap.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    }));
+    // getAllRegistrations/getAllUsers go through firestoreService's shared
+    // in-flight de-dupe cache, so this and the embedded
+    // StudentRegistrationDetails table (which reads the same 2 collections
+    // on the same tab load) share one network round trip instead of two.
+    const [registrations, users] = await Promise.all([
+      getAllRegistrations(),
+      getAllUsers(),
+    ]);
 
     // This table is the STUDENT registration tabulation — staff accounts
     // (admin / moderator / super admin) manage it, they don't belong as
@@ -2874,10 +2893,14 @@ const fetchSummary = useCallback(async () => {
   useEffect(() => { if (activeTab === REGISTRATION_TAB_INDEX) fetchSummary(); }, [activeTab, fetchSummary]);
 
   // Summary table + level totals follow the event filter; with no filter
-  // they show every event combined, exactly as before.
-  const visibleSummaryRows = summaryEvent
-    ? buildSummary(studentRegs.filter(r => getEventBucket(r, events) === summaryEvent))
-    : summaryRows;
+  // they show every event combined, exactly as before. Recomputing this
+  // means re-scanning every student registration (buildSummary), so it's
+  // only worth doing again when the filter or the underlying data changes.
+  const visibleSummaryRows = useMemo(() => (
+    summaryEvent
+      ? buildSummary(studentRegs.filter(r => getEventBucket(r, events) === summaryEvent))
+      : summaryRows
+  ), [summaryEvent, studentRegs, events, summaryRows]);
 
   // "All Events" is the sum of the buckets, never the raw document
   // count — those disagree whenever a registration is missing a sport
@@ -2885,13 +2908,20 @@ const fetchSummary = useCallback(async () => {
   // Includes registrations with no event on them (saved before the
   // event picker existed) — they're still players, so leaving them out
   // would put this chip below the Total beside it.
-  const totalEventPlayers = Object.values(eventCounts)
-    .reduce((sum, n) => sum + (Number(n) || 0), 0);
+  const totalEventPlayers = useMemo(() => Object.values(eventCounts)
+    .reduce((sum, n) => sum + (Number(n) || 0), 0), [eventCounts]);
 
-  const totalElementary = visibleSummaryRows.reduce((s, r) => s + r.elementary, 0);
-  const totalHighSchool = visibleSummaryRows.reduce((s, r) => s + r.highSchool, 0);
-  const totalCollege    = visibleSummaryRows.reduce((s, r) => s + r.college, 0);
-  const totalPlayers    = totalElementary + totalHighSchool + totalCollege;
+  const { totalElementary, totalHighSchool, totalCollege, totalPlayers } = useMemo(() => {
+    const elementary = visibleSummaryRows.reduce((s, r) => s + r.elementary, 0);
+    const highSchool = visibleSummaryRows.reduce((s, r) => s + r.highSchool, 0);
+    const college    = visibleSummaryRows.reduce((s, r) => s + r.college, 0);
+    return {
+      totalElementary: elementary,
+      totalHighSchool: highSchool,
+      totalCollege: college,
+      totalPlayers: elementary + highSchool + college,
+    };
+  }, [visibleSummaryRows]);
 
   const fmt = (row, level) => row[level] === 0 ? '--' : row[level];
 
