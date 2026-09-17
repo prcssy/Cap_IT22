@@ -76,20 +76,19 @@ service cloud.firestore {
     // (self-lockout guard — the UI also refuses this, this is the second
     // layer of the same protection).
     //
-    // `get` (single doc by known email) is public, not just signedIn(),
-    // because the staff sign-up screen (LoginModal's SignUpScreen ->
-    // findStaffAllowlistEntry) must confirm a gmail is pre-cleared for
-    // Admin/Moderator/Super Admin BEFORE the Firebase Auth account exists
-    // — there is no signed-in session yet at that point, so a signedIn()
-    // gate here made every staff sign-up fail with permission-denied.
-    // `list` (querying/dumping the whole collection) still requires
-    // signedIn(), so an anonymous visitor can only confirm one already-known
-    // email at a time and can never enumerate the staff roster.
-    match /admins/{email}      { allow get: if true; allow list: if signedIn(); allow write: if isSuperAdmin(); }
-    match /moderators/{email}  { allow get: if true; allow list: if signedIn(); allow write: if isSuperAdmin(); }
+    // Staff accounts are now only ever provisioned by a Super Admin
+    // running create-staff-account.cjs (Admin SDK, bypasses these rules
+    // entirely) — there is no more anonymous/pre-signup path that needs
+    // to read these docs before a session exists, so both `get` and
+    // `list` require signedIn(). (This used to allow public `get` for a
+    // staff sign-up screen that checked "is this gmail pre-cleared"
+    // before creating the Firebase Auth account — that screen is gone,
+    // since it was also the entry point for the account-takeover issue
+    // described in create-staff-account.cjs's header comment.)
+    match /admins/{email}      { allow get, list: if signedIn(); allow write: if isSuperAdmin(); }
+    match /moderators/{email}  { allow get, list: if signedIn(); allow write: if isSuperAdmin(); }
     match /superadmins/{email} {
-      allow get: if true;
-      allow list: if signedIn();
+      allow get, list: if signedIn();
       allow create, update: if isSuperAdmin();
       allow delete: if isSuperAdmin() && email != staffEmail();
     }
