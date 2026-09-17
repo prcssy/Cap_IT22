@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
-import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf } from 'react-icons/fa';
+import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf, FaFileWord, FaFileAlt, FaExternalLinkAlt, FaDownload } from 'react-icons/fa';
 // jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf below),
 // not imported statically here.
 import { db } from '../shared/firebase';
@@ -53,6 +53,80 @@ function DetailField({ label, value, center }) {
       <label>{label}</label>
       <p>{isEmpty ? <span className="asp-detail-empty">Not provided</span> : value}</p>
     </div>
+  );
+}
+
+/* Waiver uploads are PDF or Word (RegistrationPage's upload box only
+   accepts .pdf/.doc/.docx) — picks the matching icon/label from the
+   student's original filename so Admin can tell which at a glance
+   instead of a bare "View waiver" link. Falls back to a generic file
+   icon for older registrations saved before waiverFileName existed. */
+function waiverFileKind(name) {
+  const ext = (name || '').split('.').pop()?.toLowerCase();
+  if (ext === 'pdf') return { icon: FaFilePdf, label: 'PDF Document' };
+  if (ext === 'doc' || ext === 'docx') return { icon: FaFileWord, label: 'Word Document' };
+  return { icon: FaFileAlt, label: 'Document' };
+}
+
+/* Fetches the waiver as a blob and saves it under its real filename,
+   instead of relying on the Storage object's Content-Disposition
+   metadata (set at upload time — see forceDownloadMetadata in
+   firestoreService.js) actually being honored by the browser for a
+   cross-origin firebasestorage.googleapis.com URL, which isn't
+   consistent. Once fetched, the blob: URL is same-origin, so the
+   `download` attribute is guaranteed to apply the exact name we give it
+   — the file downloads as the real .pdf/.docx every time, regardless of
+   what headers Storage happens to send. Falls back to a plain new-tab
+   open only if the fetch itself fails (e.g. no network). */
+async function downloadWaiver(url, fileName) {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`fetch failed: ${res.status}`);
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = blobUrl;
+    a.download = fileName || 'waiver';
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(blobUrl);
+  } catch (err) {
+    console.warn('Waiver blob download failed, falling back to opening it directly:', err);
+    window.open(url, '_blank', 'noopener,noreferrer');
+  }
+}
+
+/* Waiver attachment — shown as a file card (icon + kind + original
+   filename) rather than a plain "View waiver" text link, so its file
+   type is obvious before clicking. */
+function WaiverAttachment({ url, fileName }) {
+  const { icon: Icon, label } = waiverFileKind(fileName);
+  return (
+    <button
+      type="button"
+      className="asp-attach-file"
+      onClick={() => downloadWaiver(url, fileName)}
+    >
+      <span className="asp-attach-file__icon"><Icon /></span>
+      <span className="asp-attach-file__meta">
+        <span className="asp-attach-file__name">{fileName || 'Waiver / Consent Form'}</span>
+        <span className="asp-attach-file__kind">{label}</span>
+      </span>
+      <FaDownload className="asp-attach-file__open" />
+    </button>
+  );
+}
+
+/* Photo attachment — a real thumbnail instead of a text link, so Admin
+   can see who's in the photo without leaving the modal; still opens the
+   full-size image in a new tab on click. */
+function PhotoAttachment({ url }) {
+  return (
+    <a href={url} target="_blank" rel="noreferrer" className="asp-attach-photo">
+      <img src={url} alt="Uploaded student photo" />
+      <span className="asp-attach-photo__hint"><FaExternalLinkAlt /> View full size</span>
+    </a>
   );
 }
 
@@ -662,13 +736,13 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
                     {selectedStudent.photoURL && (
                       <div className="asp-form-group">
                         <label>Photo</label>
-                        <p><a href={selectedStudent.photoURL} target="_blank" rel="noreferrer">View photo</a></p>
+                        <PhotoAttachment url={selectedStudent.photoURL} />
                       </div>
                     )}
                     {selectedStudent.waiverURL && (
                       <div className="asp-form-group">
                         <label>Waiver / Consent Form</label>
-                        <p><a href={selectedStudent.waiverURL} target="_blank" rel="noreferrer">View waiver</a></p>
+                        <WaiverAttachment url={selectedStudent.waiverURL} fileName={selectedStudent.waiverFileName} />
                       </div>
                     )}
                   </div>
