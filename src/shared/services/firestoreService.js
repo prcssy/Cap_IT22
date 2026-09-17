@@ -455,6 +455,34 @@ export async function updateRegistrationStatus(regId, status, actorRole, targetL
 }
 
 /**
+ * Permanently removes a registration doc — the "Delete" action next to
+ * Approve/Reject in StudentRegistrationDetails, for a registration that
+ * shouldn't exist at all (duplicate/test submission, or a student the
+ * school wants struck from the record entirely) rather than just marked
+ * rejected. Unlike updateRegistrationStatus this has no undo, so callers
+ * confirm with the user first.
+ *
+ * Only deletes the Firestore doc — any uploaded photo/waiver stay in
+ * Storage. Cleaning those up would need Storage delete permissions this
+ * app's client-side rules don't currently grant staff, and an orphaned
+ * file is a much smaller problem than wiring that up unreviewed.
+ */
+export async function deleteRegistration(regId, actorRole, targetLabel) {
+  if (!db) throw new Error('Firestore not initialized.');
+
+  await deleteDoc(doc(db, 'registrations', regId));
+
+  logActivity({
+    actorRole,
+    type: 'Registration Deleted',
+    details: `Deleted ${targetLabel || 'a student'}'s registration`,
+    targetType: 'registration',
+    targetId: regId,
+    targetLabel,
+  });
+}
+
+/**
  * A student's own registration(s) — powers ProfilePage's "Submitted
  * Registrations" and "Events Joined" cards. `registrations` is otherwise
  * staff-only (see firestore.rules), but a signed-in user may always read

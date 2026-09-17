@@ -836,9 +836,14 @@
   color: #991b1b;
 }
 
-/* Approve/Reject — Student Registration Details table row + modal footer */
+/* Approve/Reject/Delete — Student Registration Details table row + modal
+   footer. All three stay visible regardless of the registration's current
+   status (not just while pending) so a wrong Approve/Reject click can be
+   undone by picking the other one, instead of the decision being final the
+   moment it's made. */
 .asp-btn-approve,
-.asp-btn-reject {
+.asp-btn-reject,
+.asp-btn-delete {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -880,7 +885,8 @@
 }
 
 .asp-btn-approve:disabled,
-.asp-btn-reject:disabled {
+.asp-btn-reject:disabled,
+.asp-btn-delete:disabled {
   opacity: 0.5;
   cursor: not-allowed;
 }
@@ -914,15 +920,17 @@
 }
 
 .asp-btn-delete {
-  background: #fee2e2;
-  color: #b91c1c;
+  background: #fff1f2;
+  color: #9f1239;
+  border: 1px solid #fecdd3;
 }
 
 @media (hover: hover) and (pointer: fine) {
-.asp-btn-delete:hover {
-  background: #b91c1c;
-  color: #fff;
-}
+  .asp-btn-delete:hover:not(:disabled) {
+    background: #9f1239;
+    color: #fff;
+    border-color: #9f1239;
+  }
 }
 
 /* ══════════════════════════════════════════

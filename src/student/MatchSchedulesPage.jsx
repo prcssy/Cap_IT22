@@ -599,8 +599,27 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
   );
 }
 
+/* ── Wraps the substring of `text` that matches the current search query
+   in a <mark>, so every field the search bar actually searches (team,
+   venue) visibly shows why a row matched. No-op when there's no query
+   or no match. ── */
+function HighlightText({ text, query }) {
+  const str = text || '';
+  const q = (query || '').trim();
+  if (!q) return str;
+  const idx = str.toLowerCase().indexOf(q.toLowerCase());
+  if (idx === -1) return str;
+  return (
+    <>
+      {str.slice(0, idx)}
+      <mark className="ms-search-highlight">{str.slice(idx, idx + q.length)}</mark>
+      {str.slice(idx + q.length)}
+    </>
+  );
+}
+
 /* ── Schedule table for a single day ── */
-function ScheduleDayTable({ day, matches, resultFor }) {
+function ScheduleDayTable({ day, matches, resultFor, search }) {
   return (
     <div className="ms-day-card">
       <div className="ms-day-header">{day}</div>
@@ -615,7 +634,9 @@ function ScheduleDayTable({ day, matches, resultFor }) {
           <div className="ms-row" role="row" key={m.id}>
             <div className="ms-cell ms-cell-time" role="cell" data-label="Time">{formatTime(m.time)}</div>
             <div className="ms-cell ms-cell-sport" role="cell" data-label="Sport">{categoryOf(m).label}</div>
-            <div className="ms-cell ms-cell-venue" role="cell" data-label="Venue">{m.location || 'TBA'}</div>
+            <div className="ms-cell ms-cell-venue" role="cell" data-label="Venue">
+              <HighlightText text={m.location || 'TBA'} query={search} />
+            </div>
             <div className="ms-cell ms-cell-team ms-cell-team--body" role="cell">
               {(() => {
                 const record = resultFor ? resultFor(m) : null;
@@ -634,9 +655,9 @@ function ScheduleDayTable({ day, matches, resultFor }) {
                         {m.matchLabel}
                       </span>
                     )}
-                    <span style={bold(m.teamA)}>{m.teamA}</span>
+                    <span style={bold(m.teamA)}><HighlightText text={m.teamA} query={search} /></span>
                     <span className="ms-team-vs">vs</span>
-                    <span style={bold(m.teamB)}>{m.teamB}</span>
+                    <span style={bold(m.teamB)}><HighlightText text={m.teamB} query={search} /></span>
                     {record && (
                       <span
                         style={{
@@ -776,10 +797,12 @@ export default function MatchSchedulesPage() {
 
   /* ── Schedule table only shows matches an admin has actually pinned
      to a real date + time — a freshly generated match with blank
-     date/time doesn't belong on the "real-time schedule" yet ── */
+     date/time doesn't belong on the "real-time schedule" yet. Scoped to
+     the selected category tab, same as the bracket/rounds view above,
+     so the category buttons actually control what's shown below too. ── */
   const scheduledMatches = useMemo(
-    () => levelMatches.filter(m => m.date && m.time),
-    [levelMatches]
+    () => categoryMatches.filter(m => m.date && m.time),
+    [categoryMatches]
   );
 
   const filteredSchedule = useMemo(() => {
@@ -795,11 +818,10 @@ export default function MatchSchedulesPage() {
         matches: matches
           .filter(m => {
             if (!search.trim()) return true;
-            const q = search.toLowerCase();
+            const q = search.trim().toLowerCase();
             return (
               m.teamA.toLowerCase().includes(q) ||
               m.teamB.toLowerCase().includes(q) ||
-              categoryOf(m).label.toLowerCase().includes(q) ||
               (m.location || '').toLowerCase().includes(q)
             );
           })
@@ -879,7 +901,7 @@ export default function MatchSchedulesPage() {
           </p>
         ) : (
           <>
-            {/* Category selector + search */}
+            {/* Category selector */}
             <div className="ms-toolbar">
               <div className="ms-category-tabs">
                 {categories.map(c => (
@@ -892,19 +914,9 @@ export default function MatchSchedulesPage() {
                   </button>
                 ))}
               </div>
-              <div className="ms-search-wrap">
-                <FaSearch className="ms-search-icon" />
-                <input
-                  type="text"
-                  className="ms-search-input"
-                  placeholder="Search team, sport, or venue"
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                />
-              </div>
             </div>
 
-            {/* Bracket / rounds section */}
+            {/* Bracket / rounds section (format) */}
             <div className="ms-bracket-card">
               <h3 className="ms-bracket-title">{category?.label || ''}</h3>
               {generatedMatches.length > 0 ? (
@@ -927,11 +939,23 @@ export default function MatchSchedulesPage() {
             {/* Section title */}
             <h2 className="ms-section-title">MATCH SCHEDULES</h2>
 
+            {/* Search — filters the match schedules list right below it */}
+            <div className="ms-search-wrap">
+              <FaSearch className="ms-search-icon" />
+              <input
+                type="text"
+                className="ms-search-input"
+                placeholder="Search Team and Venue"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+              />
+            </div>
+
             {/* Schedule tables grouped by day */}
             <div className="ms-schedule-list">
               {filteredSchedule.length > 0 ? (
                 filteredSchedule.map(day => (
-                  <ScheduleDayTable key={day.day} day={day.day} matches={day.matches} resultFor={resultFor} />
+                  <ScheduleDayTable key={day.day} day={day.day} matches={day.matches} resultFor={resultFor} search={search} />
                 ))
               ) : search.trim() ? (
                 <p className="ms-schedule-empty">No matches found for "{search}".</p>

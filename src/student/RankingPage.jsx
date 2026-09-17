@@ -125,19 +125,45 @@ function TeamLogo({ team, color, logo }) {
   );
 }
 
-/* ── Sport tab row, reused by both tables ── */
-function SportTabs({ active, onChange, sports }) {
+/* ── Sport dropdown, reused by both tables ──
+   Was a row of individual tab buttons (one per sport), which grew wider
+   than the page as more sports got added. Rebuilt as a dropdown using
+   the exact same classes as DivisionSelect below, so it reads as the
+   same control, just for "Sport" instead of "Division". */
+function SportSelect({ value, onChange, sports }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onClickOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [open]);
+
   return (
-    <div className="rk-sport-tabs">
-      {sports.map(s => (
-        <button
-          key={s}
-          className={`rk-sport-tab ${active === s ? 'rk-sport-tab--active' : ''}`}
-          onClick={() => onChange(s)}
-        >
-          {s}
-        </button>
-      ))}
+    <div className="rk-division-dropdown" ref={wrapRef}>
+      <button
+        type="button"
+        className="rk-division-btn"
+        onClick={() => setOpen(prev => !prev)}
+      >
+        {value}
+        <FaChevronDown className={`rk-division-chevron ${open ? 'rk-division-chevron--open' : ''}`} />
+      </button>
+      <ul className={`rk-division-menu ${open ? 'rk-division-menu--open' : ''}`}>
+        {sports.map(label => (
+          <li
+            key={label}
+            className={`rk-division-item ${value === label ? 'rk-division-item--active' : ''}`}
+            onClick={() => { onChange(label); setOpen(false); }}
+          >
+            {label}
+          </li>
+        ))}
+      </ul>
     </div>
   );
 }
@@ -697,8 +723,9 @@ export default function RankingPage() {
             <h3 className="rk-section-title">Potential Champion</h3>
             <p className="rk-section-subtitle">Performance based</p>
           </div>
-          <SportTabs sports={availableSports} active={championSport} onChange={setChampionSport} />
           <div className="rk-division-row">
+            <label className="rk-division-label">Sport</label>
+            <SportSelect sports={availableSports} value={championSport} onChange={setChampionSport} />
             <label className="rk-division-label">Division</label>
             <DivisionSelect
               value={championDivision}
@@ -721,8 +748,9 @@ export default function RankingPage() {
             <h3 className="rk-section-title"><FaMedal className="rk-section-icon" /> Medal Tally</h3>
             <p className="rk-section-subtitle">Win and Loss</p>
           </div>
-          <SportTabs sports={availableSports} active={medalSport} onChange={setMedalSport} />
           <div className="rk-division-row">
+            <label className="rk-division-label">Sport</label>
+            <SportSelect sports={availableSports} value={medalSport} onChange={setMedalSport} />
             <label className="rk-division-label">Division</label>
             <DivisionSelect
               value={medalDivision}

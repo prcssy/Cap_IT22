@@ -1,8 +1,8 @@
 import { useState, useEffect, useCallback, useContext, useRef } from 'react';
-import { FaSearch, FaTimes, FaUserGraduate, FaCheck } from 'react-icons/fa';
+import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash } from 'react-icons/fa';
 import { collection, getDocs } from 'firebase/firestore';
 import { db } from '../shared/firebase';
-import { getEventKey, getEventLabel, updateRegistrationStatus } from '../shared/services/firestoreService';
+import { getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration } from '../shared/services/firestoreService';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { AuthContext } from '../shared/context/AuthContext';
 import '../admin/AdminSchedulePage.css';
@@ -118,7 +118,11 @@ function FilterDropdown({ label, value, options, onChange }) {
   );
 }
 
-export default function StudentRegistrationDetails() {
+// scope: 'registrants' (default) — only students who actually submitted the
+// registration form, used on the Admin page's Registration tab. 'allUsers' —
+// every signed-up student account whether or not they registered as a
+// player, used on the Super Admin page (its original, pre-fix behavior).
+export default function StudentRegistrationDetails({ scope = 'registrants', onStatusChange, onDeleted }) {
   const { events } = useContext(BrandingContext);
   const { userProfile } = useContext(AuthContext);
   const [allRegistrations, setAllRegistrations] = useState([]);
@@ -164,33 +168,58 @@ export default function StudentRegistrationDetails() {
       const studentUids = new Set(studentUsers.map(u => u.id));
       const studentRegistrations = registrations.filter(r => studentUids.has(r.uid));
 
-      // One row per STUDENT ACCOUNT (keyed by uid) — never collapsed or
-      // matched by name, since two different accounts can legitimately
-      // share the same name.
-      const merged = studentUsers.map(user => {
-        const registration = studentRegistrations.find(r => r.uid === user.id);
+      // Admin page (scope: 'registrants') — one row per REGISTRATION
+      // SUBMISSION, keyed by the registration doc rather than the student
+      // account. A student who only signed up for an account but never
+      // filled out the registration form doesn't belong here as a player.
+      //
+      // Super Admin page (scope: 'allUsers') — one row per STUDENT ACCOUNT,
+      // so every signed-up student shows up whether or not they've
+      // registered as a player; this is the original behavior this page
+      // always had, kept as-is for the Super Admin audit view.
+      const merged = scope === 'allUsers'
+        ? studentUsers.map(user => {
+            const registration = studentRegistrations.find(r => r.uid === user.id);
+            return {
+              ...user,
+              ...(registration || {}),
+              id: user.id,
+              uid: user.id,
+              regId: registration?.id || null,
+              status: registration ? (registration.status || 'pending') : null,
+              fullName: (registration && registration.fullName) || user.name || '',
+              email: (registration && registration.email) || user.email || '',
+              gender: user.gender || '—',
+              gradeLevel: user.gradeLevel || '—',
+              section: user.section || '—',
+              sport: (registration && registration.sport) || 'N/A',
+              position: (registration && registration.position) || 'N/A',
+              teamName: (registration && registration.teamName) || 'N/A',
+              event: (registration && (getEventLabel(registration.eventKey || registration.event, events) || registration.event)) || 'N/A',
+            };
+          })
+        : studentRegistrations.map(registration => {
+            const user = studentUsers.find(u => u.id === registration.uid) || {};
+            return {
+              ...user,
+              ...registration,
+              id: registration.id,
+              uid: registration.uid,
+              regId: registration.id,
+              status: registration.status || 'pending',
+              fullName: registration.fullName || user.name || '',
+              email: registration.email || user.email || '',
+              gender: user.gender || '—',
+              gradeLevel: user.gradeLevel || '—',
+              section: user.section || '—',
+              sport: registration.sport || 'N/A',
+              position: registration.position || 'N/A',
+              teamName: registration.teamName || 'N/A',
+              event: getEventLabel(registration.eventKey || registration.event, events) || registration.event || 'N/A',
+            };
+          });
 
-        return {
-          ...user,
-          ...(registration || {}),
-          id: user.id,
-          uid: user.id,
-          // The registration doc's own id, distinct from the user id above —
-          // this is what approve/reject writes back to. Null when the
-          // student hasn't registered at all (an audience-only account).
-          regId: registration?.id || null,
-          status: registration ? (registration.status || 'pending') : null,
-          fullName: (registration && registration.fullName) || user.name || '',
-          email: (registration && registration.email) || user.email || '',
-          gender: user.gender || '—',
-          gradeLevel: user.gradeLevel || '—',
-          section: user.section || '—',
-          sport: (registration && registration.sport) || 'N/A',
-          position: (registration && registration.position) || 'N/A',
-          teamName: (registration && registration.teamName) || 'N/A',
-          event: (registration && (getEventLabel(registration.eventKey || registration.event, events) || registration.event)) || 'N/A',
-        };
-      }).sort((a, b) =>
+      merged.sort((a, b) =>
         (a.fullName || '').localeCompare(b.fullName || '', undefined, { sensitivity: 'base' })
       );
 
@@ -201,7 +230,7 @@ export default function StudentRegistrationDetails() {
     } finally {
       setLoading(false);
     }
-  }, [events]);
+  }, [events, scope]);
 
   useEffect(() => { fetchStudents(); }, [fetchStudents]);
 
@@ -217,12 +246,12 @@ export default function StudentRegistrationDetails() {
   }, [selectedStudent]);
 
   const handleDecision = useCallback(async (reg, status) => {
-    if (!reg.regId) return;
-    // Reject is effectively destructive (the student loses their spot with
-    // no undo from this screen), so it gets the same confirm-before-act
-    // treatment as other destructive actions in this app; Approve doesn't
-    // need one since it's the non-harmful default outcome.
-    if (status === 'rejected' && !window.confirm(`Reject ${reg.fullName || 'this student'}'s registration? This cannot be undone from here.`)) {
+    if (!reg.regId || reg.status === status) return;
+    // Reject still asks first since it drops the student out of the active
+    // player counts, but — unlike Delete below — it's not a dead end: the
+    // Approve/Reject buttons stay visible after a decision, so a wrong
+    // click can be undone by picking the other one.
+    if (status === 'rejected' && !window.confirm(`Reject ${reg.fullName || 'this student'}'s registration? You can re-approve it later if this was a mistake.`)) {
       return;
     }
     setDecidingId(reg.regId);
@@ -235,13 +264,47 @@ export default function StudentRegistrationDetails() {
         r.regId === reg.regId ? { ...r, status } : r
       )));
       setSelectedStudent(prev => (prev && prev.regId === reg.regId ? { ...prev, status } : prev));
+      // Let the page this table lives on (AdminSchedulePage's Total
+      // Players tiles, SuperAdminPage's Total Players stat) know a status
+      // just changed, so a rejection drops out of those counts right away
+      // instead of only after their own next refetch.
+      onStatusChange?.(reg.regId, status);
     } catch (err) {
       console.error(err);
       setDecisionError(`Failed to ${status === 'approved' ? 'approve' : 'reject'} ${reg.fullName || 'this registration'}.`);
     } finally {
       setDecidingId(null);
     }
-  }, [userProfile]);
+  }, [userProfile, onStatusChange]);
+
+  const handleDelete = useCallback(async (reg) => {
+    if (!reg.regId) return;
+    // Unlike Approve/Reject, Delete removes the doc outright — there's
+    // nothing left to flip back, so it gets the strongest confirmation of
+    // the three actions.
+    if (!window.confirm(`Permanently delete ${reg.fullName || 'this student'}'s registration? This cannot be undone.`)) {
+      return;
+    }
+    setDecidingId(reg.regId);
+    setDecisionError('');
+    try {
+      await deleteRegistration(reg.regId, userProfile?.role, reg.fullName);
+      setSelectedStudent(prev => (prev && prev.regId === reg.regId ? null : prev));
+      // A plain filter-out would work for scope="registrants" (one row per
+      // registration), but scope="allUsers" shows one row per STUDENT
+      // ACCOUNT — deleting the registration should drop that row back to
+      // "not registered yet", not remove the student entirely. Refetching
+      // gets that reshaping right for both scopes without duplicating
+      // fetchStudents' merge logic here.
+      await fetchStudents();
+      onDeleted?.(reg.regId);
+    } catch (err) {
+      console.error(err);
+      setDecisionError(`Failed to delete ${reg.fullName || 'this registration'}.`);
+    } finally {
+      setDecidingId(null);
+    }
+  }, [userProfile, onDeleted, fetchStudents]);
 
   const uniqueSections = [...new Set(allRegistrations.map(r => r.section).filter(Boolean))].sort();
   const uniqueSports   = [...new Set(allRegistrations.map(r => r.sport).filter(Boolean))].sort();
@@ -268,7 +331,7 @@ export default function StudentRegistrationDetails() {
         <div className="asp-card__toprow">
           <div className="asp-card__heading">
             <FaUserGraduate className="asp-card__icon" />
-            <span>STUDENT REGISTRATION DETAILS</span>
+            <span>{scope === 'allUsers' ? 'USERS REGISTRATION DETAILS' : 'STUDENT PLAYERS REGISTRATION DETAILS'}</span>
           </div>
           <div className="asp-search-wrap">
             <FaSearch className="asp-search-icon" />
@@ -393,12 +456,12 @@ export default function StudentRegistrationDetails() {
                     <td data-label="Action">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                         <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
-                        {reg.regId && reg.status === 'pending' && (
+                        {reg.regId && (
                           <>
                             <button
                               type="button"
                               className="asp-btn-approve"
-                              disabled={decidingId === reg.regId}
+                              disabled={decidingId === reg.regId || reg.status === 'approved'}
                               onClick={() => handleDecision(reg, 'approved')}
                             >
                               <FaCheck /> Approve
@@ -406,10 +469,18 @@ export default function StudentRegistrationDetails() {
                             <button
                               type="button"
                               className="asp-btn-reject"
-                              disabled={decidingId === reg.regId}
+                              disabled={decidingId === reg.regId || reg.status === 'rejected'}
                               onClick={() => handleDecision(reg, 'rejected')}
                             >
                               <FaTimes /> Reject
+                            </button>
+                            <button
+                              type="button"
+                              className="asp-btn-delete"
+                              disabled={decidingId === reg.regId}
+                              onClick={() => handleDelete(reg)}
+                            >
+                              <FaTrash /> Delete
                             </button>
                           </>
                         )}
@@ -513,12 +584,12 @@ export default function StudentRegistrationDetails() {
               )}
 
               <div className="asp-form-actions">
-                {selectedStudent.regId && selectedStudent.status === 'pending' && (
+                {selectedStudent.regId && (
                   <>
                     <button
                       type="button"
                       className="asp-btn-approve"
-                      disabled={decidingId === selectedStudent.regId}
+                      disabled={decidingId === selectedStudent.regId || selectedStudent.status === 'approved'}
                       onClick={() => handleDecision(selectedStudent, 'approved')}
                     >
                       <FaCheck /> Approve
@@ -526,10 +597,18 @@ export default function StudentRegistrationDetails() {
                     <button
                       type="button"
                       className="asp-btn-reject"
-                      disabled={decidingId === selectedStudent.regId}
+                      disabled={decidingId === selectedStudent.regId || selectedStudent.status === 'rejected'}
                       onClick={() => handleDecision(selectedStudent, 'rejected')}
                     >
                       <FaTimes /> Reject
+                    </button>
+                    <button
+                      type="button"
+                      className="asp-btn-delete"
+                      disabled={decidingId === selectedStudent.regId}
+                      onClick={() => handleDelete(selectedStudent)}
+                    >
+                      <FaTrash /> Delete
                     </button>
                   </>
                 )}

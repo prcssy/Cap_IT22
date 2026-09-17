@@ -425,9 +425,10 @@ function ScrollRow({ children, label, variant, isEmpty, emptyText }) {
    section. Every section below (Ongoing/Upcoming/Finished) filters off
    the same `value`, so switching sports here can never leave one section
    showing a different sport than the others.
-   Styled to match the Moderator page's sport-picker dropdown (navy
-   trigger, navy panel holding white option pills) instead of a native
-   <select>, so the same control reads the same way across both pages. */
+   Styled to match the landing page's Levels dropdown (compact glass
+   pill trigger, translucent blurred panel with text list options)
+   instead of a native <select>, so the sizing/arrangement reads the
+   same way as the public homepage. */
 function SportFilter({ sports, value, onChange }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);

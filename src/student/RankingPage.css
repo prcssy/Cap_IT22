@@ -209,18 +209,11 @@
   margin: 0;
 }
 
-/* ── Sport filter tabs ── */
-.rk-sport-tabs {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 14px;
-}
-
 .rk-division-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  flex-wrap: wrap;
+  gap: 10px 16px;
   margin: -6px 0 14px;
 }
 
@@ -324,34 +317,6 @@
   color: #001529;
 }
 
-.rk-sport-tab {
-  font-family: "Inter", sans-serif;
-  background: rgba(255, 255, 255, 0.06);
-  color: rgba(255, 255, 255, 0.75);
-  border: 1.5px solid rgba(255, 255, 255, 0.25);
-  border-radius: 20px;
-  padding: 6px 16px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.03em;
-  cursor: pointer;
-  white-space: nowrap;
-  transition: background 0.2s, border-color 0.2s, color 0.2s;
-}
-
-@media (hover: hover) and (pointer: fine) {
-.rk-sport-tab:hover {
-  background: rgba(255, 255, 255, 0.12);
-  color: #fff;
-}
-}
-
-.rk-sport-tab--active {
-  background: #FCBF19;
-  border-color: #FCBF19;
-  color: #001529;
-}
-
 /* ── Table card shell ── */
 .rk-card {
   background: #fff;
@@ -384,11 +349,11 @@
 }
 
 .rk-row--head {
-  background: #DCE3F0;
+  background: #0A1D52;
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.06em;
-  color: #5A6B8C;
+  color: #fff;
   text-transform: uppercase;
   padding: 12px 16px;
 }

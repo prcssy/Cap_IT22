@@ -169,6 +169,7 @@
   position: relative;
   display: flex;
   align-items: center;
+  margin-bottom: 14px;
 }
 
 .ms-search-icon {
@@ -198,6 +199,15 @@
   outline: none;
   background: rgba(255, 255, 255, 0.1);
   border-color: rgba(255, 255, 255, 0.6);
+}
+
+/* ── Highlights the matched substring inside a team/venue cell ── */
+.ms-search-highlight {
+  background: #FCBF19;
+  color: #001529;
+  padding: 0 2px;
+  border-radius: 3px;
+  font-weight: 800;
 }
 
 /* ── Bracket card ── */

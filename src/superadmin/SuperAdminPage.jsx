@@ -729,14 +729,17 @@ export default function SuperAdminPage() {
 
   /* ── Tiles ── */
   const pendingCount = rangedRegs.filter(r => (r.status || 'pending') === 'pending').length;
+  // A rejected registration no longer holds a spot, so it shouldn't keep
+  // counting toward Total Players once an admin has rejected it.
+  const activePlayerCount = rangedRegs.filter(r => r.status !== 'rejected').length;
 
   const tiles = [
-    { icon: FaUsers,       label: 'Total Users',        value: rangedUsers.length, color: '#6d28d9' },
-    { icon: FaRunning,     label: 'Total Sports',       value: sportNames.length,  color: '#f5a623' },
-    { icon: FaUsersCog,    label: 'Total Teams',        value: teamCount,          color: '#16a34a' },
-    { icon: FaCalendarAlt, label: 'Total Matches',      value: matches.length,     color: '#1d4ed8' },
-    { icon: FaUserCheck,   label: 'Total Players',      value: rangedRegs.length,  color: '#db2777' },
-    { icon: FaClock,       label: 'Pending Review',     value: pendingCount,       color: '#ea580c' },
+    { icon: FaUsers,       label: 'Total Users',        value: rangedUsers.length,   color: '#6d28d9' },
+    { icon: FaRunning,     label: 'Total Sports',       value: sportNames.length,    color: '#f5a623' },
+    { icon: FaUsersCog,    label: 'Total Teams',        value: teamCount,            color: '#16a34a' },
+    { icon: FaCalendarAlt, label: 'Total Matches',      value: matches.length,       color: '#1d4ed8' },
+    { icon: FaUserCheck,   label: 'Total Players',      value: activePlayerCount,    color: '#db2777' },
+    { icon: FaClock,       label: 'Pending Review',     value: pendingCount,         color: '#ea580c' },
   ];
 
   /* ── Sports participation ── */
@@ -997,8 +1000,23 @@ export default function SuperAdminPage() {
 
           {/* ── Student Registration Details ── */}
           {/* Moved here from the Admin page's Registration tab — same
-              component, filters, table and modal, just relocated. */}
-          <StudentRegistrationDetails />
+              component, filters, table and modal, just relocated.
+              scope="allUsers": Super Admin sees every signed-up student
+              account (registered as a player or not), unlike the Admin
+              page which only lists actual registration submissions. */}
+          {/* Patch the local registrations state instead of a full
+              fetchAnalytics refetch — rangedRegs/tiles/charts below are all
+              derived from it reactively, so a rejection or delete updates
+              Total Players (and the sport/gender breakdowns) right away
+              without re-hitting Firestore for sports configs/schedules/
+              records too. */}
+          <StudentRegistrationDetails
+            scope="allUsers"
+            onStatusChange={(regId, status) => setRegistrations(prev => prev.map(r => (
+              r.id === regId ? { ...r, status } : r
+            )))}
+            onDeleted={(regId) => setRegistrations(prev => prev.filter(r => r.id !== regId))}
+          />
           </>
           )}
 

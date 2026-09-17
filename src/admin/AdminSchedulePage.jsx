@@ -39,8 +39,12 @@ function getSchoolLevel(gradeLevel) {
 
 function buildSummary(registrations) {
   const map = {};
-  registrations.forEach(({ sport, gender, gradeLevel }) => {
-    if (!sport) return;
+  registrations.forEach(({ sport, gender, gradeLevel, status }) => {
+    // A rejected registration no longer holds a spot on a team, so it
+    // shouldn't keep counting toward the Elementary/High School/College
+    // totals (or the grand Total Players tile derived from them) once an
+    // admin has rejected it.
+    if (!sport || status === 'rejected') return;
     const level = getSchoolLevel(gradeLevel);
     const g     = (gender || '').toLowerCase();
     const label = g === 'female' ? 'Women' : g === 'male' ? 'Men' : 'Mixed';
@@ -57,13 +61,14 @@ function buildSummary(registrations) {
 /* Does this registration count as a player in the summary above?
 
    buildSummary only tallies a registration that has a sport AND a
-   recognisable grade level — anything else contributes 0 to the
-   Elementary / High School / College totals. The per-event chips have
-   to use the exact same test, or they'd report a bigger population
-   than the table right beneath them (half-filled or abandoned test
-   registrations would show up in the chips but nowhere else). */
+   recognisable grade level, and isn't rejected — anything else
+   contributes 0 to the Elementary / High School / College totals. The
+   per-event chips have to use the exact same test, or they'd report a
+   bigger population than the table right beneath them (half-filled or
+   abandoned test registrations — or ones an admin has since rejected —
+   would show up in the chips but nowhere else). */
 function countsAsPlayer(r) {
-  return Boolean(r && r.sport && getSchoolLevel(r.gradeLevel));
+  return Boolean(r && r.sport && getSchoolLevel(r.gradeLevel) && r.status !== 'rejected');
 }
 
 /* Which event bucket a registration belongs to. Registrations saved
@@ -3086,7 +3091,11 @@ const fetchSummary = useCallback(async () => {
                 so it needs the actual decision-making UI, not just a
                 summary. Super Admin keeps its own copy too; nothing here
                 takes access away from anyone. */}
-            <StudentRegistrationDetails />
+            {/* Re-run the summary fetch after an Approve/Reject/Delete so the
+                Total Players tiles (and the public counters they publish)
+                update immediately, instead of only after switching tabs or
+                reloading the page. */}
+            <StudentRegistrationDetails onStatusChange={fetchSummary} onDeleted={fetchSummary} />
 
           </div>
         )}

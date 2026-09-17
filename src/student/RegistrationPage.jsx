@@ -151,6 +151,40 @@ const ADDR_INITIAL = {
 const METRO_MANILA_CODE = '1300000000';
 const METRO_MANILA_PSEUDO_PROVINCE = { name: 'Metro Manila', psgcCode: METRO_MANILA_CODE };
 
+// Unfinished registrations are auto-saved to localStorage (per logged-in
+// user, so two students on the same browser never see each other's draft)
+// so a refresh or an accidental Back never loses what was already typed.
+// This never touches Firestore — only the actual Save Registration submit
+// does that — so there's no risk of a draft "save" ever creating a
+// duplicate registration doc.
+const DRAFT_KEY_PREFIX = 'stritas:registrationDraft:v1:';
+
+function loadRegistrationDraft(uid) {
+  try {
+    const raw = localStorage.getItem(DRAFT_KEY_PREFIX + uid);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+function saveRegistrationDraft(uid, draft) {
+  try {
+    localStorage.setItem(DRAFT_KEY_PREFIX + uid, JSON.stringify(draft));
+  } catch {
+    // Storage full/blocked (e.g. private browsing) — draft autosave is a
+    // convenience, not a requirement, so fail silently.
+  }
+}
+
+function clearRegistrationDraft(uid) {
+  try {
+    localStorage.removeItem(DRAFT_KEY_PREFIX + uid);
+  } catch {
+    // ignore
+  }
+}
+
 export default function RegistrationPage() {
 
   const { currentUser, userProfile } = useContext(AuthContext);
@@ -211,6 +245,47 @@ export default function RegistrationPage() {
   const waiverRef        = useRef(null);
   const contactFooterRef = useRef(null);
   const cardRef          = useRef(null);
+
+  // ── Draft autosave/restore ────────────────────────────────────────────
+  // `hydrated` flips true once we've attempted to restore a saved draft for
+  // this user (found one or not) — the autosave effect below waits for that
+  // so it never overwrites a real draft with the still-blank INITIAL state
+  // while currentUser is resolving. `restoringDraftRef` tells the
+  // schoolLevel-driven "clear team/sport/position" effect further down to
+  // skip once right after a restore, so restoring a draft that already has
+  // a grade level picked doesn't immediately wipe its team/sport/position.
+  const [hydrated, setHydrated] = useState(false);
+  const restoringDraftRef = useRef(false);
+  // Files can't be persisted to localStorage (no way to reconstruct a real
+  // File after a reload), so a restored draft that had one attached just
+  // remembers its name and asks the student to re-attach it.
+  const [restoredFileNames, setRestoredFileNames] = useState(null);
+
+  useEffect(() => {
+    if (hydrated || !currentUser?.uid) return;
+    const draft = loadRegistrationDraft(currentUser.uid);
+    if (draft?.form) {
+      restoringDraftRef.current = true;
+      setForm(prev => ({ ...prev, ...draft.form }));
+      if (draft.addr) setAddr(prev => ({ ...prev, ...draft.addr }));
+      if (draft.pendingFileNames?.photo || draft.pendingFileNames?.waiver) {
+        setRestoredFileNames(draft.pendingFileNames);
+      }
+    }
+    setHydrated(true);
+  }, [currentUser?.uid, hydrated]);
+
+  useEffect(() => {
+    if (!hydrated || !currentUser?.uid || submitted) return;
+    const timer = setTimeout(() => {
+      saveRegistrationDraft(currentUser.uid, {
+        form,
+        addr,
+        pendingFileNames: { photo: photo?.name || null, waiver: waiver?.name || null },
+      });
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [form, addr, photo, waiver, hydrated, currentUser?.uid, submitted]);
 
   const set = (k) => (e) => {
     setForm(prev => ({ ...prev, [k]: e.target.value }));
@@ -447,10 +522,25 @@ export default function RegistrationPage() {
 
   // Selected grade level changed school levels — clear any team/sport/
   // position pick that no longer belongs to the newly loaded options.
+  // Skipped once right after a draft restore (see restoringDraftRef above),
+  // so restoring a draft that already had a grade level + team/sport/
+  // position picked doesn't immediately wipe them out again.
   useEffect(() => {
+    if (restoringDraftRef.current) {
+      restoringDraftRef.current = false;
+      return;
+    }
     setForm(prev => ({ ...prev, teamName: '', sport: '', position: '' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolLevel]);
+
+  // Belt-and-suspenders: if the restored draft's grade level didn't actually
+  // change schoolLevel (e.g. it was blank), the effect above never runs and
+  // never gets a chance to consume the flag — clear it here instead so it
+  // can't linger and swallow a later, genuine grade-level change.
+  useEffect(() => {
+    if (hydrated) restoringDraftRef.current = false;
+  }, [hydrated]);
 
   const selectedTeamConfig = useMemo(
     () => teamsConfig.find(t => t.name === form.teamName) || null,
@@ -544,6 +634,7 @@ export default function RegistrationPage() {
       delete next[key];
       return next;
     });
+    setRestoredFileNames(prev => (prev?.[key] ? { ...prev, [key]: null } : prev));
   };
 
   const removeFile = (e, setter, key, ref) => {
@@ -556,6 +647,7 @@ export default function RegistrationPage() {
       delete next[key];
       return next;
     });
+    setRestoredFileNames(prev => (prev?.[key] ? { ...prev, [key]: null } : prev));
     if (ref.current) ref.current.value = '';
   };
 
@@ -567,8 +659,10 @@ export default function RegistrationPage() {
     setSubmitted(false);
     setErrors({});
     setShowNotice(false);
+    setRestoredFileNames(null);
     if (photoRef.current)  photoRef.current.value  = '';
     if (waiverRef.current) waiverRef.current.value = '';
+    if (currentUser?.uid) clearRegistrationDraft(currentUser.uid);
   };
 
   const validate = () => {
@@ -674,6 +768,8 @@ export default function RegistrationPage() {
         setUploadIssues(attachedIssues);
 
         setSubmitted(true);
+        clearRegistrationDraft(currentUser.uid);
+        setRestoredFileNames(null);
 
         // Show the new number straight away, then re-sync with the
         // server so the displayed count matches what was actually saved.
@@ -777,6 +873,21 @@ export default function RegistrationPage() {
                 <path d="M12 2 1 21h22L12 2zm0 5.5 6.9 12H5.1L12 7.5zM11 10v5h2v-5h-2zm0 6.5V18h2v-1.5h-2z"/>
               </svg>
               <span>Please fill in all required fields marked with <strong>*</strong> before submitting.</span>
+            </div>
+          )}
+
+          {(restoredFileNames?.photo || restoredFileNames?.waiver) && (
+            <div className="reg-notice" role="status">
+              <svg className="reg-notice__icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2 1 21h22L12 2zm0 5.5 6.9 12H5.1L12 7.5zM11 10v5h2v-5h-2zm0 6.5V18h2v-1.5h-2z"/>
+              </svg>
+              <span>
+                We restored your unfinished registration, but attached files can't be restored after a
+                refresh — please re-attach {[
+                  restoredFileNames.photo && `your photo (${restoredFileNames.photo})`,
+                  restoredFileNames.waiver && `your waiver (${restoredFileNames.waiver})`,
+                ].filter(Boolean).join(' and ')}.
+              </span>
             </div>
           )}
 
