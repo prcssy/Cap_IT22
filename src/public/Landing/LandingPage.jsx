@@ -288,6 +288,7 @@ function LandingPage() {
   const { schoolName, tagline, motto, logo } = useContext(BrandingContext);
   const contactFooterRef = useRef(null);
   const levelDropdownRef = useRef(null);
+  const contactScrollTokenRef = useRef(0);
 
   /* Closes the level dropdown on an outside click. Deliberately not a
      full-screen overlay div (the previous approach) — an overlay sitting
@@ -498,12 +499,112 @@ function LandingPage() {
   };
 
   const handleSendButtonClick = () => {
-    if (contactFooterRef.current) {
-      contactFooterRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }
+    const target = contactFooterRef.current;
+    const wrapper = target && target.closest('.landing-wrapper');
+    if (!target || !wrapper) return;
+
+    /* Everything above the footer (stats, gallery, rankings) streams in
+       asynchronously from Firestore, so the footer's offset can still be
+       shifting for a while after this is clicked — longer still on
+       mobile, where slower network/CPU and a single stacked column (vs.
+       desktop's grid) mean images/data keep trickling in well past a
+       couple seconds. The native `element.scrollIntoView({behavior:
+       'smooth'})` locks onto whatever offset is correct the instant it's
+       called and animates toward that single fixed target — if layout
+       keeps shifting afterward, or (as on iOS Safari) the browser's own
+       smooth-scroll implementation inside a custom `overflow: auto`
+       container just cuts the animation short, it stops partway and
+       never reaches the footer.
+       Driving the scroll by hand instead: every frame, recompute the
+       footer's *current* target scrollTop and ease the wrapper toward
+       it. Because the target is recalculated live, a layout shift just
+       moves the goalpost instead of leaving the animation aimed at a
+       stale one, and because this sets `scrollTop` directly rather than
+       depending on a browser's native smooth-scroll engine, it behaves
+       the same on every browser instead of only where that engine
+       happens to be reliable. */
+    const token = ++contactScrollTokenRef.current;
+    const startTime = performance.now();
+    const MAX_DURATION_MS = 15000;
+    const EASE_TAU_MS = 120; // smaller = snaps to the goal faster
+    let lastTime = startTime;
+    let settledFrames = 0;
+
+    /* Without this, the loop below keeps re-asserting the footer as the
+       target for up to MAX_DURATION_MS regardless of what the user does
+       in the meantime — so scrolling back up by hand right after the
+       click got yanked back down to the footer every frame until the
+       loop finally timed out. Any manual scroll input cancels it. */
+    const cancelOnUserScroll = () => {
+      if (token === contactScrollTokenRef.current) contactScrollTokenRef.current += 1;
+    };
+    wrapper.addEventListener('wheel', cancelOnUserScroll, { passive: true });
+    wrapper.addEventListener('touchstart', cancelOnUserScroll, { passive: true });
+    wrapper.addEventListener('pointerdown', cancelOnUserScroll, { passive: true });
+    const stopListening = () => {
+      wrapper.removeEventListener('wheel', cancelOnUserScroll);
+      wrapper.removeEventListener('touchstart', cancelOnUserScroll);
+      wrapper.removeEventListener('pointerdown', cancelOnUserScroll);
+    };
+
+    const maxScrollTop = () => Math.max(0, wrapper.scrollHeight - wrapper.clientHeight);
+    const desiredScrollTop = () => {
+      const wrapperTop = wrapper.getBoundingClientRect().top;
+      const targetTop = target.getBoundingClientRect().top;
+      const raw = wrapper.scrollTop + (targetTop - wrapperTop);
+      return Math.min(Math.max(raw, 0), maxScrollTop());
+    };
+
+    const step = (now) => {
+      if (token !== contactScrollTokenRef.current) {
+        stopListening(); // superseded by a newer click, or the user scrolled by hand
+        return;
+      }
+
+      /* The ease step is scaled by real elapsed time (not a flat
+         per-frame percentage), so this still converges in roughly the
+         same wall-clock time even when frames come in slowly or
+         irregularly — e.g. a budget phone whose main thread is busy
+         decoding gallery images and dropping rAF callbacks. A flat
+         per-frame factor would instead crawl for as long as frames stay
+         sparse, which read exactly like this bug report: scrolling
+         starts, creeps, and never actually arrives. */
+      const dt = now - lastTime;
+      lastTime = now;
+      const goal = desiredScrollTop();
+      const distance = goal - wrapper.scrollTop;
+      const easeFactor = 1 - Math.exp(-dt / EASE_TAU_MS);
+
+      /* .landing-wrapper has `scroll-behavior: smooth` in CSS, and that
+         also governs plain `scrollTop` assignments, not just scrollTo()/
+         scrollIntoView() — so a direct `wrapper.scrollTop = x` doesn't
+         jump there, it kicks off the browser's own smooth-scroll toward
+         x. Called every frame, each of those restarts fights the last
+         one before it can build any speed, which is what produced the
+         same "creeps and never arrives" symptom this whole rewrite was
+         meant to fix. `behavior: 'instant'` is required to actually
+         bypass that — `'auto'` does NOT mean "instant", it means "defer
+         to the CSS scroll-behavior property", which is 'smooth' here, so
+         passing 'auto' still went through the browser's own animation.
+         'instant' places the value immediately; our loop supplies the
+         smoothing itself, frame by frame. */
+      if (Math.abs(distance) > 0.5) {
+        wrapper.scrollTo({ top: wrapper.scrollTop + distance * easeFactor, behavior: 'instant' });
+        settledFrames = 0;
+      } else {
+        wrapper.scrollTo({ top: goal, behavior: 'instant' });
+        settledFrames += 1;
+      }
+
+      const settled = settledFrames > 10; // no movement needed for several frames in a row
+      const timedOut = now - startTime > MAX_DURATION_MS;
+      if (!settled && !timedOut) {
+        requestAnimationFrame(step);
+      } else {
+        stopListening();
+      }
+    };
+    requestAnimationFrame(step);
   };
 
   return (
