@@ -138,12 +138,27 @@ service cloud.firestore {
     match /sportsTeamsConfig/{level} { allow read: if true; allow write: if isStaff(); }
     match /matchSchedules/{level}    { allow read: if true; allow write: if isStaff(); }
     match /venuesConfig/{docId}      { allow read: if signedIn(); allow write: if isStaff(); }
-    match /matchRecords/{level}      { allow read: if signedIn(); allow write: if isStaff(); }
 
-    // Team rankings are shown publicly (RankingPage), staff-managed.
+    // matchRecords/{level} holds every confirmed match's rating change
+    // (prevPoints/finalPoints), computed from the K/Ppu formula in
+    // functions/matchMath.js. Writing here used to be any isStaff() client
+    // straight from the SDK — meaning a client could set finalPoints to
+    // literally anything, with no server ever checking it matched the
+    // formula. Now it's write: if false — the ONLY writers are the
+    // submitMatchRecord/editMatchRecord/removeScheduledMatchRecords Cloud
+    // Functions (Admin SDK, bypasses these rules entirely), which always
+    // recompute finalPoints themselves from prevPoints they read fresh out
+    // of teamRankings/{level}, never from anything a client sends. Reads
+    // are unchanged.
+    match /matchRecords/{level} { allow read: if signedIn(); allow write: if false; }
+
+    // Team rankings are shown publicly (RankingPage). Same reasoning as
+    // matchRecords above — writes only ever come from the Cloud Functions
+    // that also write matchRecords, in the same transaction, never
+    // directly from a client.
     match /teamRankings/{level} {
       allow read: if true;
-      allow write: if isStaff();
+      allow write: if false;
     }
 
     // Schedule requests — a moderator asks the admin to arrange a fixture.

@@ -775,13 +775,18 @@ export async function saveGeneratedSchedule(level, matches, actorRole) {
  * given schedule match ids, so deleting a fixture doesn't leave a stale
  * record behind in the "Updated Match Summary" table / Dashboard rankings.
  * Records saved without a fixture (`scheduleId: null`) are never touched.
+ *
+ * Goes through the `removeScheduledMatchRecords` Cloud Function rather than
+ * a direct client write — matchRecords/{level} denies direct writes now
+ * (see firestore.rules), so every write to it, including this cascade
+ * delete, has to go through a Cloud Function. This one does no rating math
+ * (pure removal), but still has to run server-side for the same reason.
  */
 async function deleteMatchRecordsByScheduleIds(level, scheduleIds) {
   if (!scheduleIds.length) return;
-  const ids = new Set(scheduleIds.map(String));
-  await updateDocFieldViaTransaction('matchRecords', level, 'records', [], (existing) => (
-    existing.filter(r => !r.scheduleId || !ids.has(String(r.scheduleId)))
-  ));
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'removeScheduledMatchRecords');
+  await call({ level, scheduleIds });
 }
 
 /**
@@ -1197,55 +1202,37 @@ async function advanceBracketWinner(level, record) {
 }
 
 /**
- * Adds (or updates) a single confirmed match record.
+ * Confirms a match result (new record, or re-confirming an already-locked
+ * one) via the `submitMatchRecord` Cloud Function — NOT a direct Firestore
+ * write. `payload` is the raw inputs (teams/scores/violations/comeback,
+ * not prevPoints or any computed points), same shape ModeratorPage already
+ * builds for its own live preview; the function looks up prevPoints itself
+ * from teamRankings/{level} and recomputes finalPoints from scratch, so a
+ * client can never write a fabricated rating change directly (see
+ * functions/index.js and matchRecords/{level}'s Firestore rule). Returns
+ * `{ record, records, rankings }` so the caller can update local state
+ * without a separate read.
  */
-export async function upsertMatchRecord(level, record, actorRole) {
-  if (!db) throw new Error('Firestore not initialized.');
-
-  const merged = await updateDocFieldViaTransaction('matchRecords', level, 'records', [], (existing) => {
-    const idx = existing.findIndex(r => r.id === record.id);
-    return idx >= 0
-      ? existing.map(r => (r.id === record.id ? record : r))
-      : [...existing, record];
-  });
-
-  await advanceBracketWinner(level, record);
-
-  logActivity({
-    actorRole,
-    type: 'Match Record Saved',
-    details: `Saved the ${record.sportName || 'match'} result for ${record.teamA?.name || '?'} vs ${record.teamB?.name || '?'}`,
-    targetType: 'matchRecord',
-    targetId: record.id,
-    targetLabel: record.sportName,
-  });
-
-  return merged;
+export async function submitMatchRecord(payload) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'submitMatchRecord');
+  const { data } = await call(payload);
+  await advanceBracketWinner(payload.level, data.record);
+  return data;
 }
 
 /**
- * Removes a single confirmed match record by id — e.g. to clear out a
- * test entry from the Moderator's "Updated match summary" table.
+ * The Updated Match Summary table's inline quick-edit (1v1 records only),
+ * via the `editMatchRecord` Cloud Function — same reasoning as
+ * submitMatchRecord above: prevPoints/finalPoints are never trusted from
+ * the client, only recomputed server-side from the record already stored
+ * in Firestore.
  */
-export async function deleteMatchRecord(level, recordId, actorRole) {
-  if (!db) throw new Error('Firestore not initialized.');
-
-  let removed = null;
-  const remaining = await updateDocFieldViaTransaction('matchRecords', level, 'records', [], (existing) => {
-    removed = existing.find(r => r.id === recordId);
-    return existing.filter(r => r.id !== recordId);
-  });
-
-  logActivity({
-    actorRole,
-    type: 'Match Record Deleted',
-    details: `Deleted the ${removed?.sportName || 'match'} result for ${removed?.teamA?.name || '?'} vs ${removed?.teamB?.name || '?'}`,
-    targetType: 'matchRecord',
-    targetId: recordId,
-    targetLabel: removed?.sportName,
-  });
-
-  return remaining;
+export async function editMatchRecord(payload) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'editMatchRecord');
+  const { data } = await call(payload);
+  return data;
 }
 
 /* ─────────────────────────────────────────────
@@ -1267,19 +1254,6 @@ export async function getTeamRankings(level) {
     if (!snapshot.exists()) return {};
     return snapshot.data().points || {};
   });
-}
-
-/**
- * `updater(currentPoints) => nextPoints` runs against whatever the doc
- * currently holds at commit time (not a value the caller read earlier),
- * so two moderators confirming different matches at the same level around
- * the same moment each get their own scope/team keys merged in rather than
- * one's write silently overwriting the other's. Returns the merged
- * `points` map that was written.
- */
-export async function updateTeamRankings(level, updater) {
-  if (!db) throw new Error('Firestore not initialized.');
-  return updateDocFieldViaTransaction('teamRankings', level, 'points', {}, updater);
 }
 
 /**

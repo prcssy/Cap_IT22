@@ -11,9 +11,9 @@ import {
   getMatchSchedules,
   subscribeMatchSchedules,
   getMatchRecords,
-  upsertMatchRecord,
+  submitMatchRecord,
+  editMatchRecord,
   getTeamRankings,
-  updateTeamRankings,
   createScheduleRequest,
 } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
@@ -2047,6 +2047,10 @@ export default function ModeratorPage() {
       yearLevel: isManualEntry ? yearLevel : (editingRecord?.yearLevel ?? null),
       teams: comp.teams,
       winnerId: comp.winnerId,
+      // Captured here (not re-read from state in handleConfirm) so the
+      // Cloud Function's own buildComputation run is given the exact same
+      // input that produced this preview.
+      winnerOverrideId: winnerManual ? winnerId : null,
     });
   }
 
@@ -2054,74 +2058,47 @@ export default function ModeratorPage() {
     if (!pending) return;
     setSaving(true);
 
-    const { teams: cTeams, winnerId: wid } = pending;
-    const asStored = (t) => ({
-      id: t.teamId || t.id,
+    const { teams: cTeams } = pending;
+    // Raw inputs only — no prevPoints/change/finalPoints. The Cloud Function
+    // looks prevPoints up itself from teamRankings/{level} and recomputes
+    // everything from scratch; it never trusts a client-computed rating.
+    const rowsPayload = cTeams.map((t) => ({
+      id: t.id,
+      teamId: t.teamId || null,
       name: t.name,
       logo: t.logo || null,
-      minutes: pending.mode === 'time' ? t.score : null,
-      points: pending.mode === 'points' ? t.score : null,
+      score: t.score,
       totalViolations: t.totalViolations,
-      violations: (t.violations || []).map((v) => ({ id: v.id || uid(), type: v.type || '', count: v.count === '' ? 0 : Number(v.count) || 0 })),
+      violations: t.violations || [],
       comeback: !!t.comeback,
-      prevPoints: round4(t.prevPoints),
-      expected: round4(t.expected),
-      f1: round4(t.totalF1),
-      change: round4(t.change),
-      finalPoints: round4(t.finalPoints),
-      place: t.place,
-    });
-
-    const ordered = [...cTeams].sort((a, b) => a.place - b.place);
-    const teamA = asStored(cTeams[0]);
-    const teamB = asStored(cTeams[1]);
-    const winnerSide = cTeams[0].id === wid ? 'A' : 'B';
-    const diff = Math.abs((cTeams[0].score ?? 0) - (cTeams[1].score ?? 0));
-
-    const record = {
-      id: editingRecord?.id || uid(),
-      level,
-      scheduleId: pending.scheduleId || editingRecord?.scheduleId || null,
-      mode: pending.mode,
-      multi: pending.multi,
-      formatId: pending.formatId,
-      sportId: pending.sportId,
-      sportName: pending.sportName,
-      category: pending.category,
-      format: pending.format,
-      yearLevel: pending.yearLevel || null,
-      label: `${pending.sportName} ${pending.category}${pending.yearLevel ? ` · ${LEVELS.find((l) => l.key === pending.yearLevel)?.label || pending.yearLevel}` : ''}`.trim(),
-      diff: round4(diff),
-      winner: winnerSide,
-      teamA,
-      teamB,
-      participants: pending.multi ? ordered.map(asStored) : [],
-      createdAt: editingRecord?.createdAt || Date.now(),
-      updatedAt: Date.now(),
-    };
+    }));
 
     try {
-      const merged = await upsertMatchRecord(level, record, userProfile?.role);
-      setRecords(merged);
-
-      const confirmScopeKey = rankingScopeKey(pending.sportName, pending.category);
-      // Runs against whatever teamRankings/{level} holds at commit time
-      // (not the `rankings` state read earlier), so a different moderator
-      // confirming a different match/scope at the same moment can't have
-      // their write silently overwritten by this one or vice versa.
-      const newRankings = await updateTeamRankings(level, (current) => {
-        const scope = { ...(current[confirmScopeKey] || {}) };
-        cTeams.forEach((t) => { scope[t.name] = round4(t.finalPoints); });
-        return { ...current, [confirmScopeKey]: scope };
+      const { record, records, rankings } = await submitMatchRecord({
+        level,
+        recordId: editingRecord?.id || null,
+        scheduleId: pending.scheduleId || editingRecord?.scheduleId || null,
+        mode: pending.mode,
+        multi: pending.multi,
+        formatId: pending.formatId,
+        sportId: pending.sportId,
+        sportName: pending.sportName,
+        category: pending.category,
+        format: pending.format,
+        yearLevel: pending.yearLevel || null,
+        winnerOverrideId: pending.winnerOverrideId,
+        rows: rowsPayload,
+        createdAt: editingRecord?.createdAt || null,
       });
-      setRankings(newRankings);
 
+      setRecords(records);
+      setRankings(rankings);
       setPending(null);
       setSuccessRecord(record);
       resetForm(entries.length);
     } catch (err) {
       console.error(err);
-      setInvalidReasons(['Something went wrong while saving. Please try again.']);
+      setInvalidReasons([friendlyFirestoreError(err, 'Something went wrong while saving')]);
       setPending(null);
     } finally {
       setSaving(false);
@@ -2187,44 +2164,27 @@ export default function ModeratorPage() {
   async function saveEditInner(record) {
     const teamAObj = effectiveTeams.find((t) => t.id === editDraft.teamAId) || { id: record.teamA.id, name: record.teamA.name, logo: record.teamA.logo };
     const teamBObj = effectiveTeams.find((t) => t.id === editDraft.teamBId) || { id: record.teamB.id, name: record.teamB.name, logo: record.teamB.logo };
-    const isPoints = record.mode === 'points' || record.teamA.points != null;
-    const { finalPointsA, finalPointsB, winner } = computeEditFinalPoints(record, editDraft, isPoints);
 
-    const updated = {
-      ...record,
-      winner,
-      teamA: {
-        ...record.teamA,
-        id: teamAObj.id, name: teamAObj.name, logo: teamAObj.logo || null,
-        totalViolations: parseInt(editDraft.totalViolationsA, 10) || 0,
-        minutes: isPoints ? record.teamA.minutes : (editDraft.minutesA === '' ? record.teamA.minutes : Number(editDraft.minutesA)),
-        points: isPoints ? (editDraft.pointsA === '' ? record.teamA.points : Number(editDraft.pointsA)) : record.teamA.points,
-        finalPoints: finalPointsA,
-      },
-      teamB: {
-        ...record.teamB,
-        id: teamBObj.id, name: teamBObj.name, logo: teamBObj.logo || null,
-        totalViolations: parseInt(editDraft.totalViolationsB, 10) || 0,
-        minutes: isPoints ? record.teamB.minutes : (editDraft.minutesB === '' ? record.teamB.minutes : Number(editDraft.minutesB)),
-        points: isPoints ? (editDraft.pointsB === '' ? record.teamB.points : Number(editDraft.pointsB)) : record.teamB.points,
-        finalPoints: finalPointsB,
-      },
-      updatedAt: Date.now(),
-    };
+    // Identity/display fields (team id/name/logo) are trusted from the
+    // client same as before — the Cloud Function only ever recomputes
+    // finalPoints itself from record.teamA/teamB.prevPoints (already
+    // authoritative, since it was written by the server) plus these edited
+    // violations/score inputs, never accepting a finalPoints value as-is.
+    const { record: updated, records, rankings } = await editMatchRecord({
+      level,
+      recordId: record.id,
+      teamA: { id: teamAObj.id, name: teamAObj.name, logo: teamAObj.logo || null },
+      teamB: { id: teamBObj.id, name: teamBObj.name, logo: teamBObj.logo || null },
+      totalViolationsA: editDraft.totalViolationsA,
+      totalViolationsB: editDraft.totalViolationsB,
+      pointsA: editDraft.pointsA,
+      pointsB: editDraft.pointsB,
+      minutesA: editDraft.minutesA,
+      minutesB: editDraft.minutesB,
+    });
 
-    const merged = await upsertMatchRecord(level, updated, userProfile?.role);
-    setRecords(merged);
-
-    const editScopeKey = rankingScopeKey(updated.sportName, updated.category);
-    const newRankings = await updateTeamRankings(level, (current) => ({
-      ...current,
-      [editScopeKey]: {
-        ...(current[editScopeKey] || {}),
-        [updated.teamA.name]: updated.teamA.finalPoints,
-        [updated.teamB.name]: updated.teamB.finalPoints,
-      },
-    }));
-    setRankings(newRankings);
+    setRecords(records);
+    setRankings(rankings);
 
     setEditingId(null);
     setEditDraft(null);
