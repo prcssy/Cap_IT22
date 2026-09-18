@@ -2,6 +2,7 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './shared/context/AuthContext';
 import { BrandingProvider } from './shared/context/BrandingContext';
+import { LevelLabelsProvider } from './shared/context/LevelLabelsContext';
 import { ScheduleRequestsProvider } from './shared/context/ScheduleRequestsContext';
 import { SidebarProvider } from './shared/components/Sidebar/SidebarContext';
 import PublicLayout from './public/PublicLayout';
@@ -30,6 +31,7 @@ const PrivacyPolicyPage = lazy(() => import('./public/PrivacyPolicy/PrivacyPolic
 function App() {
   return (
     <BrandingProvider>
+      <LevelLabelsProvider>
       <AuthProvider>
         <BrowserRouter>
           <Suspense fallback={<div>Loading...</div>}>
@@ -140,6 +142,7 @@ function App() {
           <LoginModal />
         </BrowserRouter>
       </AuthProvider>
+      </LevelLabelsProvider>
     </BrandingProvider>
   );
 }

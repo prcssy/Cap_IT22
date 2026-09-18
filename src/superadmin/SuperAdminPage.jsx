@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { db } from '../shared/firebase';
 import { getAllUsers, getAllRegistrations, getSportsTeamsConfig, getMatchSchedules, getMatchRecords, getActivityLogs } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
@@ -8,6 +9,7 @@ import ActivityLogsAndRoles from './ActivityLogsAndRoles';
 import StudentRegistrationDetails from './StudentRegistrationDetails';
 import BrandingSettings from './BrandingSettings';
 import LandingPageSettings from './LandingPageSettings';
+import LevelLabelsSettings from './LevelLabelsSettings';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
@@ -29,13 +31,6 @@ import {
    ═══════════════════════════════════════════════════════════════ */
 
 const LEVELS = ['elementary', 'highSchool', 'college'];
-
-const LEVEL_OPTIONS = [
-  { key: 'all',        label: 'All Levels' },
-  { key: 'elementary', label: 'Elementary' },
-  { key: 'highSchool', label: 'High School' },
-  { key: 'college',    label: 'College' },
-];
 
 const ELEMENTARY_GRADES = new Set(['Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6']);
 const HIGH_SCHOOL_GRADES = new Set(['Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12']);
@@ -138,12 +133,16 @@ function RangeDropdown({ value, options, onChange }) {
 
 /* A saved match only ever gets `status: 'scheduled'` at creation time —
    nothing in the app ever patches it to "ongoing"/"finished" afterwards
-   (that only happens implicitly, via date/time + a matching matchRecords
-   entry). Bucketing on the raw `status` field made this donut permanently
-   report 100% Upcoming. Classify matches the same way DashboardPage.jsx
-   already does — by assumed match window vs. the current time, and by
-   whether a moderator-confirmed record exists for the fixture — so this
-   summary agrees with what students actually see on the Dashboard. */
+   (that only happens implicitly, via date/time). Bucketing on the raw
+   `status` field made this donut permanently report 100% Upcoming.
+   Classify matches by assumed match window vs. the current time only —
+   the same rule ModeratorPage.jsx's matchStatus() uses for its own
+   FINISHED/ONGOING/UPCOMING badge — so a match reads the same way here
+   as it does to the moderator recording it. Whether a result has
+   actually been recorded yet is tracked separately (see
+   `unrecordedFinishedCount` below) rather than folded into this status,
+   since "finished-but-unrecorded" used to silently read as "Ongoing"
+   here while the Moderator page already called it Finished. */
 const STATUS_BUCKETS = [
   { key: 'finished', label: 'Finished', color: '#7c3aed' },
   { key: 'ongoing',  label: 'Ongoing',  color: '#16a34a' },
@@ -198,16 +197,17 @@ function recordMatchesSchedule(record, schedule) {
     && names.some(name => sameTeamName(name, schedule.teamB));
 }
 
-/* finished (has a confirmed record) beats ongoing/upcoming; otherwise a
-   match not yet at its start time is upcoming, and anything else
-   (currently in its assumed window, OR past it with no result recorded
-   yet) reads as ongoing — closer to reality than silently vanishing. */
-function classifyMatch(match, records, now) {
-  const hasRecord = records.some(r => recordMatchesSchedule(r, match));
-  if (hasRecord) return 'finished';
+/* Time-only, matching ModeratorPage.jsx's matchStatus(): not yet at its
+   start time is upcoming, inside the assumed window is ongoing, and past
+   the window is finished — regardless of whether a result has been
+   recorded yet. A match with no date/time to compare against the clock
+   falls back to ongoing rather than vanishing. */
+function classifyMatch(match, now) {
   const window = matchWindow(match);
-  if (window && now < window.start) return 'upcoming';
-  return 'ongoing';
+  if (!window) return 'ongoing';
+  if (now < window.start) return 'upcoming';
+  if (now < window.end) return 'ongoing';
+  return 'finished';
 }
 
 /* ── SVG chart primitives ────────────────────────────────────── */
@@ -557,6 +557,14 @@ function buildTimeSeries(seriesA, seriesB, days) {
 export default function SuperAdminPage() {
   const { userProfile, authLoading } = useContext(AuthContext);
   const { schoolName } = useContext(BrandingContext);
+  const levelLabels = useContext(LevelLabelsContext);
+
+  const LEVEL_OPTIONS = useMemo(() => [
+    { key: 'all',        label: 'All Levels' },
+    { key: 'elementary', label: levelLabels.elementary },
+    { key: 'highSchool', label: levelLabels.highSchool },
+    { key: 'college',    label: levelLabels.college },
+  ], [levelLabels]);
 
   const [users, setUsers]                 = useState([]);
   const [registrations, setRegistrations] = useState([]);
@@ -687,9 +695,21 @@ export default function SuperAdminPage() {
   const matchBuckets = useMemo(
     () => levelsForConfig.flatMap(l => {
       const records = recordsByLevel[l] || [];
-      return (schedulesByLevel[l] || []).map(m => classifyMatch(m, records, now));
+      return (schedulesByLevel[l] || []).map(m => ({
+        status: classifyMatch(m, now),
+        recorded: records.some(r => recordMatchesSchedule(r, m)),
+      }));
     }),
     [schedulesByLevel, recordsByLevel, levelsForConfig, now],
+  );
+
+  // Matches whose window has elapsed but that the moderator hasn't
+  // submitted a result for yet — still counted as "Finished" in the donut
+  // above (matching the Moderator page), surfaced here as a call-to-action
+  // instead of silently reading as "Ongoing".
+  const unrecordedFinishedCount = useMemo(
+    () => matchBuckets.filter(b => b.status === 'finished' && !b.recorded).length,
+    [matchBuckets],
   );
 
   /* Users and registrations carry createdAt and a grade level, so they
@@ -702,8 +722,8 @@ export default function SuperAdminPage() {
     return date;
   }, [range]);
 
-  const matchesFilters = useCallback((record) => {
-    if (levelKey !== 'all' && getSchoolLevel(record.gradeLevel) !== levelKey) return false;
+  const matchesFilters = useCallback((record, level) => {
+    if (levelKey !== 'all' && level !== levelKey) return false;
     if (!cutoff) return true;
     const created = toDate(record.createdAt);
     // Records with no timestamp predate the field — keep them visible
@@ -712,8 +732,46 @@ export default function SuperAdminPage() {
     return created >= cutoff;
   }, [cutoff, levelKey]);
 
-  const rangedUsers = useMemo(() => users.filter(matchesFilters), [users, matchesFilters]);
-  const rangedRegs  = useMemo(() => registrations.filter(matchesFilters), [registrations, matchesFilters]);
+  const usersById = useMemo(() => {
+    const map = new Map();
+    users.forEach(u => map.set(u.id, u));
+    return map;
+  }, [users]);
+
+  /* A registration doc's own `gradeLevel` is a snapshot taken at submission
+     time — it can drift from the student's CURRENT profile (year-level
+     promotion, a corrected profile, etc). The Users Registration Details
+     table below always trusts the live profile field for level
+     classification (see StudentRegistrationDetails.jsx's merge, which
+     forces `gradeLevel: user.gradeLevel` over whatever the registration
+     doc says), so registrations here resolve their level the same way —
+     otherwise a student could show up under one level in the table and
+     a different one in these tiles/charts. */
+  const levelOfRegistration = useCallback(
+    (reg) => getSchoolLevel(usersById.get(reg.uid)?.gradeLevel || reg.gradeLevel),
+    [usersById],
+  );
+
+  const rangedUsers = useMemo(
+    () => users.filter(u => matchesFilters(u, getSchoolLevel(u.gradeLevel))),
+    [users, matchesFilters],
+  );
+  const rangedRegs = useMemo(
+    () => registrations.filter(r => matchesFilters(r, levelOfRegistration(r))),
+    [registrations, matchesFilters, levelOfRegistration],
+  );
+
+  /* Staff (admin/moderator/superadmin) accounts often still carry a
+     gradeLevel left over from when they first signed up as a student,
+     before being promoted via the staff allowlist collections — that
+     makes them incorrectly count toward a school level they no longer
+     belong to. Total Users should read as "how many students are in
+     this level", matching the student-only Users Registration Details
+     table below it, so it counts role:'student' only. */
+  const rangedStudents = useMemo(
+    () => rangedUsers.filter(u => (u.role || 'student').toLowerCase() === 'student'),
+    [rangedUsers],
+  );
 
   /* A student account that has submitted a registration is a Player;
      one that hasn't is an Audience member. That's the only honest way
@@ -736,13 +794,31 @@ export default function SuperAdminPage() {
   );
   // A rejected registration no longer holds a spot, so it shouldn't keep
   // counting toward Total Players once an admin has rejected it.
-  const activePlayerCount = useMemo(
-    () => rangedRegs.filter(r => r.status !== 'rejected').length,
-    [rangedRegs]
-  );
+  //
+  // "Total Players" (and Gender Distribution below) mean unique STUDENTS,
+  // matching the User Distribution donut's Players count and the
+  // one-row-per-student Users Registration Details table — not
+  // registration documents. A student who registers for more than one
+  // sport gets a separate doc per sport (e.g. Princes Narciso: one
+  // Basketball submission, one Badminton submission), so counting
+  // rangedRegs.length here double-counted her. Keyed by uid so each
+  // player is only counted once, keeping their first active submission
+  // as the representative doc (used below for Gender Distribution).
+  // Sports Participation and Pending Review intentionally stay
+  // per-registration — a sport signup or a review decision is a real,
+  // separate item, not a duplicate of the person.
+  const activePlayersByUid = useMemo(() => {
+    const map = new Map();
+    rangedRegs.forEach((r) => {
+      if (r.status === 'rejected' || !r.uid || map.has(r.uid)) return;
+      map.set(r.uid, r);
+    });
+    return map;
+  }, [rangedRegs]);
+  const activePlayerCount = activePlayersByUid.size;
 
   const tiles = [
-    { icon: FaUsers,       label: 'Total Users',        value: rangedUsers.length,   color: '#6d28d9' },
+    { icon: FaUsers,       label: 'Total Users',        value: rangedStudents.length, color: '#6d28d9' },
     { icon: FaRunning,     label: 'Total Sports',       value: sportNames.length,    color: '#f5a623' },
     { icon: FaUsersCog,    label: 'Total Teams',        value: teamCount,            color: '#16a34a' },
     { icon: FaCalendarAlt, label: 'Total Matches',      value: matches.length,       color: '#1d4ed8' },
@@ -765,38 +841,48 @@ export default function SuperAdminPage() {
   }, [rangedRegs]);
 
   /* ── Registration over time ── */
+  // "New Users" here means new student sign-ups (matching the Total Users
+  // tile above it), not staff accounts being added to the system.
   const timeSeries = useMemo(() => buildTimeSeries(
-    rangedUsers.map(u => toDate(u.createdAt)).filter(Boolean),
+    rangedStudents.map(u => toDate(u.createdAt)).filter(Boolean),
     rangedRegs.map(r => toDate(r.createdAt)).filter(Boolean),
     range.days,
-  ), [rangedUsers, rangedRegs, range.days]);
+  ), [rangedStudents, rangedRegs, range.days]);
 
   /* ── Donuts ── */
   const statusSegments = useMemo(() => {
     const counts = { finished: 0, ongoing: 0, upcoming: 0 };
-    matchBuckets.forEach((bucket) => { counts[bucket]++; });
-    return STATUS_BUCKETS.map(b => ({ label: b.label, value: counts[b.key], color: b.color }));
-  }, [matchBuckets]);
-
-  const roleSegments = useMemo(() => {
-    const counts = { audience: 0, player: 0, moderator: 0, admin: 0, superadmin: 0 };
-    rangedUsers.forEach((u) => {
-      const role = roleOf(u);
-      if (counts[role] !== undefined) counts[role]++;
+    matchBuckets.forEach(({ status }) => { counts[status]++; });
+    return STATUS_BUCKETS.map(b => {
+      const label = b.key === 'finished' && unrecordedFinishedCount > 0
+        ? `${b.label} (${unrecordedFinishedCount} Awaiting Result)`
+        : b.label;
+      return { label, value: counts[b.key], color: b.color };
     });
+  }, [matchBuckets, unrecordedFinishedCount]);
+
+  // Staff (moderator/admin/superadmin) accounts aren't part of any school
+  // level's population, so this donut — like the Total Users tile above it
+  // — only ever breaks down students: Audience (signed up, never
+  // registered) vs Player (has a registration).
+  const roleSegments = useMemo(() => {
+    const counts = { audience: 0, player: 0 };
+    rangedStudents.forEach((u) => { counts[roleOf(u)]++; });
     return [
-      { label: 'Audiences',   value: counts.audience,   color: '#1d4ed8' },
-      { label: 'Players',     value: counts.player,     color: '#f5a623' },
-      { label: 'Moderators',  value: counts.moderator,  color: '#16a34a' },
-      { label: 'Admins',      value: counts.admin,      color: '#dc2626' },
-      { label: 'Super Admins', value: counts.superadmin, color: '#7c3aed' },
+      { label: 'Students', value: counts.audience, color: '#1d4ed8' },
+      { label: 'Players',  value: counts.player,   color: '#f5a623' },
     ];
-  }, [rangedUsers, roleOf]);
+  }, [rangedStudents, roleOf]);
 
   const genderSegments = useMemo(() => {
     const counts = { Male: 0, Female: 0, Others: 0 };
-    rangedRegs.forEach((r) => {
-      const gender = (r.gender || '').toLowerCase();
+    // One row per PLAYER (see activePlayersByUid above), gender resolved
+    // from the student's current profile first — same "trust the live
+    // profile over the registration snapshot" rule as levelOfRegistration
+    // — falling back to the representative registration's own gender only
+    // if no matching user record exists.
+    activePlayersByUid.forEach((reg, uid) => {
+      const gender = (usersById.get(uid)?.gender || reg.gender || '').toLowerCase();
       if (gender === 'male') counts.Male++;
       else if (gender === 'female') counts.Female++;
       else counts.Others++;
@@ -806,7 +892,7 @@ export default function SuperAdminPage() {
       { label: 'Female', value: counts.Female, color: '#db2777' },
       { label: 'Others', value: counts.Others, color: '#94a3b8' },
     ];
-  }, [rangedRegs]);
+  }, [activePlayersByUid, usersById]);
 
   const rangeCaption = useMemo(() => {
     if (!cutoff) return 'All time';
@@ -893,6 +979,7 @@ export default function SuperAdminPage() {
                 levels={[
                   { key: 'branding', label: 'Branding' },
                   { key: 'landingPage', label: 'Landing Page' },
+                  { key: 'levels', label: 'School Levels' },
                 ]}
                 value={webTab}
                 onChange={setWebTab}
@@ -902,6 +989,8 @@ export default function SuperAdminPage() {
               />
               {webTab === 'landingPage'
                 ? <LandingPageSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
+                : webTab === 'levels'
+                ? <LevelLabelsSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
                 : <BrandingSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />}
             </>
           ) : (
@@ -1020,6 +1109,7 @@ export default function SuperAdminPage() {
               records too. */}
           <StudentRegistrationDetails
             scope="allUsers"
+            levelFilter={levelKey === 'all' ? '' : levelKey}
             onStatusChange={(regId, status) => setRegistrations(prev => prev.map(r => (
               r.id === regId ? { ...r, status } : r
             )))}

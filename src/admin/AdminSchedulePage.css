@@ -1386,17 +1386,53 @@
   }
 
   .asp-modal {
-    width: 96vw;
-    max-height: 94vh;
+    width: 82vw;
+    max-height: 72vh;
   }
 
   .asp-modal__header {
-    padding: clamp(12px, calc(9.14px + 0.89vw), 16px) clamp(14px, calc(11.14px + 0.89vw), 18px);
+    padding: 6px 8px;
+  }
+
+  .asp-modal__header h2 {
+    font-size: 0.85rem;
+  }
+
+  .asp-modal__close {
+    padding: 4px 6px;
+    font-size: 0.8rem;
   }
 
   .asp-modal__body {
-    padding: clamp(14px, calc(9.71px + 1.34vw), 20px);
-    gap: clamp(14px, calc(8.29px + 1.79vw), 22px);
+    padding: 7px;
+    gap: 7px;
+  }
+
+  .asp-modal__section-group {
+    gap: 8px;
+  }
+
+  .asp-modal__section {
+    font-size: 0.62rem;
+    padding-bottom: 4px;
+  }
+
+  .asp-form-group {
+    gap: 3px;
+  }
+
+  .asp-form-group label {
+    font-size: 0.64rem;
+  }
+
+  .asp-form-group p {
+    font-size: 0.8rem;
+    padding: 5px 0 1px;
+  }
+
+  .asp-attach-photo img {
+    width: 96px;
+    height: 96px;
   }
 
   .asp-sched-topbar {
@@ -1436,23 +1472,14 @@
     font-size: clamp(0.68rem, calc(0.61rem + 0.36vw), 0.78rem);
   }
 
-  /* A 2-column grid wrapped 5 tabs into 2+2+1, leaving "Schedule Requests"
-     alone on its own row, off-center from the columns above it — one
-     horizontally-scrollable row instead, so every tab lines up on the
-     same baseline regardless of count. */
+  /* Two wrapping rows instead of one horizontally-scrollable row,
+     flush left so both rows start at the same edge. */
   .asp-tabs--header {
     display: flex;
-    flex-wrap: nowrap;
+    flex-wrap: wrap;
     justify-content: flex-start;
     width: 100%;
     gap: 8px;
-    overflow-x: auto;
-    -webkit-overflow-scrolling: touch;
-    scrollbar-width: none;
-  }
-
-  .asp-tabs--header::-webkit-scrollbar {
-    display: none;
   }
 
   .asp-tab {
@@ -2304,9 +2331,84 @@
   padding: 4px 14px 14px;
 }
 
-@media (max-width: 640px) {
+@media (max-width: 768px) {
   .msf-matchgrid {
     grid-template-columns: 1fr;
+  }
+
+  .msf-card {
+    padding: 10px 8px;
+  }
+
+  /* .msf-filters uses align-items: flex-end on desktop so short/tall
+     fields share a bottom edge. On mobile, fields sit multiple-per-row
+     (see .msf-field max-width below), so when one field's panel opens
+     in-flow and grows tall, flex-end shifted every OTHER field in that
+     row down too, to keep them bottom-aligned with the now-taller one —
+     e.g. opening Category/Division visibly dropped the already-picked
+     Sports value and the Format field. Top-aligning removes that
+     coupling: a field growing taller no longer moves its row-mates. */
+  .msf-filters {
+    gap: 6px;
+    margin-bottom: 8px;
+    align-items: flex-start;
+  }
+
+  .msf-field {
+    min-width: 0;
+    max-width: 140px;
+    gap: 6px;
+  }
+
+
+  .msf-field label {
+    font-size: 8px;
+  }
+
+  .msf-select__btn {
+    padding: 3px 6px;
+    font-size: 8.5px;
+  }
+
+  .msf-select__arrow {
+    font-size: 8px;
+    margin-left: 8px;
+    flex-shrink: 0;
+  }
+
+  /* Absolute-positioned panels don't reserve space, so opening the
+     Sports dropdown drew its option list on top of the Category/Division
+     and Format fields stacked directly below it on mobile. Flowing the
+     panel in-place (instead of overlaying) pushes those fields down
+     instead of covering them. */
+  .msf-select__panel {
+    position: static;
+    margin-top: 3px;
+    padding: 3px;
+    box-shadow: none;
+  }
+
+  .msf-select__title {
+    font-size: 7px;
+    padding: 1px 3px 3px;
+  }
+
+  .msf-select__opt {
+    width: 100%;
+    padding: 2px 6px;
+    font-size: 8.5px;
+    margin-bottom: 2px;
+  }
+
+  .msf-reset-btn {
+    padding: 4px 8px;
+    font-size: 9px;
+    height: 24px;
+  }
+
+  .msf-form-note {
+    font-size: 9px;
+    margin: -2px 0 8px;
   }
 }
 
@@ -2802,11 +2904,20 @@
   inset: 0;
   background: rgba(3, 8, 20, 0.72);
   display: flex;
-  align-items: center;
+  /* align-items: center clipped the TOP of any modal taller than the
+     viewport unreachably — centering makes the box overflow equally
+     above and below, but a scrollable area can only ever reach content
+     below its start (scrollTop can't go negative), so the part above
+     the fold (e.g. the "MATCH SCHEDULE (TIME, DATE AND VENUE)" eyebrow
+     on the Edit Match Schedule modal) was stuck behind the header with
+     no way to scroll up to it. Top-aligning plus overflow-y guarantees
+     the whole modal, start to end, is always reachable. */
+  align-items: flex-start;
   justify-content: center;
-  padding: 20px;
+  padding: 48px 20px 20px;
   z-index: 90;
   animation: msf-backdrop-in 0.2s ease both;
+  overflow-y: auto;
 }
 
 @keyframes msf-backdrop-in {
@@ -2961,6 +3072,103 @@
   flex: 1;
   text-transform: uppercase;
   letter-spacing: 0.4px;
+}
+
+/* ── Add/Edit Schedule modal: compact on mobile ──
+   Same shell (.msf-addwrap/.msf-add-card) used by both the Add and Edit
+   Schedule modals — desktop padding/font sizes made the card run tall on
+   a phone. Time/Date and Team A vs Team B were already flex rows, just
+   sized for desktop; shrinking their gaps/padding keeps them lined up
+   side by side instead of the fields looking cramped or the row
+   wrapping. */
+@media (max-width: 768px) {
+  .msf-addwrap {
+    max-width: 260px;
+  }
+
+  .msf-add-eyebrow {
+    font-size: 9px;
+    margin: 0 0 6px;
+  }
+
+  .msf-add-card {
+    padding: 8px 8px;
+  }
+
+  .msf-add-card__title {
+    font-size: 12.5px;
+  }
+
+  .msf-add-card__divider {
+    margin: 4px 0 6px;
+  }
+
+  .msf-form-group {
+    margin-bottom: 5px;
+  }
+
+  .msf-form-group label {
+    font-size: 8.5px;
+    margin-bottom: 2px;
+  }
+
+  .msf-form-group select,
+  .msf-form-group input {
+    padding: 3px 5px;
+    font-size: 9.5px;
+  }
+
+  .msf-form-row {
+    gap: 5px;
+  }
+
+  /* The Add Team button sat inline with the two team selects, so as the
+     card got narrower it kept eating their width until the selects'
+     "Select a team" text was truncated to "Select a t". Wrapping lets it
+     drop to its own line instead of continuing to squeeze them. */
+  .msf-form-row--vs {
+    flex-wrap: wrap;
+  }
+
+  .msf-form-row--vs .msf-addteam-btn {
+    flex: 1 1 100%;
+    justify-content: center;
+  }
+
+  .msf-teams-row {
+    gap: 4px;
+    margin: -2px 0 5px;
+  }
+
+  .msf-teams-row__select {
+    padding: 3px 4px;
+    font-size: 9.5px;
+  }
+
+  .msf-vs {
+    font-size: 9.5px;
+  }
+
+  .msf-addteam-btn {
+    padding: 4px 6px;
+    font-size: 9.5px;
+    height: 24px;
+  }
+
+  .msf-form-note {
+    font-size: 8.5px;
+    margin: -3px 0 6px;
+  }
+
+  .msf-form-actions {
+    gap: 6px;
+    margin-top: 8px;
+  }
+
+  .msf-form-actions button {
+    padding: 6px;
+    font-size: 11px;
+  }
 }
 
 /* ── List view ── */

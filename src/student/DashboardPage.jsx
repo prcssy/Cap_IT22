@@ -4,6 +4,7 @@ import { FaCrown } from 'react-icons/fa';
 import './DashboardPage.css';
 import Contact from '../public/Landing/Contact/Contact';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import LevelTabs from '../shared/components/LevelTabs';
 import { subscribeMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '../shared/services/firestoreService';
 
@@ -16,8 +17,6 @@ import { subscribeMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '
    they have nothing to compare against the clock yet.
 ═══════════════════════════════════════════ */
 const ASSUMED_MATCH_MINUTES = 120; // 2 hours, matching the original mock's "7:00–9:00 AM" style windows
-
-const LEVEL_KEY_BY_LABEL = { 'Elementary': 'elementary', 'High School': 'highSchool', 'College': 'college' };
 
 function matchWindow(match) {
   if (!match.date || !match.time) return null;
@@ -145,8 +144,6 @@ function formatTimePill(dateStr, timeStr) {
   return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
 }
 
-
-const LEVELS = ['Elementary', 'High School', 'College'];
 
 const CARD_W = 400;
 const GAP    = 24;
@@ -529,9 +526,16 @@ function SportFilter({ sports, value, onChange }) {
 
 export default function DashboardPage() {
   const { schoolName } = useContext(BrandingContext);
+  const levelLabels = useContext(LevelLabelsContext);
   const contactFooterRef = useRef(null);
 
-  const [levelLabel, setLevelLabel] = useState('High School');
+  const LEVELS = useMemo(() => [
+    { key: 'elementary', label: levelLabels.elementary },
+    { key: 'highSchool', label: levelLabels.highSchool },
+    { key: 'college', label: levelLabels.college },
+  ], [levelLabels]);
+
+  const [levelKey, setLevelKey] = useState('highSchool');
   const [matches, setMatches] = useState([]);
   const [records, setRecords] = useState([]);
   const [teamsByName, setTeamsByName] = useState({});
@@ -544,8 +548,6 @@ export default function DashboardPage() {
   const [sportFilter, setSportFilter] = useState('ALL SPORTS');
   const [availableSports, setAvailableSports] = useState([]);
   const [now, setNow] = useState(() => new Date());
-
-  const levelKey = LEVEL_KEY_BY_LABEL[levelLabel];
 
   // Reload whenever the selected level changes (or the 30s poll below
   // ticks). `matches` itself is NOT fetched here — the live listener right
@@ -726,8 +728,8 @@ export default function DashboardPage() {
         <div className="dash-filters-row">
           <LevelTabs
             levels={LEVELS}
-            value={levelLabel}
-            onChange={setLevelLabel}
+            value={levelKey}
+            onChange={setLevelKey}
             containerClassName="dash-lvltabs"
             tabClassName="dash-lvltab"
             activeClassName="dash-lvltab--active"

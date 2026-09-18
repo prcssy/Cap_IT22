@@ -3,8 +3,8 @@ import { FaMapMarkerAlt, FaEdit, FaTrash, FaTimes, FaPlus, FaCheck } from 'react
 import './VenuesManager.css';
 import { getVenues, saveVenues, getAllMatchSchedules } from '../shared/services/firestoreService';
 import { AuthContext } from '../shared/context/AuthContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 
-const LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
 const uid = () => Math.random().toString(36).slice(2, 10);
 const norm = (v) => (v || '').trim().toLowerCase();
 
@@ -30,6 +30,7 @@ function TeamBadge({ name, logo, size = 34 }) {
    per-venue lookup of what's already booked there — click a card. */
 export default function VenuesManager() {
   const { userProfile } = useContext(AuthContext);
+  const LEVEL_LABELS = useContext(LevelLabelsContext);
   const [venues, setVenues] = useState([]);
   const [allSchedules, setAllSchedules] = useState([]);
   const [loading, setLoading] = useState(false);

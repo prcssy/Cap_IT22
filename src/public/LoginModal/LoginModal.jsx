@@ -2,6 +2,7 @@ import { useContext, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../shared/context/AuthContext';
 import { BrandingContext } from '../../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../../shared/context/LevelLabelsContext';
 import { FaTimes, FaEye, FaEyeSlash, FaArrowLeft } from 'react-icons/fa';
 import './LoginModal.css';
 
@@ -150,23 +151,23 @@ function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification 
   );
 }
 
-const GRADE_LEVEL_GROUPS = [
-  {
-    label: 'Elementary',
-    options: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'],
-  },
-  {
-    label: 'High School',
-    options: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'],
-  },
-  {
-    label: 'College',
-    options: ['1st Year', '2nd Year', '3rd Year', '4th Year'],
-  },
-];
-
 function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
   const { logo } = useContext(BrandingContext);
+  const levelLabels = useContext(LevelLabelsContext);
+  const GRADE_LEVEL_GROUPS = [
+    {
+      label: levelLabels.elementary,
+      options: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'],
+    },
+    {
+      label: levelLabels.highSchool,
+      options: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'],
+    },
+    {
+      label: levelLabels.college,
+      options: ['1st Year', '2nd Year', '3rd Year', '4th Year'],
+    },
+  ];
   const [formData, setFormData] = useState({
     name: '',
     email: '',

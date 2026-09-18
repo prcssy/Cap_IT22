@@ -7,6 +7,7 @@ import {
 } from 'libphonenumber-js';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import {
   createRegistration,
   getSportsTeamsConfig,
@@ -45,10 +46,8 @@ function getSchoolLevel(gradeLevel) {
   return null;
 }
 
-const SCHOOL_LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
-
-function gradeLevelDisplayLabel(gradeLevel) {
-  const label = SCHOOL_LEVEL_LABELS[getSchoolLevel(gradeLevel)];
+function gradeLevelDisplayLabel(gradeLevel, levelLabels) {
+  const label = levelLabels[getSchoolLevel(gradeLevel)];
   return label ? `${gradeLevel} (${label})` : gradeLevel;
 }
 
@@ -190,6 +189,7 @@ export default function RegistrationPage() {
 
   const { currentUser, userProfile } = useContext(AuthContext);
   const { schoolName, events } = useContext(BrandingContext);
+  const levelLabels = useContext(LevelLabelsContext);
   const [form, setForm] = useState(INITIAL);
   const [addr, setAddr] = useState(ADDR_INITIAL);
   const [photo, setPhoto]         = useState(null);
@@ -1066,7 +1066,7 @@ export default function RegistrationPage() {
               <Field label="Grade / Year Level" required error={errors.gradeLevel}>
                 <select className="reg-select" value={form.gradeLevel} onChange={set('gradeLevel')} required>
                   <option value="">Select Grade / Year Level</option>
-                  {GRADE_LEVELS.map(g => <option key={g} value={g}>{gradeLevelDisplayLabel(g)}</option>)}
+                  {GRADE_LEVELS.map(g => <option key={g} value={g}>{gradeLevelDisplayLabel(g, levelLabels)}</option>)}
                 </select>
               </Field>
               <Field label="Section" required error={errors.section}>

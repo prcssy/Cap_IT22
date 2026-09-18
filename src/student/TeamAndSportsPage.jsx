@@ -1,23 +1,10 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './TeamAndSportsPage.css';
 import Contact from '../public/Landing/Contact/Contact';
 import { getSportsTeamsConfig } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
-
-/* ── Level dropdown options → Firestore level keys ── */
-const LEVELS = [
-  { label: 'All Levels', key: 'all' },
-  { label: 'Elementary', key: 'elementary' },
-  { label: 'High School', key: 'highSchool' },
-  { label: 'College', key: 'college' },
-];
-
-const LEVEL_TAG = {
-  elementary: 'ELEMENTARY',
-  highSchool: 'HIGH SCHOOL',
-  college: 'COLLEGE',
-};
 
 /* ── Team logo placeholder ── */
 function TeamLogo({ name, logo }) {
@@ -38,7 +25,7 @@ function TeamLogo({ name, logo }) {
 }
 
 /* ── Single team card ── */
-function TeamCard({ team, index }) {
+function TeamCard({ team, index, levelLabels }) {
   const sports = team.sportIds || [];
   return (
     <div className="ts-team-card" style={{ animationDelay: `${index * 0.07}s` }}>
@@ -47,7 +34,7 @@ function TeamCard({ team, index }) {
         <TeamLogo name={team.name} logo={team.logo} />
         <div className="ts-card-info">
           <h3 className="ts-card-name">{team.name}</h3>
-          <p className="ts-card-year">{LEVEL_TAG[team.level] || ''}</p>
+          <p className="ts-card-year">{(levelLabels[team.level] || '').toUpperCase()}</p>
           <p className="ts-card-status">SPORTS PARTICIPATING</p>
         </div>
       </div>
@@ -66,7 +53,13 @@ function TeamCard({ team, index }) {
 
 export default function TeamsAndSportsPage() {
   const { schoolName } = useContext(BrandingContext);
-  const [levelKey, setLevelKey] = useState(LEVELS[0].key);
+  const levelLabels = useContext(LevelLabelsContext);
+  const LEVELS = useMemo(() => [
+    { label: levelLabels.elementary, key: 'elementary' },
+    { label: levelLabels.highSchool, key: 'highSchool' },
+    { label: levelLabels.college, key: 'college' },
+  ], [levelLabels]);
+  const [levelKey, setLevelKey] = useState('elementary');
   const level = LEVELS.find(l => l.key === levelKey) || LEVELS[0];
   const [loading, setLoading] = useState(true);
   const [teamsByLevel, setTeamsByLevel] = useState({ elementary: [], highSchool: [], college: [] });
@@ -110,16 +103,7 @@ export default function TeamsAndSportsPage() {
   }, []);
 
   /* ── Teams visible for the selected level filter ── */
-  const visibleTeams = useMemo(() => {
-    if (level.key === 'all') {
-      return [
-        ...teamsByLevel.elementary,
-        ...teamsByLevel.highSchool,
-        ...teamsByLevel.college,
-      ];
-    }
-    return teamsByLevel[level.key] || [];
-  }, [level, teamsByLevel]);
+  const visibleTeams = useMemo(() => teamsByLevel[level.key] || [], [level, teamsByLevel]);
 
   /* ── Stats always reflect the currently selected level ── */
   const totalTeams = visibleTeams.length;
@@ -172,12 +156,12 @@ export default function TeamsAndSportsPage() {
           <p className="ts-state-note">Loading teams…</p>
         ) : visibleTeams.length === 0 ? (
           <p className="ts-state-note">
-            No teams have been added yet{level.key !== 'all' ? ` for ${level.label}` : ''}. Once an admin sets up teams and sports, they'll appear here.
+            No teams have been added yet for {level.label}. Once an admin sets up teams and sports, they'll appear here.
           </p>
         ) : (
           <div className="ts-cards-list">
             {visibleTeams.map((team, i) => (
-              <TeamCard key={`${team.level}-${team.id}`} team={team} index={i} />
+              <TeamCard key={`${team.level}-${team.id}`} team={team} index={i} levelLabels={levelLabels} />
             ))}
           </div>
         )}

@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef, useContext } from 'react';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './RankingPage.css';
 import { FaSearch, FaCrown, FaMedal, FaChevronDown } from 'react-icons/fa';
 import Contact from '../public/Landing/Contact/Contact';
@@ -9,8 +10,6 @@ import { getSportsTeamsConfig, getTeamRankings, getMatchRecords } from '../share
 /* ── Sport filter tabs (shared by both tables) ──
    The actual sport names are derived from the same team.sportIds data used
    by TeamAndSportsPage, so unused hard-coded sports never appear here. */
-const LEVELS = ['Elementary', 'High School', 'College'];
-const LEVEL_KEY_BY_LABEL = { 'Elementary': 'elementary', 'High School': 'highSchool', 'College': 'college' };
 const DEFAULT_POINTS = 1200; // must match Moderator's baseline rating for a brand-new team
 
 function norm(str) {
@@ -452,7 +451,13 @@ function MedalTable({ data, search }) {
 
 export default function RankingPage() {
   const { schoolName } = useContext(BrandingContext);
-  const [levelLabel, setLevelLabel] = useState('High School');
+  const levelLabels = useContext(LevelLabelsContext);
+  const LEVELS = useMemo(() => [
+    { key: 'elementary', label: levelLabels.elementary },
+    { key: 'highSchool', label: levelLabels.highSchool },
+    { key: 'college', label: levelLabels.college },
+  ], [levelLabels]);
+  const [levelKey, setLevelKey] = useState('highSchool');
   const [championSport, setChampionSport] = useState('All Sports');
   const [medalSport, setMedalSport] = useState('All Sports');
   const [medalDivision, setMedalDivision] = useState('All Divisions');
@@ -466,8 +471,6 @@ export default function RankingPage() {
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [championDivision, setChampionDivision] = useState('All Divisions');
-
-  const levelKey = LEVEL_KEY_BY_LABEL[levelLabel] || 'highSchool';
 
   useEffect(() => {
     let cancelled = false;
@@ -811,8 +814,8 @@ export default function RankingPage() {
           <div className="rk-controls-row">
           <LevelTabs
             levels={LEVELS}
-            value={levelLabel}
-            onChange={setLevelLabel}
+            value={levelKey}
+            onChange={setLevelKey}
             containerClassName="rk-lvltabs"
             tabClassName="rk-lvltab"
             activeClassName="rk-lvltab--active"

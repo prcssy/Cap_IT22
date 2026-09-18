@@ -6,6 +6,7 @@ import HighlightsBanner from './HighlightsBanner';
 import ImageCarousel from './ImageCarousel';
 import { AuthContext } from '../../shared/context/AuthContext';
 import { BrandingContext } from '../../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../../shared/context/LevelLabelsContext';
 import { FaArrowRightLong } from "react-icons/fa6";
 import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchSchedules, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
 import Contact from './Contact/Contact';
@@ -27,21 +28,9 @@ import {
 } from "react-icons/fa";
 import { GiShuttlecock, GiPingPongBat } from "react-icons/gi";
 
-const LEVELS = ["Elementary", "High School", "College"];
-
-/* Maps the dropdown's display labels to the level keys used everywhere
-   else in the app (Admin's schedule builder, Moderator's record screen) —
-   this is how the hero card knows which level's schedule to read. */
-const LEVEL_KEY_MAP = { Elementary: 'elementary', 'High School': 'highSchool', College: 'college' };
-
 /* Every level's Firestore key, for stats that sum across the whole
    school (Elementary + High School + College) rather than one level. */
 const ALL_LEVEL_KEYS = ['elementary', 'highSchool', 'college'];
-
-/* Reverse of LEVEL_KEY_MAP — turns a Firestore level key back into the
-   display label shown in the Sports Available hover ("Available in:
-   Elementary • College"). */
-const LEVEL_KEY_TO_LABEL = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
 
 /* Case/whitespace-insensitive compare, for deduping sport names that
    Admin may have entered with different capitalization per level. */
@@ -277,8 +266,14 @@ function TeamBadge({ team }) {
 }
 
 function LandingPage() {
+  const levelLabels = useContext(LevelLabelsContext);
+  const LEVELS = [
+    { key: 'elementary', label: levelLabels.elementary },
+    { key: 'highSchool', label: levelLabels.highSchool },
+    { key: 'college', label: levelLabels.college },
+  ];
   const [levelOpen, setLevelOpen] = useState(false);
-  const [selectedLevel, setSelectedLevel] = useState("Levels");
+  const [selectedLevelKey, setSelectedLevelKey] = useState(null);
   const [matchIndex, setMatchIndex] = useState(0);
   const [matchDirection, setMatchDirection] = useState("next");
   const [matchAnimKey, setMatchAnimKey] = useState(0);
@@ -293,6 +288,7 @@ function LandingPage() {
   const { schoolName, tagline, motto, logo } = useContext(BrandingContext);
   const contactFooterRef = useRef(null);
   const levelDropdownRef = useRef(null);
+  const contactScrollTokenRef = useRef(0);
 
   /* Closes the level dropdown on an outside click. Deliberately not a
      full-screen overlay div (the previous approach) — an overlay sitting
@@ -404,7 +400,7 @@ function LandingPage() {
           name: entry.name,
           logo: entry.logo,
           icon: iconForSportName(entry.name),
-          levels: ALL_LEVEL_KEYS.filter((lvl) => entry.levels.has(lvl)).map((lvl) => LEVEL_KEY_TO_LABEL[lvl]),
+          levels: ALL_LEVEL_KEYS.filter((lvl) => entry.levels.has(lvl)),
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -422,7 +418,7 @@ function LandingPage() {
         const cfg = configsByLevel[levelKey] || { teams: [] };
         const top = computeTopTeamForLevel(cfg.teams || [], rankingsByLevel[levelKey] || {});
         if (top && (!overallBest || top.rating > overallBest.rating)) {
-          overallBest = { ...top, level: LEVEL_KEY_TO_LABEL[levelKey] };
+          overallBest = { ...top, level: levelKey };
         }
       });
       setTopChampion(overallBest);
@@ -446,7 +442,7 @@ function LandingPage() {
      the dropdown with no way to tell which level it belonged to. Now it
      shows nothing (and the card prompts "Pick a level…") until a level
      is actually chosen. */
-  const activeLevelKey = LEVEL_KEY_MAP[selectedLevel] || null;
+  const activeLevelKey = selectedLevelKey;
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -503,12 +499,112 @@ function LandingPage() {
   };
 
   const handleSendButtonClick = () => {
-    if (contactFooterRef.current) {
-      contactFooterRef.current.scrollIntoView({
-        behavior: 'smooth',
-        block: 'start',
-      });
-    }
+    const target = contactFooterRef.current;
+    const wrapper = target && target.closest('.landing-wrapper');
+    if (!target || !wrapper) return;
+
+    /* Everything above the footer (stats, gallery, rankings) streams in
+       asynchronously from Firestore, so the footer's offset can still be
+       shifting for a while after this is clicked — longer still on
+       mobile, where slower network/CPU and a single stacked column (vs.
+       desktop's grid) mean images/data keep trickling in well past a
+       couple seconds. The native `element.scrollIntoView({behavior:
+       'smooth'})` locks onto whatever offset is correct the instant it's
+       called and animates toward that single fixed target — if layout
+       keeps shifting afterward, or (as on iOS Safari) the browser's own
+       smooth-scroll implementation inside a custom `overflow: auto`
+       container just cuts the animation short, it stops partway and
+       never reaches the footer.
+       Driving the scroll by hand instead: every frame, recompute the
+       footer's *current* target scrollTop and ease the wrapper toward
+       it. Because the target is recalculated live, a layout shift just
+       moves the goalpost instead of leaving the animation aimed at a
+       stale one, and because this sets `scrollTop` directly rather than
+       depending on a browser's native smooth-scroll engine, it behaves
+       the same on every browser instead of only where that engine
+       happens to be reliable. */
+    const token = ++contactScrollTokenRef.current;
+    const startTime = performance.now();
+    const MAX_DURATION_MS = 15000;
+    const EASE_TAU_MS = 120; // smaller = snaps to the goal faster
+    let lastTime = startTime;
+    let settledFrames = 0;
+
+    /* Without this, the loop below keeps re-asserting the footer as the
+       target for up to MAX_DURATION_MS regardless of what the user does
+       in the meantime — so scrolling back up by hand right after the
+       click got yanked back down to the footer every frame until the
+       loop finally timed out. Any manual scroll input cancels it. */
+    const cancelOnUserScroll = () => {
+      if (token === contactScrollTokenRef.current) contactScrollTokenRef.current += 1;
+    };
+    wrapper.addEventListener('wheel', cancelOnUserScroll, { passive: true });
+    wrapper.addEventListener('touchstart', cancelOnUserScroll, { passive: true });
+    wrapper.addEventListener('pointerdown', cancelOnUserScroll, { passive: true });
+    const stopListening = () => {
+      wrapper.removeEventListener('wheel', cancelOnUserScroll);
+      wrapper.removeEventListener('touchstart', cancelOnUserScroll);
+      wrapper.removeEventListener('pointerdown', cancelOnUserScroll);
+    };
+
+    const maxScrollTop = () => Math.max(0, wrapper.scrollHeight - wrapper.clientHeight);
+    const desiredScrollTop = () => {
+      const wrapperTop = wrapper.getBoundingClientRect().top;
+      const targetTop = target.getBoundingClientRect().top;
+      const raw = wrapper.scrollTop + (targetTop - wrapperTop);
+      return Math.min(Math.max(raw, 0), maxScrollTop());
+    };
+
+    const step = (now) => {
+      if (token !== contactScrollTokenRef.current) {
+        stopListening(); // superseded by a newer click, or the user scrolled by hand
+        return;
+      }
+
+      /* The ease step is scaled by real elapsed time (not a flat
+         per-frame percentage), so this still converges in roughly the
+         same wall-clock time even when frames come in slowly or
+         irregularly — e.g. a budget phone whose main thread is busy
+         decoding gallery images and dropping rAF callbacks. A flat
+         per-frame factor would instead crawl for as long as frames stay
+         sparse, which read exactly like this bug report: scrolling
+         starts, creeps, and never actually arrives. */
+      const dt = now - lastTime;
+      lastTime = now;
+      const goal = desiredScrollTop();
+      const distance = goal - wrapper.scrollTop;
+      const easeFactor = 1 - Math.exp(-dt / EASE_TAU_MS);
+
+      /* .landing-wrapper has `scroll-behavior: smooth` in CSS, and that
+         also governs plain `scrollTop` assignments, not just scrollTo()/
+         scrollIntoView() — so a direct `wrapper.scrollTop = x` doesn't
+         jump there, it kicks off the browser's own smooth-scroll toward
+         x. Called every frame, each of those restarts fights the last
+         one before it can build any speed, which is what produced the
+         same "creeps and never arrives" symptom this whole rewrite was
+         meant to fix. `behavior: 'instant'` is required to actually
+         bypass that — `'auto'` does NOT mean "instant", it means "defer
+         to the CSS scroll-behavior property", which is 'smooth' here, so
+         passing 'auto' still went through the browser's own animation.
+         'instant' places the value immediately; our loop supplies the
+         smoothing itself, frame by frame. */
+      if (Math.abs(distance) > 0.5) {
+        wrapper.scrollTo({ top: wrapper.scrollTop + distance * easeFactor, behavior: 'instant' });
+        settledFrames = 0;
+      } else {
+        wrapper.scrollTo({ top: goal, behavior: 'instant' });
+        settledFrames += 1;
+      }
+
+      const settled = settledFrames > 10; // no movement needed for several frames in a row
+      const timedOut = now - startTime > MAX_DURATION_MS;
+      if (!settled && !timedOut) {
+        requestAnimationFrame(step);
+      } else {
+        stopListening();
+      }
+    };
+    requestAnimationFrame(step);
   };
 
   return (
@@ -588,16 +684,16 @@ function LandingPage() {
                   className="level-btn"
                   onClick={() => setLevelOpen((prev) => !prev)}
                 >
-                  {selectedLevel} <FaChevronDown className={`level-chevron ${levelOpen ? "open" : ""}`} />
+                  {selectedLevelKey ? levelLabels[selectedLevelKey] : 'Levels'} <FaChevronDown className={`level-chevron ${levelOpen ? "open" : ""}`} />
                 </button>
                 <ul className={`level-menu ${levelOpen ? "open" : ""}`}>
                   {LEVELS.map((lvl) => (
                     <li
-                      key={lvl}
-                      className={`level-item ${selectedLevel === lvl ? "active" : ""}`}
-                      onClick={() => { setSelectedLevel(lvl); setLevelOpen(false); }}
+                      key={lvl.key}
+                      className={`level-item ${selectedLevelKey === lvl.key ? "active" : ""}`}
+                      onClick={() => { setSelectedLevelKey(lvl.key); setLevelOpen(false); }}
                     >
-                      {lvl}
+                      {lvl.label}
                     </li>
                   ))}
                 </ul>
@@ -649,9 +745,9 @@ function LandingPage() {
               </>
             ) : (
               <div className="match-card-empty">
-                {selectedLevel === 'Levels'
+                {!selectedLevelKey
                   ? 'Pick a level above to see ongoing matches.'
-                  : `No matches scheduled for ${selectedLevel} yet — check back soon.`}
+                  : `No matches scheduled for ${levelLabels[selectedLevelKey]} yet — check back soon.`}
               </div>
             )}
           </div>
@@ -710,7 +806,7 @@ function LandingPage() {
             <FaCrown className="champion-spotlight__crown" aria-hidden="true" />
             <span className="champion-spotlight__eyebrow">#1 Potential Champion</span>
             <h3 className="champion-spotlight__team">{topChampion.team}</h3>
-            <span className="champion-spotlight__meta">{topChampion.level} &middot; {topChampion.rating} RATING</span>
+            <span className="champion-spotlight__meta">{levelLabels[topChampion.level] || topChampion.level} &middot; {topChampion.rating} RATING</span>
           </div>
         )}
 
@@ -744,7 +840,7 @@ function LandingPage() {
                 <span className="sport-tile-name">{sport.name.toUpperCase()}</span>
                 {isHovered && availableLevels.length > 0 && (
                   <div className="sport-tile-tooltip" role="tooltip">
-                    Available in: {availableLevels.join(' • ')}
+                    Available in: {availableLevels.map((lvl) => levelLabels[lvl] || lvl).join(' • ')}
                   </div>
                 )}
               </div>
