@@ -133,12 +133,16 @@ function RangeDropdown({ value, options, onChange }) {
 
 /* A saved match only ever gets `status: 'scheduled'` at creation time —
    nothing in the app ever patches it to "ongoing"/"finished" afterwards
-   (that only happens implicitly, via date/time + a matching matchRecords
-   entry). Bucketing on the raw `status` field made this donut permanently
-   report 100% Upcoming. Classify matches the same way DashboardPage.jsx
-   already does — by assumed match window vs. the current time, and by
-   whether a moderator-confirmed record exists for the fixture — so this
-   summary agrees with what students actually see on the Dashboard. */
+   (that only happens implicitly, via date/time). Bucketing on the raw
+   `status` field made this donut permanently report 100% Upcoming.
+   Classify matches by assumed match window vs. the current time only —
+   the same rule ModeratorPage.jsx's matchStatus() uses for its own
+   FINISHED/ONGOING/UPCOMING badge — so a match reads the same way here
+   as it does to the moderator recording it. Whether a result has
+   actually been recorded yet is tracked separately (see
+   `unrecordedFinishedCount` below) rather than folded into this status,
+   since "finished-but-unrecorded" used to silently read as "Ongoing"
+   here while the Moderator page already called it Finished. */
 const STATUS_BUCKETS = [
   { key: 'finished', label: 'Finished', color: '#7c3aed' },
   { key: 'ongoing',  label: 'Ongoing',  color: '#16a34a' },
@@ -193,16 +197,17 @@ function recordMatchesSchedule(record, schedule) {
     && names.some(name => sameTeamName(name, schedule.teamB));
 }
 
-/* finished (has a confirmed record) beats ongoing/upcoming; otherwise a
-   match not yet at its start time is upcoming, and anything else
-   (currently in its assumed window, OR past it with no result recorded
-   yet) reads as ongoing — closer to reality than silently vanishing. */
-function classifyMatch(match, records, now) {
-  const hasRecord = records.some(r => recordMatchesSchedule(r, match));
-  if (hasRecord) return 'finished';
+/* Time-only, matching ModeratorPage.jsx's matchStatus(): not yet at its
+   start time is upcoming, inside the assumed window is ongoing, and past
+   the window is finished — regardless of whether a result has been
+   recorded yet. A match with no date/time to compare against the clock
+   falls back to ongoing rather than vanishing. */
+function classifyMatch(match, now) {
   const window = matchWindow(match);
-  if (window && now < window.start) return 'upcoming';
-  return 'ongoing';
+  if (!window) return 'ongoing';
+  if (now < window.start) return 'upcoming';
+  if (now < window.end) return 'ongoing';
+  return 'finished';
 }
 
 /* ── SVG chart primitives ────────────────────────────────────── */
@@ -690,9 +695,21 @@ export default function SuperAdminPage() {
   const matchBuckets = useMemo(
     () => levelsForConfig.flatMap(l => {
       const records = recordsByLevel[l] || [];
-      return (schedulesByLevel[l] || []).map(m => classifyMatch(m, records, now));
+      return (schedulesByLevel[l] || []).map(m => ({
+        status: classifyMatch(m, now),
+        recorded: records.some(r => recordMatchesSchedule(r, m)),
+      }));
     }),
     [schedulesByLevel, recordsByLevel, levelsForConfig, now],
+  );
+
+  // Matches whose window has elapsed but that the moderator hasn't
+  // submitted a result for yet — still counted as "Finished" in the donut
+  // above (matching the Moderator page), surfaced here as a call-to-action
+  // instead of silently reading as "Ongoing".
+  const unrecordedFinishedCount = useMemo(
+    () => matchBuckets.filter(b => b.status === 'finished' && !b.recorded).length,
+    [matchBuckets],
   );
 
   /* Users and registrations carry createdAt and a grade level, so they
@@ -835,9 +852,14 @@ export default function SuperAdminPage() {
   /* ── Donuts ── */
   const statusSegments = useMemo(() => {
     const counts = { finished: 0, ongoing: 0, upcoming: 0 };
-    matchBuckets.forEach((bucket) => { counts[bucket]++; });
-    return STATUS_BUCKETS.map(b => ({ label: b.label, value: counts[b.key], color: b.color }));
-  }, [matchBuckets]);
+    matchBuckets.forEach(({ status }) => { counts[status]++; });
+    return STATUS_BUCKETS.map(b => {
+      const label = b.key === 'finished' && unrecordedFinishedCount > 0
+        ? `${b.label} (${unrecordedFinishedCount} Awaiting Result)`
+        : b.label;
+      return { label, value: counts[b.key], color: b.color };
+    });
+  }, [matchBuckets, unrecordedFinishedCount]);
 
   // Staff (moderator/admin/superadmin) accounts aren't part of any school
   // level's population, so this donut — like the Total Users tile above it

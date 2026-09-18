@@ -1200,14 +1200,24 @@
      ~400px wide (each had flex-shrink: 0, so once their combined width
      passed the screen width the sport filter got pushed to its own row).
      Shrinking both further and switching the row to nowrap keeps them on
-     one line; overflow-x: auto is just a safety net for anything even
-     narrower than a typical phone, so it scrolls instead of wrapping
-     awkwardly rather than actually needing to on real devices. */
+     one line; overflow-x: auto on the tabs (not on .dash-filters-row) is
+     just a safety net for anything even narrower than a typical phone,
+     so the tabs scroll instead of wrapping awkwardly. It's on the tabs
+     specifically rather than the shared row because overflow-x: auto
+     forces overflow-y to auto too, and .dash-filters-row also contains
+     the Sport filter's dropdown panel (position: absolute, opens below
+     the trigger) — putting it on the row would clip that panel. */
   .dash-lvltabs {
     flex-wrap: nowrap;
     flex-shrink: 0;
     gap: clamp(2px, calc(-0.27px + 0.71vw), 4px);
     padding: clamp(2px, calc(-0.27px + 0.71vw), 4px);
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dash-lvltabs::-webkit-scrollbar {
+    display: none;
   }
 
   .dash-lvltab {
@@ -1219,12 +1229,6 @@
   .dash-filters-row {
     width: 100%;
     flex-wrap: nowrap;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-
-  .dash-filters-row::-webkit-scrollbar {
-    display: none;
   }
 
   .dash-sport-filter {
@@ -1245,8 +1249,7 @@
   }
 
   .dash-sport-filter__panel {
-    right: auto;
-    left: 0;
+    width: clamp(140px, 45vw, 160px);
   }
 
   .dash-section {
