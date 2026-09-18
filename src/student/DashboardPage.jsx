@@ -324,12 +324,54 @@ function FinishedCard({ match, isActive, width }) {
   );
 }
 
+// Coverflow shows 5 distinct slots (-2..2 in POS_STYLE); anything outside
+// that range is hidden (opacity 0). The slot count below is padded well
+// past 5 so the point where a card's position wraps from one side of 0 to
+// the other (the "seam") always falls while that card is deep in hidden
+// territory on both sides of the jump — see the `slots` comment for why
+// that matters.
+const MIN_SLOTS_TOTAL = 12;
+
 function FinishedCarousel({ matches, emptyText }) {
   const total = matches.length;
-  // `center` is the displayed active index (can be fractional during anim — we use it as integer)
+  // With fewer than MIN_SLOTS_TOTAL real finished matches, cycling through
+  // `matches` alone gives the position math too little room: the wrap seam
+  // (see below) would sit right next to, or inside, the visible window,
+  // so crossing it either leaves a peek slot empty or pops a card into
+  // view with no slide animation. Repeat the real matches until there's
+  // enough padding (each repetition gets its own id suffix so it's a
+  // distinct, independently animatable slide) — content still only ever
+  // cycles through the same real matches, just with enough copies that
+  // every position is filled and the seam stays buried in hidden slots.
+  const slots = useMemo(() => {
+    if (total === 0 || total >= MIN_SLOTS_TOTAL) return matches;
+    const repeatCount = Math.ceil(MIN_SLOTS_TOTAL / total);
+    const out = [];
+    for (let r = 0; r < repeatCount; r++) {
+      matches.forEach(m => out.push({ ...m, id: `${m.id}__r${r}` }));
+    }
+    return out;
+  }, [matches, total]);
+  const slotsTotal = slots.length;
+  // `center` only ever changes by ±1 per click; it's never wrapped back into
+  // [0, slotsTotal) because each card's `pos` below is always recomputed
+  // fresh from `center` via a bounded modulo, so it can't drift.
   const [center, setCenter] = useState(0);
   const lockRef = useRef(false);
-  const prevCenterRef = useRef(center);
+  // Tracks each card's position as of the last render (match.id -> pos), so
+  // we can tell which card just crossed the wrap seam and skip animating
+  // it (a straight CSS transition would otherwise slide it visibly across
+  // the whole carousel). An earlier version of this tried to avoid ever
+  // recomputing a card's "true" wrapped position by always choosing
+  // whichever representative was nearest to its own previous frame — but
+  // with the arrows only ever moving `center` by 1, that just tracked the
+  // true unwrapped raw index forever and never wrapped at all, so after
+  // enough clicks in one direction every card drifted out of the visible
+  // window for good (an empty carousel). Recomputing `pos` fresh each
+  // render via a real bounded wrap (nearest-to-zero, not nearest-to-prev)
+  // is what actually keeps the loop infinite; `prevPosRef` here is only
+  // used to detect the seam crossing for the animation, not to derive pos.
+  const prevPosRef = useRef(new Map());
 
   // The carousel is built around a fixed 400px card (CARD_W) so the
   // coverflow peek effect has consistent geometry on desktop. On a phone
@@ -363,24 +405,15 @@ function FinishedCarousel({ matches, emptyText }) {
   // filtered list, leaving no slide marked active.
   useEffect(() => {
     setCenter(0);
-    prevCenterRef.current = 0;
+    prevPosRef.current = new Map();
   }, [matches]);
-
-  const wrapIdx = useCallback((i) => ((i % total) + total) % total, [total]);
-  const wrapSigned = useCallback((i) => {
-    const wrapped = ((i % total) + total) % total;
-    return wrapped > total / 2 ? wrapped - total : wrapped;
-  }, [total]);
 
   const go = useCallback((dir) => {
     if (lockRef.current) return;
     lockRef.current = true;
-    setCenter(prev => {
-      prevCenterRef.current = prev;
-      return wrapIdx(prev + dir);
-    });
+    setCenter(prev => prev + dir);
     setTimeout(() => { lockRef.current = false; }, 420);
-  }, [wrapIdx]);
+  }, []);
 
   return (
     <section className="dash-section dash-section--finished">
@@ -397,14 +430,23 @@ function FinishedCarousel({ matches, emptyText }) {
       {total === 0 ? <p className="dash-empty">{emptyText}</p> : (
       <div className="finished-carousel" ref={containerRef}>
         <div className="finished-carousel__track" style={{ width: cardW }}>
-          {matches.map((match, matchIdx) => {
-            const pos = wrapSigned(matchIdx - center);
+          {slots.map((match, matchIdx) => {
+            const raw = matchIdx - center;
+            const mod = ((raw % slotsTotal) + slotsTotal) % slotsTotal; // in [0, slotsTotal)
+            const pos = mod > slotsTotal / 2 ? mod - slotsTotal : mod; // bounded, nearest to 0
+            const prevPos = prevPosRef.current.has(match.id) ? prevPosRef.current.get(match.id) : pos;
+            prevPosRef.current.set(match.id, pos);
+            // The one card crossing the wrap seam this frame jumps by roughly
+            // `slotsTotal`, not by 1 — skip its transition so it doesn't try
+            // to slide across the whole carousel. Thanks to MIN_SLOTS_TOTAL's
+            // padding, that card is already hidden (|pos| > 2) on both sides
+            // of the jump, so skipping the animation there is invisible.
+            const isWrapped = Math.abs(pos - prevPos) > 2;
+
             const ps = POS_STYLE[String(pos)] || {
               scale: 0.62, opacity: 0, brightness: 0.4, grayscale: 0.5, z: 0,
             };
             const tx = pos * step;
-            const prevPos = wrapSigned(matchIdx - prevCenterRef.current);
-            const isWrapped = Math.abs(pos - prevPos) > 2;
 
             const style = {
               width:     cardW,
@@ -423,7 +465,7 @@ function FinishedCarousel({ matches, emptyText }) {
               >
                 <FinishedCard
                   match={match}
-                  isActive={matchIdx === center}
+                  isActive={pos === 0}
                   width={cardW}
                 />
               </div>
