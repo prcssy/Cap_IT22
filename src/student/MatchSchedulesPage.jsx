@@ -682,8 +682,13 @@ function ScheduleDayTable({ day, matches, resultFor, search }) {
 export default function MatchSchedulesPage() {
   const { schoolName } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
+  /* No "All Levels" option: each level's matches are generated/numbered
+     independently (its own round numbers, its own bracket stages), so
+     merging two levels' matches under the same category name into one
+     bracket/rounds view produced a broken, mixed-up format — teams and
+     rounds from unrelated brackets stitched into a single tree. The
+     format view only makes sense scoped to one level at a time. */
   const LEVELS = useMemo(() => [
-    { label: 'All Levels', key: 'all' },
     { label: levelLabels.elementary, key: 'elementary' },
     { label: levelLabels.highSchool, key: 'highSchool' },
     { label: levelLabels.college, key: 'college' },
@@ -746,12 +751,7 @@ export default function MatchSchedulesPage() {
   }, []);
 
   /* ── Matches visible for the selected level filter ── */
-  const levelMatches = useMemo(() => {
-    if (level.key === 'all') {
-      return [...matchesByLevel.elementary, ...matchesByLevel.highSchool, ...matchesByLevel.college];
-    }
-    return matchesByLevel[level.key] || [];
-  }, [level, matchesByLevel]);
+  const levelMatches = useMemo(() => matchesByLevel[level.key] || [], [level, matchesByLevel]);
 
   /* ── Category tabs are built entirely from whatever sports/categories
      the admin actually has matches for — never a fixed list ── */
@@ -904,7 +904,7 @@ export default function MatchSchedulesPage() {
           <p className="ms-state-note">Loading schedules…</p>
         ) : !hasAnyData ? (
           <p className="ms-state-note">
-            No game schedules have been posted yet{level.key !== 'all' ? ` for ${level.label}` : ''}. Once an admin generates or adds a schedule, it will appear here.
+            No game schedules have been posted yet for {level.label}. Once an admin generates or adds a schedule, it will appear here.
           </p>
         ) : (
           <>
