@@ -196,7 +196,15 @@ function FilterDropdown({ label, value, options, onChange }) {
 // registration form, used on the Admin page's Registration tab. 'allUsers' —
 // every signed-up student account whether or not they registered as a
 // player, used on the Super Admin page (its original, pre-fix behavior).
-export default function StudentRegistrationDetails({ scope = 'registrants', onStatusChange, onDeleted }) {
+//
+// levelFilter: when passed (Super Admin page only), the table's level is
+// driven by the page's own "All Levels / Elementary / High School / College"
+// tabs instead of by this table's own Level dropdown — otherwise the two
+// controls could disagree, which is exactly what happened before this prop
+// existed: switching the page-level tab updated the stat tiles/charts above
+// but left this table showing every level. '' means "All Levels". The
+// dropdown is hidden in this mode since the page tabs already cover it.
+export default function StudentRegistrationDetails({ scope = 'registrants', levelFilter, onStatusChange, onDeleted }) {
   const { events, schoolName } = useContext(BrandingContext);
   const LEVEL_LABELS = useContext(LevelLabelsContext);
   const { userProfile } = useContext(AuthContext);
@@ -503,20 +511,25 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
     return () => clearTimeout(t);
   }, [searchQuery]);
 
+  // When levelFilter is controlled by the parent page, it wins over this
+  // table's own (hidden, in that mode) Level dropdown state.
+  const isLevelControlled = levelFilter !== undefined;
+  const effectiveLevel = isLevelControlled ? levelFilter : filterLevel;
+
   const filteredStudents = useMemo(() => {
     const q = debouncedSearchQuery.toLowerCase();
     return allRegistrations.filter(r => (
       (!q             || (r.fullName || '').toLowerCase().includes(q)) &&
-      (!filterLevel   || getSchoolLevel(r.gradeLevel) === filterLevel) &&
+      (!effectiveLevel || getSchoolLevel(r.gradeLevel) === effectiveLevel) &&
       (!filterGrade   || r.gradeLevel === filterGrade) &&
       (!filterSection || r.section    === filterSection) &&
       (!filterSport   || r.sport      === filterSport) &&
       (!filterGender  || (r.gender || '').toLowerCase() === filterGender.toLowerCase()) &&
       (!filterEvent   || getEventBucket(r, events) === filterEvent)
     ));
-  }, [allRegistrations, debouncedSearchQuery, filterLevel, filterGrade, filterSection, filterSport, filterGender, filterEvent, events]);
+  }, [allRegistrations, debouncedSearchQuery, effectiveLevel, filterGrade, filterSection, filterSport, filterGender, filterEvent, events]);
 
-  const hasFilters = searchQuery || filterLevel || filterGrade || filterSection || filterSport || filterGender || filterEvent;
+  const hasFilters = searchQuery || (!isLevelControlled && filterLevel) || filterGrade || filterSection || filterSport || filterGender || filterEvent;
   const clearFilters = () => { setSearchQuery(''); setFilterLevel(''); setFilterGrade(''); setFilterSection(''); setFilterSport(''); setFilterGender(''); setFilterEvent(''); };
 
   return (
@@ -544,16 +557,18 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
 
         {/* Filter pills */}
         <div className="asp-filters">
-          <FilterDropdown
-            label="Level ▾"
-            value={filterLevel}
-            onChange={setFilterLevel}
-            options={[
-              { value: 'elementary', label: LEVEL_LABELS.elementary },
-              { value: 'highSchool', label: LEVEL_LABELS.highSchool },
-              { value: 'college', label: LEVEL_LABELS.college },
-            ]}
-          />
+          {!isLevelControlled && (
+            <FilterDropdown
+              label="Level ▾"
+              value={filterLevel}
+              onChange={setFilterLevel}
+              options={[
+                { value: 'elementary', label: LEVEL_LABELS.elementary },
+                { value: 'highSchool', label: LEVEL_LABELS.highSchool },
+                { value: 'college', label: LEVEL_LABELS.college },
+              ]}
+            />
+          )}
           <FilterDropdown
             label="Grade/Year ▾"
             value={filterGrade}

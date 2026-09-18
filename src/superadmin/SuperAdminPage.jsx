@@ -705,8 +705,8 @@ export default function SuperAdminPage() {
     return date;
   }, [range]);
 
-  const matchesFilters = useCallback((record) => {
-    if (levelKey !== 'all' && getSchoolLevel(record.gradeLevel) !== levelKey) return false;
+  const matchesFilters = useCallback((record, level) => {
+    if (levelKey !== 'all' && level !== levelKey) return false;
     if (!cutoff) return true;
     const created = toDate(record.createdAt);
     // Records with no timestamp predate the field — keep them visible
@@ -715,8 +715,46 @@ export default function SuperAdminPage() {
     return created >= cutoff;
   }, [cutoff, levelKey]);
 
-  const rangedUsers = useMemo(() => users.filter(matchesFilters), [users, matchesFilters]);
-  const rangedRegs  = useMemo(() => registrations.filter(matchesFilters), [registrations, matchesFilters]);
+  const usersById = useMemo(() => {
+    const map = new Map();
+    users.forEach(u => map.set(u.id, u));
+    return map;
+  }, [users]);
+
+  /* A registration doc's own `gradeLevel` is a snapshot taken at submission
+     time — it can drift from the student's CURRENT profile (year-level
+     promotion, a corrected profile, etc). The Users Registration Details
+     table below always trusts the live profile field for level
+     classification (see StudentRegistrationDetails.jsx's merge, which
+     forces `gradeLevel: user.gradeLevel` over whatever the registration
+     doc says), so registrations here resolve their level the same way —
+     otherwise a student could show up under one level in the table and
+     a different one in these tiles/charts. */
+  const levelOfRegistration = useCallback(
+    (reg) => getSchoolLevel(usersById.get(reg.uid)?.gradeLevel || reg.gradeLevel),
+    [usersById],
+  );
+
+  const rangedUsers = useMemo(
+    () => users.filter(u => matchesFilters(u, getSchoolLevel(u.gradeLevel))),
+    [users, matchesFilters],
+  );
+  const rangedRegs = useMemo(
+    () => registrations.filter(r => matchesFilters(r, levelOfRegistration(r))),
+    [registrations, matchesFilters, levelOfRegistration],
+  );
+
+  /* Staff (admin/moderator/superadmin) accounts often still carry a
+     gradeLevel left over from when they first signed up as a student,
+     before being promoted via the staff allowlist collections — that
+     makes them incorrectly count toward a school level they no longer
+     belong to. Total Users should read as "how many students are in
+     this level", matching the student-only Users Registration Details
+     table below it, so it counts role:'student' only. */
+  const rangedStudents = useMemo(
+    () => rangedUsers.filter(u => (u.role || 'student').toLowerCase() === 'student'),
+    [rangedUsers],
+  );
 
   /* A student account that has submitted a registration is a Player;
      one that hasn't is an Audience member. That's the only honest way
@@ -739,13 +777,31 @@ export default function SuperAdminPage() {
   );
   // A rejected registration no longer holds a spot, so it shouldn't keep
   // counting toward Total Players once an admin has rejected it.
-  const activePlayerCount = useMemo(
-    () => rangedRegs.filter(r => r.status !== 'rejected').length,
-    [rangedRegs]
-  );
+  //
+  // "Total Players" (and Gender Distribution below) mean unique STUDENTS,
+  // matching the User Distribution donut's Players count and the
+  // one-row-per-student Users Registration Details table — not
+  // registration documents. A student who registers for more than one
+  // sport gets a separate doc per sport (e.g. Princes Narciso: one
+  // Basketball submission, one Badminton submission), so counting
+  // rangedRegs.length here double-counted her. Keyed by uid so each
+  // player is only counted once, keeping their first active submission
+  // as the representative doc (used below for Gender Distribution).
+  // Sports Participation and Pending Review intentionally stay
+  // per-registration — a sport signup or a review decision is a real,
+  // separate item, not a duplicate of the person.
+  const activePlayersByUid = useMemo(() => {
+    const map = new Map();
+    rangedRegs.forEach((r) => {
+      if (r.status === 'rejected' || !r.uid || map.has(r.uid)) return;
+      map.set(r.uid, r);
+    });
+    return map;
+  }, [rangedRegs]);
+  const activePlayerCount = activePlayersByUid.size;
 
   const tiles = [
-    { icon: FaUsers,       label: 'Total Users',        value: rangedUsers.length,   color: '#6d28d9' },
+    { icon: FaUsers,       label: 'Total Users',        value: rangedStudents.length, color: '#6d28d9' },
     { icon: FaRunning,     label: 'Total Sports',       value: sportNames.length,    color: '#f5a623' },
     { icon: FaUsersCog,    label: 'Total Teams',        value: teamCount,            color: '#16a34a' },
     { icon: FaCalendarAlt, label: 'Total Matches',      value: matches.length,       color: '#1d4ed8' },
@@ -768,11 +824,13 @@ export default function SuperAdminPage() {
   }, [rangedRegs]);
 
   /* ── Registration over time ── */
+  // "New Users" here means new student sign-ups (matching the Total Users
+  // tile above it), not staff accounts being added to the system.
   const timeSeries = useMemo(() => buildTimeSeries(
-    rangedUsers.map(u => toDate(u.createdAt)).filter(Boolean),
+    rangedStudents.map(u => toDate(u.createdAt)).filter(Boolean),
     rangedRegs.map(r => toDate(r.createdAt)).filter(Boolean),
     range.days,
-  ), [rangedUsers, rangedRegs, range.days]);
+  ), [rangedStudents, rangedRegs, range.days]);
 
   /* ── Donuts ── */
   const statusSegments = useMemo(() => {
@@ -781,25 +839,28 @@ export default function SuperAdminPage() {
     return STATUS_BUCKETS.map(b => ({ label: b.label, value: counts[b.key], color: b.color }));
   }, [matchBuckets]);
 
+  // Staff (moderator/admin/superadmin) accounts aren't part of any school
+  // level's population, so this donut — like the Total Users tile above it
+  // — only ever breaks down students: Audience (signed up, never
+  // registered) vs Player (has a registration).
   const roleSegments = useMemo(() => {
-    const counts = { audience: 0, player: 0, moderator: 0, admin: 0, superadmin: 0 };
-    rangedUsers.forEach((u) => {
-      const role = roleOf(u);
-      if (counts[role] !== undefined) counts[role]++;
-    });
+    const counts = { audience: 0, player: 0 };
+    rangedStudents.forEach((u) => { counts[roleOf(u)]++; });
     return [
-      { label: 'Audiences',   value: counts.audience,   color: '#1d4ed8' },
-      { label: 'Players',     value: counts.player,     color: '#f5a623' },
-      { label: 'Moderators',  value: counts.moderator,  color: '#16a34a' },
-      { label: 'Admins',      value: counts.admin,      color: '#dc2626' },
-      { label: 'Super Admins', value: counts.superadmin, color: '#7c3aed' },
+      { label: 'Students', value: counts.audience, color: '#1d4ed8' },
+      { label: 'Players',  value: counts.player,   color: '#f5a623' },
     ];
-  }, [rangedUsers, roleOf]);
+  }, [rangedStudents, roleOf]);
 
   const genderSegments = useMemo(() => {
     const counts = { Male: 0, Female: 0, Others: 0 };
-    rangedRegs.forEach((r) => {
-      const gender = (r.gender || '').toLowerCase();
+    // One row per PLAYER (see activePlayersByUid above), gender resolved
+    // from the student's current profile first — same "trust the live
+    // profile over the registration snapshot" rule as levelOfRegistration
+    // — falling back to the representative registration's own gender only
+    // if no matching user record exists.
+    activePlayersByUid.forEach((reg, uid) => {
+      const gender = (usersById.get(uid)?.gender || reg.gender || '').toLowerCase();
       if (gender === 'male') counts.Male++;
       else if (gender === 'female') counts.Female++;
       else counts.Others++;
@@ -809,7 +870,7 @@ export default function SuperAdminPage() {
       { label: 'Female', value: counts.Female, color: '#db2777' },
       { label: 'Others', value: counts.Others, color: '#94a3b8' },
     ];
-  }, [rangedRegs]);
+  }, [activePlayersByUid, usersById]);
 
   const rangeCaption = useMemo(() => {
     if (!cutoff) return 'All time';
@@ -1026,6 +1087,7 @@ export default function SuperAdminPage() {
               records too. */}
           <StudentRegistrationDetails
             scope="allUsers"
+            levelFilter={levelKey === 'all' ? '' : levelKey}
             onStatusChange={(regId, status) => setRegistrations(prev => prev.map(r => (
               r.id === regId ? { ...r, status } : r
             )))}
