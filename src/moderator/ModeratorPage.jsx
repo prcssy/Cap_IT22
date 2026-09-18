@@ -19,16 +19,12 @@ import {
 import LevelTabs from '../shared/components/LevelTabs';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { ScheduleRequestsContext } from '../shared/context/ScheduleRequestsContext';
 
 /* ═══════════════════════════════════════════
    CONSTANTS
 ═══════════════════════════════════════════ */
-const LEVELS = [
-  { key: 'elementary', label: 'Elementary' },
-  { key: 'highSchool', label: 'High School' },
-  { key: 'college', label: 'College' },
-];
 
 const GAME_FORMATS = [
   { id: 'solo-time', label: 'Single Play (Solo Time)' },
@@ -1068,7 +1064,7 @@ function RequestScheduleModal({
                     </span>
                   </div>
                   <div style={{ fontSize: '0.72rem', opacity: 0.7, marginTop: 2 }}>
-                    {LEVELS.find((l) => l.key === r.level)?.label || r.level}
+                    {levelOptions.find((l) => l.key === r.level)?.label || r.level}
                     {r.teamA && r.teamB ? ` • ${r.teamA} vs ${r.teamB}` : ''}
                   </div>
                   {r.status === 'declined' && r.declineReason && (
@@ -1343,6 +1339,12 @@ export default function ModeratorPage() {
   const navigate = useNavigate();
   const { currentUser, userProfile } = useContext(AuthContext);
   const { schoolName } = useContext(BrandingContext);
+  const levelLabels = useContext(LevelLabelsContext);
+  const LEVELS = useMemo(() => [
+    { key: 'elementary', label: levelLabels.elementary },
+    { key: 'highSchool', label: levelLabels.highSchool },
+    { key: 'college', label: levelLabels.college },
+  ], [levelLabels]);
   const summaryRef = useRef(null);
 
   const [level, setLevel] = useState('highSchool');

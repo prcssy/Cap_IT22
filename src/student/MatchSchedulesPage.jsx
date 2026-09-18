@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './MatchSchedulesPage.css';
 // Double Bracket tree (.msf-dbracket*/.msf-bracket-*/.msf-lbracket-leaf*) reuses
 // the admin Schedule Manager's classes unchanged, so it renders identically here.
@@ -16,13 +17,6 @@ import LevelTabs from '../shared/components/LevelTabs';
    generated or added anything yet, nothing renders except an
    empty-state message — no placeholder/sample data.
    ═══════════════════════════════════════════════════════════ */
-
-const LEVELS = [
-  { label: 'All Levels', key: 'all' },
-  { label: 'Elementary', key: 'elementary' },
-  { label: 'High School', key: 'highSchool' },
-  { label: 'College', key: 'college' },
-];
 
 /* ── Deterministic color per team name, so the same team always
    gets the same avatar color even without a saved logo ── */
@@ -687,6 +681,13 @@ function ScheduleDayTable({ day, matches, resultFor, search }) {
 
 export default function MatchSchedulesPage() {
   const { schoolName } = useContext(BrandingContext);
+  const levelLabels = useContext(LevelLabelsContext);
+  const LEVELS = useMemo(() => [
+    { label: 'All Levels', key: 'all' },
+    { label: levelLabels.elementary, key: 'elementary' },
+    { label: levelLabels.highSchool, key: 'highSchool' },
+    { label: levelLabels.college, key: 'college' },
+  ], [levelLabels]);
   const [levelKey, setLevelKey] = useState(LEVELS[0].key);
   const level = LEVELS.find(l => l.key === levelKey) || LEVELS[0];
   const [category, setCategory] = useState(null);

@@ -6,6 +6,7 @@ import HighlightsBanner from './HighlightsBanner';
 import ImageCarousel from './ImageCarousel';
 import { AuthContext } from '../../shared/context/AuthContext';
 import { BrandingContext } from '../../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../../shared/context/LevelLabelsContext';
 import { FaArrowRightLong } from "react-icons/fa6";
 import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchSchedules, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
 import Contact from './Contact/Contact';
@@ -27,21 +28,9 @@ import {
 } from "react-icons/fa";
 import { GiShuttlecock, GiPingPongBat } from "react-icons/gi";
 
-const LEVELS = ["Elementary", "High School", "College"];
-
-/* Maps the dropdown's display labels to the level keys used everywhere
-   else in the app (Admin's schedule builder, Moderator's record screen) —
-   this is how the hero card knows which level's schedule to read. */
-const LEVEL_KEY_MAP = { Elementary: 'elementary', 'High School': 'highSchool', College: 'college' };
-
 /* Every level's Firestore key, for stats that sum across the whole
    school (Elementary + High School + College) rather than one level. */
 const ALL_LEVEL_KEYS = ['elementary', 'highSchool', 'college'];
-
-/* Reverse of LEVEL_KEY_MAP — turns a Firestore level key back into the
-   display label shown in the Sports Available hover ("Available in:
-   Elementary • College"). */
-const LEVEL_KEY_TO_LABEL = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
 
 /* Case/whitespace-insensitive compare, for deduping sport names that
    Admin may have entered with different capitalization per level. */
@@ -277,8 +266,14 @@ function TeamBadge({ team }) {
 }
 
 function LandingPage() {
+  const levelLabels = useContext(LevelLabelsContext);
+  const LEVELS = [
+    { key: 'elementary', label: levelLabels.elementary },
+    { key: 'highSchool', label: levelLabels.highSchool },
+    { key: 'college', label: levelLabels.college },
+  ];
   const [levelOpen, setLevelOpen] = useState(false);
-  const [selectedLevel, setSelectedLevel] = useState("Levels");
+  const [selectedLevelKey, setSelectedLevelKey] = useState(null);
   const [matchIndex, setMatchIndex] = useState(0);
   const [matchDirection, setMatchDirection] = useState("next");
   const [matchAnimKey, setMatchAnimKey] = useState(0);
@@ -404,7 +399,7 @@ function LandingPage() {
           name: entry.name,
           logo: entry.logo,
           icon: iconForSportName(entry.name),
-          levels: ALL_LEVEL_KEYS.filter((lvl) => entry.levels.has(lvl)).map((lvl) => LEVEL_KEY_TO_LABEL[lvl]),
+          levels: ALL_LEVEL_KEYS.filter((lvl) => entry.levels.has(lvl)),
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
 
@@ -422,7 +417,7 @@ function LandingPage() {
         const cfg = configsByLevel[levelKey] || { teams: [] };
         const top = computeTopTeamForLevel(cfg.teams || [], rankingsByLevel[levelKey] || {});
         if (top && (!overallBest || top.rating > overallBest.rating)) {
-          overallBest = { ...top, level: LEVEL_KEY_TO_LABEL[levelKey] };
+          overallBest = { ...top, level: levelKey };
         }
       });
       setTopChampion(overallBest);
@@ -446,7 +441,7 @@ function LandingPage() {
      the dropdown with no way to tell which level it belonged to. Now it
      shows nothing (and the card prompts "Pick a level…") until a level
      is actually chosen. */
-  const activeLevelKey = LEVEL_KEY_MAP[selectedLevel] || null;
+  const activeLevelKey = selectedLevelKey;
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -588,16 +583,16 @@ function LandingPage() {
                   className="level-btn"
                   onClick={() => setLevelOpen((prev) => !prev)}
                 >
-                  {selectedLevel} <FaChevronDown className={`level-chevron ${levelOpen ? "open" : ""}`} />
+                  {selectedLevelKey ? levelLabels[selectedLevelKey] : 'Levels'} <FaChevronDown className={`level-chevron ${levelOpen ? "open" : ""}`} />
                 </button>
                 <ul className={`level-menu ${levelOpen ? "open" : ""}`}>
                   {LEVELS.map((lvl) => (
                     <li
-                      key={lvl}
-                      className={`level-item ${selectedLevel === lvl ? "active" : ""}`}
-                      onClick={() => { setSelectedLevel(lvl); setLevelOpen(false); }}
+                      key={lvl.key}
+                      className={`level-item ${selectedLevelKey === lvl.key ? "active" : ""}`}
+                      onClick={() => { setSelectedLevelKey(lvl.key); setLevelOpen(false); }}
                     >
-                      {lvl}
+                      {lvl.label}
                     </li>
                   ))}
                 </ul>
@@ -649,9 +644,9 @@ function LandingPage() {
               </>
             ) : (
               <div className="match-card-empty">
-                {selectedLevel === 'Levels'
+                {!selectedLevelKey
                   ? 'Pick a level above to see ongoing matches.'
-                  : `No matches scheduled for ${selectedLevel} yet — check back soon.`}
+                  : `No matches scheduled for ${levelLabels[selectedLevelKey]} yet — check back soon.`}
               </div>
             )}
           </div>
@@ -710,7 +705,7 @@ function LandingPage() {
             <FaCrown className="champion-spotlight__crown" aria-hidden="true" />
             <span className="champion-spotlight__eyebrow">#1 Potential Champion</span>
             <h3 className="champion-spotlight__team">{topChampion.team}</h3>
-            <span className="champion-spotlight__meta">{topChampion.level} &middot; {topChampion.rating} RATING</span>
+            <span className="champion-spotlight__meta">{levelLabels[topChampion.level] || topChampion.level} &middot; {topChampion.rating} RATING</span>
           </div>
         )}
 
@@ -744,7 +739,7 @@ function LandingPage() {
                 <span className="sport-tile-name">{sport.name.toUpperCase()}</span>
                 {isHovered && availableLevels.length > 0 && (
                   <div className="sport-tile-tooltip" role="tooltip">
-                    Available in: {availableLevels.join(' • ')}
+                    Available in: {availableLevels.map((lvl) => levelLabels[lvl] || lvl).join(' • ')}
                   </div>
                 )}
               </div>

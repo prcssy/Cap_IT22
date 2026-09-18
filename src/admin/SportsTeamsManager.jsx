@@ -6,6 +6,7 @@ import {
 import './SportsTeamsManager.css';
 import { getSportsTeamsConfig, saveSportsConfig, saveTeamsConfig } from '../shared/services/firestoreService';
 import { AuthContext } from '../shared/context/AuthContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 
 /* ═══════════════════════════════════════════
    CONSTANTS
@@ -889,6 +890,7 @@ function TeamsConfirmModal({ teams, saving, onClose, onSave }) {
 ═══════════════════════════════════════════ */
 export default function SportsTeamsManager({ level }) {
   const { userProfile } = useContext(AuthContext);
+  const levelLabels = useContext(LevelLabelsContext);
   const actorRole = userProfile?.role;
   const [sportsRows,  setSportsRows]  = useState([]);
   const [teamsRows,   setTeamsRows]   = useState([]);
@@ -1681,7 +1683,7 @@ export default function SportsTeamsManager({ level }) {
             <h3 className="stm-confirm-title">DELETE SPORT?</h3>
             <p className="stm-delete-msg">
               Are you sure you want to delete <b>{deleteSportTarget.name.toUpperCase()}</b>?
-              This will remove it and its categories/divisions from {level === 'highSchool' ? 'High School' : level.charAt(0).toUpperCase() + level.slice(1)}.
+              This will remove it and its categories/divisions from {levelLabels[level] || level}.
             </p>
             <div className="stm-delete-actions">
               <button type="button" className="stm-btn-ghost" onClick={() => setDeleteSportTarget(null)}>
@@ -1706,7 +1708,7 @@ export default function SportsTeamsManager({ level }) {
             <h3 className="stm-confirm-title">DELETE TEAM?</h3>
             <p className="stm-delete-msg">
               Are you sure you want to delete <b>{deleteTeamTarget.name.toUpperCase()}</b>?
-              This will remove it from {level === 'highSchool' ? 'High School' : level.charAt(0).toUpperCase() + level.slice(1)} and unassign it from any sports.
+              This will remove it from {levelLabels[level] || level} and unassign it from any sports.
             </p>
             <div className="stm-delete-actions">
               <button type="button" className="stm-btn-ghost" onClick={() => setDeleteTeamTarget(null)}>

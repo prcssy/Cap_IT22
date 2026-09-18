@@ -1460,6 +1460,66 @@ export async function saveSchoolEvents(events, actorEmail, actorRole = 'superadm
 // LogoUpload uses) and passes that straight to updateBrandingInfo({ logoURL }).
 
 /* ─────────────────────────────────────────────
+   School Level Names — one doc (siteConfig/levelLabels) holds the display
+   name shown for each of the 3 fixed school levels. The internal keys
+   (elementary/highSchool/college) are NOT editable — they're what every
+   other config doc (sportsTeamsConfig/{level}, matchSchedules/{level},
+   etc.) is keyed by — only the human-readable label a Super Admin sees/
+   sets on screen. Same public-read/superadmin-write rule as branding
+   (see firestore.rules `siteConfig/{docId}`).
+
+   LevelLabelsContext (src/shared/context/LevelLabelsContext.jsx) is the
+   one place that subscribes to this doc — every page reads the current
+   labels through that context rather than hardcoding "Elementary"/"High
+   School"/"College", so a rename here shows up everywhere immediately.
+───────────────────────────────────────────── */
+export const DEFAULT_LEVEL_LABELS = {
+  elementary: 'Elementary',
+  highSchool: 'High School',
+  college: 'College',
+};
+
+export function subscribeLevelLabels(callback) {
+  if (!db) {
+    callback(DEFAULT_LEVEL_LABELS);
+    return () => {};
+  }
+  return onSnapshot(
+    doc(db, 'siteConfig', 'levelLabels'),
+    (snap) => {
+      callback(snap.exists() ? { ...DEFAULT_LEVEL_LABELS, ...snap.data() } : DEFAULT_LEVEL_LABELS);
+    },
+    (error) => {
+      console.warn('Level labels listener failed:', error);
+      callback(DEFAULT_LEVEL_LABELS);
+    },
+  );
+}
+
+// Only ever writes the 3 fixed keys — there is no add/remove for school
+// levels, just renaming the 3 that already exist everywhere else in the app.
+export async function updateLevelLabels(labels, actorEmail, actorRole = 'superadmin') {
+  if (!db) throw new Error('Firestore not initialized.');
+  const clean = {
+    elementary: String(labels.elementary || '').trim() || DEFAULT_LEVEL_LABELS.elementary,
+    highSchool: String(labels.highSchool || '').trim() || DEFAULT_LEVEL_LABELS.highSchool,
+    college: String(labels.college || '').trim() || DEFAULT_LEVEL_LABELS.college,
+  };
+  await setDoc(
+    doc(db, 'siteConfig', 'levelLabels'),
+    { ...clean, updatedAt: serverTimestamp(), updatedBy: actorEmail || '' },
+    { merge: true },
+  );
+  logActivity({
+    actorRole,
+    type: 'Level Names Updated',
+    details: `Updated school level names (${clean.elementary} / ${clean.highSchool} / ${clean.college})`,
+    targetType: 'levelLabels',
+    targetId: 'siteConfig/levelLabels',
+  });
+}
+
+/* ─────────────────────────────────────────────
    Landing Page CMS — one document (siteConfig/landingPage) is the single
    source of truth for the public homepage's editable content: the hero
    subtitle/background, the 3 feature cards, the 3 "How to Join as a

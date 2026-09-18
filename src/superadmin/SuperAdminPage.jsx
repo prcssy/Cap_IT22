@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { db } from '../shared/firebase';
 import { getAllUsers, getAllRegistrations, getSportsTeamsConfig, getMatchSchedules, getMatchRecords, getActivityLogs } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
@@ -8,6 +9,7 @@ import ActivityLogsAndRoles from './ActivityLogsAndRoles';
 import StudentRegistrationDetails from './StudentRegistrationDetails';
 import BrandingSettings from './BrandingSettings';
 import LandingPageSettings from './LandingPageSettings';
+import LevelLabelsSettings from './LevelLabelsSettings';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
@@ -29,13 +31,6 @@ import {
    ═══════════════════════════════════════════════════════════════ */
 
 const LEVELS = ['elementary', 'highSchool', 'college'];
-
-const LEVEL_OPTIONS = [
-  { key: 'all',        label: 'All Levels' },
-  { key: 'elementary', label: 'Elementary' },
-  { key: 'highSchool', label: 'High School' },
-  { key: 'college',    label: 'College' },
-];
 
 const ELEMENTARY_GRADES = new Set(['Grade 1','Grade 2','Grade 3','Grade 4','Grade 5','Grade 6']);
 const HIGH_SCHOOL_GRADES = new Set(['Grade 7','Grade 8','Grade 9','Grade 10','Grade 11','Grade 12']);
@@ -557,6 +552,14 @@ function buildTimeSeries(seriesA, seriesB, days) {
 export default function SuperAdminPage() {
   const { userProfile, authLoading } = useContext(AuthContext);
   const { schoolName } = useContext(BrandingContext);
+  const levelLabels = useContext(LevelLabelsContext);
+
+  const LEVEL_OPTIONS = useMemo(() => [
+    { key: 'all',        label: 'All Levels' },
+    { key: 'elementary', label: levelLabels.elementary },
+    { key: 'highSchool', label: levelLabels.highSchool },
+    { key: 'college',    label: levelLabels.college },
+  ], [levelLabels]);
 
   const [users, setUsers]                 = useState([]);
   const [registrations, setRegistrations] = useState([]);
@@ -893,6 +896,7 @@ export default function SuperAdminPage() {
                 levels={[
                   { key: 'branding', label: 'Branding' },
                   { key: 'landingPage', label: 'Landing Page' },
+                  { key: 'levels', label: 'School Levels' },
                 ]}
                 value={webTab}
                 onChange={setWebTab}
@@ -902,6 +906,8 @@ export default function SuperAdminPage() {
               />
               {webTab === 'landingPage'
                 ? <LandingPageSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
+                : webTab === 'levels'
+                ? <LevelLabelsSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
                 : <BrandingSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />}
             </>
           ) : (

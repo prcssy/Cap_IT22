@@ -5,6 +5,7 @@ import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf, FaFileW
 import { db } from '../shared/firebase';
 import { getAllRegistrations, getAllUsers, getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration } from '../shared/services/firestoreService';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { AuthContext } from '../shared/context/AuthContext';
 import '../admin/AdminSchedulePage.css';
 
@@ -38,8 +39,6 @@ function getSchoolLevel(gradeLevel) {
   if (COLLEGE_GRADES.has(gradeLevel)) return 'college';
   return null;
 }
-
-const LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
 
 // Shared by every field in the Student Details modal: values the merge
 // logic already fell back to ('—' for user-profile fields, 'N/A' for
@@ -199,6 +198,7 @@ function FilterDropdown({ label, value, options, onChange }) {
 // player, used on the Super Admin page (its original, pre-fix behavior).
 export default function StudentRegistrationDetails({ scope = 'registrants', onStatusChange, onDeleted }) {
   const { events, schoolName } = useContext(BrandingContext);
+  const LEVEL_LABELS = useContext(LevelLabelsContext);
   const { userProfile } = useContext(AuthContext);
   const [allRegistrations, setAllRegistrations] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -549,9 +549,9 @@ export default function StudentRegistrationDetails({ scope = 'registrants', onSt
             value={filterLevel}
             onChange={setFilterLevel}
             options={[
-              { value: 'elementary', label: 'Elementary' },
-              { value: 'highSchool', label: 'High School' },
-              { value: 'college', label: 'College' },
+              { value: 'elementary', label: LEVEL_LABELS.elementary },
+              { value: 'highSchool', label: LEVEL_LABELS.highSchool },
+              { value: 'college', label: LEVEL_LABELS.college },
             ]}
           />
           <FilterDropdown

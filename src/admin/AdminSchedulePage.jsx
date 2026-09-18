@@ -1,6 +1,7 @@
 import { useState, useContext, useEffect, useCallback, useMemo, useRef } from 'react';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { ScheduleRequestsContext } from '../shared/context/ScheduleRequestsContext';
 import { useNavigate } from 'react-router-dom';
 import './AdminSchedulePage.css';
@@ -16,12 +17,6 @@ import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../shared/components/LevelTabs';
 import StudentRegistrationDetails from '../superadmin/StudentRegistrationDetails';
-
-const LEVELS = [
-  { key: 'elementary', label: 'Elementary' },
-  { key: 'highSchool',  label: 'High School' },
-  { key: 'college',     label: 'College' },
-];
 
 
 /* ─── Grade-level bucketing ───────────────────────── */
@@ -115,7 +110,6 @@ const FORMATS = [
 ];
 
 const uid = () => Math.random().toString(36).slice(2, 10);
-const LEVEL_LABELS = { elementary: 'Elementary', highSchool: 'High School', college: 'College' };
 
 /* Firestore denies a write/read with `permission-denied` for anything a
    security rule doesn't explicitly allow — that reads identically to an
@@ -1060,6 +1054,7 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
 
 function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, actorRole }) {
   const { schoolName } = useContext(BrandingContext);
+  const LEVEL_LABELS = useContext(LevelLabelsContext);
   const [sportsList, setSportsList] = useState([]);
   const [teamsList,  setTeamsList]  = useState([]);
   const [loading,    setLoading]    = useState(false);
@@ -2742,6 +2737,12 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 export default function AdminSchedulePage() {
   const { isAdmin, authLoading, userProfile } = useContext(AuthContext);
   const { schoolName, events } = useContext(BrandingContext);
+  const LEVEL_LABELS = useContext(LevelLabelsContext);
+  const LEVELS = useMemo(() => [
+    { key: 'elementary', label: LEVEL_LABELS.elementary },
+    { key: 'highSchool',  label: LEVEL_LABELS.highSchool },
+    { key: 'college',     label: LEVEL_LABELS.college },
+  ], [LEVEL_LABELS]);
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState(REGISTRATION_TAB_INDEX);
@@ -3090,18 +3091,18 @@ const fetchSummary = useCallback(async () => {
                     <thead>
                       <tr>
                         <th>Sports</th>
-                        <th>Elementary</th>
-                        <th>High School</th>
-                        <th>College</th>
+                        <th>{LEVEL_LABELS.elementary}</th>
+                        <th>{LEVEL_LABELS.highSchool}</th>
+                        <th>{LEVEL_LABELS.college}</th>
                       </tr>
                     </thead>
                     <tbody>
                       {visibleSummaryRows.map(row => (
                         <tr key={`${row.sport}-${row.gender}`}>
                           <td className="asp-td--sport" data-label="Sports">{row.sport.toUpperCase()} {row.gender.toUpperCase()}</td>
-                          <td data-label="Elementary">{fmt(row, 'elementary')}</td>
-                          <td data-label="High School">{fmt(row, 'highSchool')}</td>
-                          <td data-label="College">{fmt(row, 'college')}</td>
+                          <td data-label={LEVEL_LABELS.elementary}>{fmt(row, 'elementary')}</td>
+                          <td data-label={LEVEL_LABELS.highSchool}>{fmt(row, 'highSchool')}</td>
+                          <td data-label={LEVEL_LABELS.college}>{fmt(row, 'college')}</td>
                         </tr>
                       ))}
                     </tbody>
