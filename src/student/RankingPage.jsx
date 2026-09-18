@@ -95,6 +95,121 @@ function categoriesMatch(a, b) {
   return x.endsWith(` ${y}`) || y.endsWith(` ${x}`);
 }
 
+/* ── Elo tie-breaker system ──
+   Ratings are averaged/rolled-up floats (see championData below), so an
+   exact tie is rare but real — two teams that never lost a rated match
+   under the same scope, or a fresh sport/division where nobody has played
+   yet, can land on the identical number. When that happens:
+     - exactly 2 teams tied        -> most recent head-to-head result
+     - 3+ teams tied                -> head-to-head point differential
+                                        among the tied teams only, then
+                                        total points scored among them,
+                                        then head-to-head
+   Elo itself is never touched by any of this — it only decides display
+   order among teams that already have the same rating. */
+
+function matchWinnerName(record) {
+  if (!record || record.draw || record.winner === 'DRAW') return null;
+  if (record.winner === 'A') return record.teamA?.name || null;
+  if (record.winner === 'B') return record.teamB?.name || null;
+  return null;
+}
+
+function recordTimestamp(record) {
+  return record?.updatedAt || record?.createdAt || 0;
+}
+
+/* 1-vs-1 matches between exactly two given team names, scoped to the same
+   sport/division filter the Champion table is currently showing — matches
+   the scoping already used for that table's win/loss counts. 1-vs-many
+   events are excluded: there's no A/B score to diff or a two-way winner. */
+function headToHeadMatches(records, sportFilter, divisionFilter, nameA, nameB) {
+  return (records || []).filter((r) => {
+    if (r.participants?.length) return false;
+    if (sportFilter !== 'All Sports' && norm(r.sportName) !== norm(sportFilter)) return false;
+    if (divisionFilter !== 'All Divisions' && !categoriesMatch(r.category, divisionFilter)) return false;
+    const names = [norm(r.teamA?.name), norm(r.teamB?.name)];
+    return names.includes(norm(nameA)) && names.includes(norm(nameB));
+  });
+}
+
+/* Winner of the single most recently completed head-to-head match between
+   two teams, or null if they've never met (or every meeting was a draw). */
+function mostRecentHeadToHeadWinner(records, sportFilter, divisionFilter, nameA, nameB) {
+  const decided = headToHeadMatches(records, sportFilter, divisionFilter, nameA, nameB)
+    .filter((r) => matchWinnerName(r));
+  if (!decided.length) return null;
+  const latest = decided.reduce((a, b) => (recordTimestamp(b) > recordTimestamp(a) ? b : a));
+  return matchWinnerName(latest);
+}
+
+/* Sum of (points scored - points against) and total points scored, across
+   every 1-vs-1 points-scored match `teamName` played against the OTHER
+   teams in `tiedNames` — never against teams outside the tied group, and
+   never counting time-based matches (no score to diff there). */
+function pointDifferentialAmongTied(records, sportFilter, divisionFilter, teamName, tiedNames) {
+  let differential = 0;
+  let pointsScored = 0;
+  (records || []).forEach((r) => {
+    if (r.participants?.length) return;
+    if (sportFilter !== 'All Sports' && norm(r.sportName) !== norm(sportFilter)) return;
+    if (divisionFilter !== 'All Divisions' && !categoriesMatch(r.category, divisionFilter)) return;
+    const isA = norm(r.teamA?.name) === norm(teamName);
+    const isB = norm(r.teamB?.name) === norm(teamName);
+    if (!isA && !isB) return;
+    const opponent = isA ? r.teamB : r.teamA;
+    if (!opponent?.name || !tiedNames.has(norm(opponent.name))) return;
+    const own = isA ? r.teamA?.points : r.teamB?.points;
+    const against = isA ? r.teamB?.points : r.teamA?.points;
+    if (typeof own !== 'number' || typeof against !== 'number') return;
+    differential += (own - against);
+    pointsScored += own;
+  });
+  return { differential, pointsScored };
+}
+
+/* Reorders each run of teams that share the exact same rating according to
+   the rules above; teams not tied on rating are left exactly where the
+   incoming rating sort put them. `sortedByRatingDesc` only needs to already
+   be grouped by rating (descending) — the order within each tied run is
+   decided here, not by the caller. */
+function applyEloTieBreakers(sortedByRatingDesc, records, sportFilter, divisionFilter) {
+  const result = [];
+  let i = 0;
+  while (i < sortedByRatingDesc.length) {
+    let j = i + 1;
+    while (j < sortedByRatingDesc.length && sortedByRatingDesc[j].rating === sortedByRatingDesc[i].rating) j++;
+    const group = sortedByRatingDesc.slice(i, j);
+
+    if (group.length === 2) {
+      const [a, b] = group;
+      const winner = mostRecentHeadToHeadWinner(records, sportFilter, divisionFilter, a.team, b.team);
+      // No decided meeting between them -> leave as-is (falls back to
+      // whatever the incoming rating/name sort already decided).
+      result.push(...(winner && norm(winner) === norm(b.team) ? [b, a] : [a, b]));
+    } else if (group.length >= 3) {
+      const tiedNames = new Set(group.map((t) => norm(t.team)));
+      const withTieStats = group.map((t) => ({
+        team: t,
+        ...pointDifferentialAmongTied(records, sportFilter, divisionFilter, t.team, tiedNames),
+      }));
+      withTieStats.sort((x, y) => {
+        if (y.differential !== x.differential) return y.differential - x.differential;
+        if (y.pointsScored !== x.pointsScored) return y.pointsScored - x.pointsScored;
+        const h2h = mostRecentHeadToHeadWinner(records, sportFilter, divisionFilter, x.team.team, y.team.team);
+        if (h2h && norm(h2h) === norm(x.team.team)) return -1;
+        if (h2h && norm(h2h) === norm(y.team.team)) return 1;
+        return x.team.team.localeCompare(y.team.team);
+      });
+      result.push(...withTieStats.map((s) => s.team));
+    } else {
+      result.push(...group);
+    }
+    i = j;
+  }
+  return result;
+}
+
 /* Deterministic fallback color per team name, since real teams (unlike
    the old mock data) don't carry a stored `color` field — keeps each
    team's initials chip visually stable across reloads without needing
@@ -216,26 +331,24 @@ function DivisionSelect({ value, onChange, options }) {
 }
 
 /* ── Potential Champion table ── */
-function ChampionTable({ data, search }) {
-  /* Sorted highest rating first, then by win differential, then by name.
-     The name tie-break is what makes the table static: teams sitting on
-     the identical 1200 baseline keep the same order on every render
-     instead of shuffling with whatever order Firestore returned.
+function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
+  /* Sorted highest rating first. Teams that land on the exact same rating
+     (common at the shared 1200 baseline, or after a scope where nobody has
+     played yet) are resolved by applyEloTieBreakers per the CLAUDE.md
+     tie-breaker rules — head-to-head for a 2-team tie, point differential
+     (then total points, then head-to-head) for a 3+-team tie — falling
+     back to team name so the table still renders in a stable order when
+     no match history exists to break the tie.
 
      Rank is assigned here, over the FULL unfiltered data, before the search
      box ever narrows what's shown — so filtering the list for a search term
      can never renumber a team's actual position (e.g. BASA sitting at rank 4
      must still read "4" when you search "BASA", not jump to "1"). */
-  const ranked = useMemo(
-    () => [...data]
-      .sort((a, b) =>
-        b.rating - a.rating
-        || (b.wins - b.losses) - (a.wins - a.losses)
-        || b.wins - a.wins
-        || a.team.localeCompare(b.team))
-      .map((t, i) => ({ ...t, rank: i + 1 })),
-    [data]
-  );
+  const ranked = useMemo(() => {
+    const byRating = [...data].sort((a, b) => b.rating - a.rating || a.team.localeCompare(b.team));
+    return applyEloTieBreakers(byRating, records, sportFilter, divisionFilter)
+      .map((t, i) => ({ ...t, rank: i + 1 }));
+  }, [data, records, sportFilter, divisionFilter]);
 
   const visible = useMemo(() => {
     const q = norm(search);
@@ -749,7 +862,13 @@ export default function RankingPage() {
             {loading ? (
               <div className="rk-table-empty">Loading…</div>
             ) : (
-              <ChampionTable data={championData} search={search} />
+              <ChampionTable
+                data={championData}
+                search={search}
+                records={records}
+                sportFilter={championSport}
+                divisionFilter={championDivision}
+              />
             )}
           </div>
         </section>
