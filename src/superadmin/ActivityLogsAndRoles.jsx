@@ -2,9 +2,10 @@ import React, { useMemo, useState } from 'react';
 import {
   FaSearch, FaFilter, FaUndo, FaSync, FaChevronLeft, FaChevronRight,
   FaEllipsisV, FaUserShield, FaUserTie, FaUserCog, FaUserSlash,
+  FaUserPlus, FaCopy,
 } from 'react-icons/fa';
 import { auth } from '../shared/firebase';
-import { assignStaffRole, removeStaffRole } from '../shared/services/firestoreService';
+import { assignStaffRole, removeStaffRole, createStaffAccount } from '../shared/services/firestoreService';
 import { roleLabel } from '../shared/constants/roles';
 import './ActivityLogsAndRoles.css';
 
@@ -160,6 +161,61 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
 
   const isSelf = !!(selectedUser && auth?.currentUser?.uid === selectedUser.id);
   const selectedRole = selectedUser?.role || 'student';
+
+  /* ── Create a new staff account (Cloud Function) ──
+     Distinct from the "Manage user role" panel above, which only changes
+     the role of a user who already has an account — creating one from
+     scratch needs a new Firebase Auth user, which the client SDK can't
+     do for anyone but the currently signed-in account. */
+  const [createEmail, setCreateEmail] = useState('');
+  const [createName, setCreateName] = useState('');
+  const [createRole, setCreateRole] = useState('moderator');
+  const [createBusy, setCreateBusy] = useState(false);
+  const [createMsg, setCreateMsg] = useState(null); // { tone: 'success'|'error', text }
+  const [createdAccount, setCreatedAccount] = useState(null); // { email, role, tempPassword }
+  const [copied, setCopied] = useState(false);
+
+  const handleCreateAccount = async (e) => {
+    e.preventDefault();
+    const email = createEmail.trim().toLowerCase();
+    if (!email || !email.includes('@')) {
+      setCreateMsg({ tone: 'error', text: 'Enter a valid email address.' });
+      return;
+    }
+    setCreateBusy(true);
+    setCreateMsg(null);
+    setCreatedAccount(null);
+    setCopied(false);
+    try {
+      const result = await createStaffAccount({ email, role: createRole, name: createName.trim() });
+      setCreateMsg({
+        tone: 'success',
+        text: result.created
+          ? `Account created for ${email} as ${roleLabel(result.role)}.`
+          : `${email} already had an account — updated to ${roleLabel(result.role)}.`,
+      });
+      if (result.tempPassword) setCreatedAccount(result);
+      setCreateEmail('');
+      setCreateName('');
+      onRefresh();
+      onUserRoleChanged?.();
+    } catch (err) {
+      console.error('Failed to create staff account:', err);
+      setCreateMsg({ tone: 'error', text: friendlyRoleError(err, 'Could not create this account') });
+    } finally {
+      setCreateBusy(false);
+    }
+  };
+
+  const copyTempPassword = async () => {
+    if (!createdAccount?.tempPassword) return;
+    try {
+      await navigator.clipboard.writeText(createdAccount.tempPassword);
+      setCopied(true);
+    } catch {
+      // Clipboard API unavailable/blocked — the password is still shown on screen to copy by hand.
+    }
+  };
 
   const pickUser = (user) => {
     setSelectedId(user.id);
@@ -363,6 +419,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
         )}
       </div>
 
+      <div className="arl-aside-stack">
       {/* ── Manage user role ── */}
       <aside className="sa-card arl-role-panel">
         <h3 className="arl-role-panel__title">Manage user role</h3>
@@ -427,6 +484,55 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
           <p className="arl-role-panel__hint">Search for a user above to assign or remove a staff role.</p>
         )}
       </aside>
+
+      {/* ── Create a new staff account ── */}
+      <aside className="sa-card arl-role-panel">
+        <h3 className="arl-role-panel__title">Create staff account</h3>
+        <form className="arl-create-form" onSubmit={handleCreateAccount}>
+          <input
+            type="email"
+            placeholder="Email address"
+            value={createEmail}
+            onChange={(e) => setCreateEmail(e.target.value)}
+            required
+          />
+          <input
+            type="text"
+            placeholder="Full name (optional)"
+            value={createName}
+            onChange={(e) => setCreateName(e.target.value)}
+          />
+          <select className="sa-select" value={createRole} onChange={(e) => setCreateRole(e.target.value)}>
+            <option value="moderator">Moderator</option>
+            <option value="admin">Admin</option>
+            <option value="superadmin">Super Admin</option>
+          </select>
+          <button type="submit" className="arl-role-btn" disabled={createBusy}>
+            <FaUserPlus /> {createBusy ? 'Creating…' : 'Create account'}
+          </button>
+        </form>
+
+        {createMsg && (
+          <p className={`arl-action-msg arl-action-msg--${createMsg.tone}`}>{createMsg.text}</p>
+        )}
+
+        {createdAccount?.tempPassword && (
+          <div className="arl-temp-password">
+            <p className="arl-role-panel__hint">
+              Share this temporary password with {createdAccount.email} out-of-band (not email/chat in
+              plaintext if avoidable) — they can change it after logging in via Profile → Change Password.
+            </p>
+            <div className="arl-temp-password__row">
+              <code>{createdAccount.tempPassword}</code>
+              <button type="button" className="sa-icon-btn" onClick={copyTempPassword} title="Copy password">
+                <FaCopy />
+              </button>
+            </div>
+            {copied && <span className="arl-role-panel__hint">Copied.</span>}
+          </div>
+        )}
+      </aside>
+      </div>
     </div>
   );
 }

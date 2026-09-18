@@ -200,13 +200,23 @@
   color: #fff;
 }
 
+/* ── Aside column (manage-role + create-account panels stacked) ──
+   Sticky lives on the STACK, not each individual .arl-role-panel — two
+   separately-sticky siblings both pinned to top:0 would overlap each
+   other once the page scrolls past the first panel's height. */
+.arl-aside-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  position: sticky;
+  top: 0;
+}
+
 /* ── Manage user role panel ── */
 .arl-role-panel {
   display: flex;
   flex-direction: column;
   gap: 12px;
-  position: sticky;
-  top: 0;
 }
 
 .arl-role-panel__title {
@@ -374,13 +384,82 @@
   color: #9c2c20;
 }
 
+/* ── Create staff account panel ── */
+.arl-create-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.arl-create-form input {
+  height: 34px;
+  padding: 0 12px;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 8px;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  color: #334155;
+  box-sizing: border-box;
+  outline: none;
+  width: 100%;
+}
+
+.arl-create-form input:focus {
+  border-color: #16337a;
+}
+
+.arl-create-form .sa-select {
+  width: 100%;
+}
+
+.arl-create-form .arl-role-btn {
+  justify-content: center;
+  color: #fff;
+  background: #16337a;
+  border-color: #16337a;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .arl-create-form .arl-role-btn:hover:not(:disabled) {
+    background: #0f2559;
+  }
+}
+
+.arl-temp-password {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #f7f9fc;
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.arl-temp-password__row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.arl-temp-password__row code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: break-word;
+  font-size: 12px;
+  font-weight: 700;
+  color: #001529;
+  background: #fff;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
 /* ── Responsive ── */
 @media (max-width: 900px) {
   .arl-wrap {
     grid-template-columns: 1fr;
   }
 
-  .arl-role-panel {
+  .arl-aside-stack {
     position: static;
   }
 }

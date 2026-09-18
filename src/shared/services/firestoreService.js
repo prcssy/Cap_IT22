@@ -22,7 +22,8 @@ import {
   uploadBytes,
   getDownloadURL,
 } from 'firebase/storage';
-import { db, auth } from '../firebase';
+import { httpsCallable } from 'firebase/functions';
+import { db, auth, functions } from '../firebase';
 
 /**
  * Shared per-level/per-doc "list" fields (matchSchedules/{level}.matches,
@@ -290,6 +291,26 @@ export async function removeStaffRole(targetUser, actorRole) {
     targetId: targetUser.id || email,
     targetLabel: email,
   });
+}
+
+/**
+ * Provisions a brand-new staff account (Admin/Moderator/Super Admin) via
+ * the `createStaffAccount` Cloud Function — the one staff-management
+ * operation `assignStaffRole` above can't do, since it only ever changes
+ * the role of an EXISTING `users/{uid}` doc and can't create a new
+ * Firebase Auth user for someone who's never signed up. The function
+ * re-checks the caller is a Super Admin server-side; it doesn't trust
+ * this client call alone. Returns `{ uid, email, role, created,
+ * tempPassword }` — `tempPassword` is only set when a new Auth account
+ * was actually created (share it with the new staff member out-of-band;
+ * omitted if the email already had an account, in which case only the
+ * allowlist/profile docs were updated).
+ */
+export async function createStaffAccount({ email, role, name }) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'createStaffAccount');
+  const { data } = await call({ email, role, name });
+  return data;
 }
 
 const UPLOAD_TIMEOUT_MS = 15 * 1000;

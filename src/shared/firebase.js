@@ -2,6 +2,7 @@ import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
 import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
+import { getFunctions } from 'firebase/functions';
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -28,14 +29,16 @@ let app;
 let auth;
 let db;
 let storage;
+let functions;
 
 try {
-  app     = initializeApp(firebaseConfig);
-  auth    = getAuth(app);
-  db      = getFirestore(app);
-  storage = getStorage(app);
+  app       = initializeApp(firebaseConfig);
+  auth      = getAuth(app);
+  db        = getFirestore(app);
+  storage   = getStorage(app);
+  functions = getFunctions(app);
 } catch (error) {
   console.warn('Firebase initialization failed.', error);
 }
 
-export { auth, db, storage };
+export { auth, db, storage, functions };
