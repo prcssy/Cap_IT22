@@ -556,7 +556,7 @@ function buildTimeSeries(seriesA, seriesB, days) {
 
 export default function SuperAdminPage() {
   const { userProfile, authLoading } = useContext(AuthContext);
-  const { schoolName } = useContext(BrandingContext);
+  const { schoolName, logo } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
 
   const LEVEL_OPTIONS = useMemo(() => [
@@ -899,29 +899,88 @@ export default function SuperAdminPage() {
     return `${formatDay(cutoff)} — ${formatDay(new Date())}`;
   }, [cutoff]);
 
-  const handleExport = () => {
-    const header = ['Name', 'Email', 'Gender', 'Grade/Year', 'Section', 'Sport', 'Team', 'Event', 'Status', 'Registered On'];
-    const rows = rangedRegs.map(r => [
-      r.fullName || '', r.email || r.studentEmail || '', r.gender || '',
-      r.gradeLevel || '', r.section || '', r.sport || '', r.teamName || '',
-      r.event || '', r.status || '', formatDateTime(toDate(r.createdAt)),
-    ]);
+  /* ── Export the whole Data Analytics tab as one PDF ──
+     Same jsPDF + jspdf-autotable combo StudentRegistrationDetails.jsx and
+     AdminSchedulePage.jsx already use for their own PDF exports — every
+     tile/chart currently on screen (tiles, sports participation,
+     registration-over-time, the three donuts) gets its own summary table,
+     followed by the full Registration Details table the old CSV export
+     covered on its own. A section that starts too close to the bottom of
+     the page jumps to a fresh page first so its title never gets
+     separated from its table by a page break. */
+  const handleExportPdf = async () => {
+    const { jsPDF } = await import('jspdf');
+    const { default: autoTable } = await import('jspdf-autotable');
+    const { loadPdfLogo, drawLogoTitleRow } = await import('../shared/utils/loadPdfLogo');
+    const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
+    const pageWidth  = doc.internal.pageSize.getWidth();
+    const pageHeight = doc.internal.pageSize.getHeight();
 
-    // Quote every field and double any embedded quotes, so names with
-    // commas ("Dela Torre, Leslie") don't split into extra columns.
-    const csv = [header, ...rows]
-      .map(row => row.map(cell => `"${String(cell).replace(/"/g, '""')}"`).join(','))
-      .join('\n');
+    const logoInfo = await loadPdfLogo(logo);
+    const titleY = 40;
+    drawLogoTitleRow(doc, { pageWidth, y: titleY, title: schoolName, logoInfo });
 
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.href = url;
-    link.download = `registrations-${new Date().toISOString().slice(0, 10)}.csv`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-    URL.revokeObjectURL(url);
+    doc.setFontSize(11);
+    doc.setFont(undefined, 'normal');
+    doc.text('Data Analytics Report', pageWidth / 2, titleY + 18, { align: 'center' });
+    doc.setFontSize(9);
+    doc.setTextColor(110);
+    const levelLabel = LEVEL_OPTIONS.find(l => l.key === levelKey)?.label || 'All Levels';
+    doc.text(`${levelLabel} · ${rangeCaption} · Generated ${new Date().toLocaleString()}`, pageWidth / 2, titleY + 32, { align: 'center' });
+    doc.setTextColor(0);
+
+    let cursorY = titleY + 52;
+    const section = (title, head, body) => {
+      if (body.length === 0) return;
+      // Keep a section's title glued to its table — jump to a new page
+      // if there isn't room for at least the title plus a couple of rows.
+      if (cursorY > pageHeight - 120) {
+        doc.addPage();
+        cursorY = 40;
+      }
+
+      autoTable(doc, {
+        startY: cursorY,
+        head: [[title]],
+        body: [],
+        theme: 'plain',
+        styles: { fontSize: 11, fontStyle: 'bold' },
+        margin: { left: 40, right: 40 },
+      });
+      autoTable(doc, {
+        startY: doc.lastAutoTable.finalY,
+        head: [head],
+        body,
+        theme: 'grid',
+        styles: { fontSize: 9, cellPadding: 5 },
+        headStyles: { fillColor: [29, 78, 216] },
+        margin: { left: 40, right: 40 },
+      });
+      cursorY = doc.lastAutoTable.finalY + 24;
+    };
+
+    section('Overview', ['Metric', 'Value'], tiles.map(t => [t.label, t.value.toLocaleString()]));
+    section('Sports Participation', ['Sport', 'Registrations'], sportBars.map(b => [b.label, b.value]));
+    section(
+      'User Registration Over Time',
+      ['Period', 'New Users', 'Player Registrations'],
+      timeSeries.map(p => [p.label, p.values[0], p.values[1]]),
+    );
+    section('Event Status', ['Status', 'Matches'], statusSegments.map(s => [s.label, s.value]));
+    section('User Distribution by Role', ['Role', 'Students'], roleSegments.map(s => [s.label, s.value]));
+    section('Gender Distribution', ['Gender', 'Players'], genderSegments.map(s => [s.label, s.value]));
+
+    section(
+      'Registration Details',
+      ['Name', 'Email', 'Gender', 'Grade/Year', 'Section', 'Sport', 'Team', 'Event', 'Status', 'Registered On'],
+      rangedRegs.map(r => [
+        r.fullName || '', r.email || r.studentEmail || '', r.gender || '',
+        r.gradeLevel || '', r.section || '', r.sport || '', r.teamName || '',
+        r.event || '', r.status || '', formatDateTime(toDate(r.createdAt)),
+      ]),
+    );
+
+    doc.save(`data-analytics-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
   // ProtectedRoute already gates this route, but bail out of the render
@@ -1020,8 +1079,8 @@ export default function SuperAdminPage() {
               <button className="sa-icon-btn" onClick={fetchAnalytics} disabled={loading} title="Refresh">
                 <FaSync className={loading ? 'sa-spin' : ''} />
               </button>
-              <button className="sa-export" onClick={handleExport} disabled={loading || rangedRegs.length === 0}>
-                <FaDownload /> Export Data
+              <button className="sa-export" onClick={handleExportPdf} disabled={loading}>
+                <FaDownload /> Export PDF
               </button>
             </div>
           </div>

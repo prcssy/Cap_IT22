@@ -1053,7 +1053,7 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
 }
 
 function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, actorRole }) {
-  const { schoolName } = useContext(BrandingContext);
+  const { schoolName, logo } = useContext(BrandingContext);
   const LEVEL_LABELS = useContext(LevelLabelsContext);
   const [sportsList, setSportsList] = useState([]);
   const [teamsList,  setTeamsList]  = useState([]);
@@ -1591,21 +1591,23 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   const handleDownloadPdf = async () => {
     const { jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
+    const { loadPdfLogo, drawLogoTitleRow } = await import('../shared/utils/loadPdfLogo');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     const pageWidth = doc.internal.pageSize.getWidth();
 
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
-    doc.text(schoolName, pageWidth / 2, 40, { align: 'center' });
+    const logoInfo = await loadPdfLogo(logo);
+    const titleY = 40;
+    drawLogoTitleRow(doc, { pageWidth, y: titleY, title: schoolName, logoInfo });
+
     doc.setFontSize(11);
     doc.setFont(undefined, 'normal');
-    doc.text(`Match Schedule — ${LEVEL_LABELS[level] || level}`, pageWidth / 2, 58, { align: 'center' });
+    doc.text(`Match Schedule — ${LEVEL_LABELS[level] || level}`, pageWidth / 2, titleY + 18, { align: 'center' });
     doc.setFontSize(9);
     doc.setTextColor(110);
-    doc.text(`Generated ${new Date().toLocaleString()}`, pageWidth / 2, 72, { align: 'center' });
+    doc.text(`Generated ${new Date().toLocaleString()}`, pageWidth / 2, titleY + 32, { align: 'center' });
     doc.setTextColor(0);
 
-    let cursorY = 90;
+    let cursorY = titleY + 50;
     sportSections.forEach(({ sport, undated, groupedByDate }) => {
       const rows = [];
       undated.forEach(m => rows.push(['TBD', 'TBD', m.teamA, m.teamB, m.location || '—']));
@@ -1650,6 +1652,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     if (!stages.length) return;
 
     const { jsPDF } = await import('jspdf');
+    const { loadPdfLogo, drawLogoTitleRow } = await import('../shared/utils/loadPdfLogo');
 
     const NODE_W = 150, NODE_H = 46, ROW_H = 60, LINE_GAP = 46;
     const COL_W = NODE_W + LINE_GAP;
@@ -1664,14 +1667,18 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     });
     const pageWidth = pdf.internal.pageSize.getWidth();
 
-    pdf.setFontSize(14);
-    pdf.setFont(undefined, 'bold');
-    pdf.text(schoolName, pageWidth / 2, 30, { align: 'center' });
+    // Logo + title both fit inside the existing MARGIN(50)-tall header
+    // strip above the bracket columns (which start at MARGIN + 60), so no
+    // page-size math above needs to change to make room for it.
+    const logoInfo = await loadPdfLogo(logo);
+    const titleY = 30;
+    drawLogoTitleRow(pdf, { pageWidth, y: titleY, title: schoolName, logoInfo, fontSize: 14, logoHeight: 18, maxLogoWidth: 42 });
+
     pdf.setFontSize(10);
     pdf.setFont(undefined, 'normal');
     pdf.text(
       `${selSport?.name || ''} — ${selCategory?.label || ''} Bracket (${LEVEL_LABELS[level] || level})`,
-      pageWidth / 2, 46, { align: 'center' },
+      pageWidth / 2, titleY + 16, { align: 'center' },
     );
 
     const colX = (r) => MARGIN + r * COL_W;

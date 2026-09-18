@@ -205,7 +205,7 @@ function FilterDropdown({ label, value, options, onChange }) {
 // but left this table showing every level. '' means "All Levels". The
 // dropdown is hidden in this mode since the page tabs already cover it.
 export default function StudentRegistrationDetails({ scope = 'registrants', levelFilter, onStatusChange, onDeleted }) {
-  const { events, schoolName } = useContext(BrandingContext);
+  const { events, schoolName, logo } = useContext(BrandingContext);
   const LEVEL_LABELS = useContext(LevelLabelsContext);
   const { userProfile } = useContext(AuthContext);
   const [allRegistrations, setAllRegistrations] = useState([]);
@@ -403,21 +403,23 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
   const handleDownloadPdf = async (reg) => {
     const { jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
+    const { loadPdfLogo, drawLogoTitleRow } = await import('../shared/utils/loadPdfLogo');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     const pageWidth = doc.internal.pageSize.getWidth();
 
-    doc.setFontSize(14);
-    doc.setFont(undefined, 'bold');
-    doc.text(schoolName, pageWidth / 2, 40, { align: 'center' });
+    const logoInfo = await loadPdfLogo(logo);
+    const titleY = 40;
+    drawLogoTitleRow(doc, { pageWidth, y: titleY, title: schoolName, logoInfo });
+
     doc.setFontSize(11);
     doc.setFont(undefined, 'normal');
-    doc.text('Student Player Registration', pageWidth / 2, 58, { align: 'center' });
+    doc.text('Student Player Registration', pageWidth / 2, titleY + 18, { align: 'center' });
     doc.setFontSize(9);
     doc.setTextColor(110);
-    doc.text(`Generated ${new Date().toLocaleString()}`, pageWidth / 2, 72, { align: 'center' });
+    doc.text(`Generated ${new Date().toLocaleString()}`, pageWidth / 2, titleY + 32, { align: 'center' });
     doc.setTextColor(0);
 
-    let cursorY = 92;
+    let cursorY = titleY + 52;
     const section = (title, rows) => {
       const body = rows.filter(([, value]) => value !== undefined);
       if (body.length === 0) return;
