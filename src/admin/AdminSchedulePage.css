@@ -1,14 +1,18 @@
 /* ══════════════════════════════════════════
    PAGE SHELL
    ══════════════════════════════════════════ */
+/* This used to be the element that scrolled — header, intro and tabs
+   included — instead of just an inner body, so the navbar scrolled away
+   with the page content. overflow: hidden here + overflow-y: auto moved
+   onto .asp-body (below) keeps the header pinned, same fix as
+   MatchSchedulesPage's .ms-page/.ms-body. */
 .asp-page {
   display: flex;
   flex-direction: column;
   width: 100%;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
   background-color: #001529;
   color: #fff;
   font-family: 'Inter', sans-serif;
@@ -124,6 +128,10 @@
    SCROLLABLE BODY
    ══════════════════════════════════════════ */
 .asp-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 16px 25px 32px;
   box-sizing: border-box;
 }
@@ -1340,18 +1348,28 @@
 /* ══════════════════════════════════════════
    RESPONSIVE
    ══════════════════════════════════════════ */
+/* ══════════════════════════════════════════
+   FLUID MOBILE SIZING — this whole block used to hardcode one px value
+   per property below 768px, so a 320px phone and a 767px phone (a >2x
+   width difference) rendered identically: cramped/shrunk on the narrow
+   end, with visible unused space on the wide end. Below, padding/gap/
+   font-size/width values are `clamp(min, calc(...) , max)` instead —
+   min at ~320px, max at ~768px, scaling continuously in between — so
+   sizing tracks actual viewport width rather than jumping between two
+   fixed states at the breakpoint.
+   ══════════════════════════════════════════ */
 @media (max-width: 768px) {
   .asp-body {
-    padding: 12px 14px 24px;
+    padding: clamp(10px, calc(7.14px + 0.89vw), 14px) clamp(12px, calc(7.71px + 1.34vw), 18px) clamp(18px, calc(10.86px + 2.23vw), 28px);
   }
 
   .asp-tabs {
     flex-wrap: wrap;
-    padding: 10px 14px;
+    padding: clamp(8px, calc(5.14px + 0.89vw), 12px) clamp(12px, calc(9.14px + 0.89vw), 16px);
   }
 
   .asp-level-row {
-    padding: 0 14px 12px;
+    padding: 0 clamp(12px, calc(7.71px + 1.34vw), 18px) clamp(9px, calc(5.43px + 1.12vw), 14px);
   }
 
   .asp-filters {
@@ -1373,12 +1391,12 @@
   }
 
   .asp-modal__header {
-    padding: 14px 16px;
+    padding: clamp(12px, calc(9.14px + 0.89vw), 16px) clamp(14px, calc(11.14px + 0.89vw), 18px);
   }
 
   .asp-modal__body {
-    padding: 16px;
-    gap: 18px;
+    padding: clamp(14px, calc(9.71px + 1.34vw), 20px);
+    gap: clamp(14px, calc(8.29px + 1.79vw), 22px);
   }
 
   .asp-sched-topbar {
@@ -1388,7 +1406,8 @@
   }
 
   .asp-search-input {
-    width: 160px;
+    width: clamp(130px, calc(80px + 15.63vw), 200px);
+    max-width: 100%;
   }
 
   .asp-results-count {
@@ -1405,57 +1424,53 @@
      wrap into 3-4 tall rows. */
   .asp-intro {
     align-items: flex-start;
-    padding: 14px 16px 8px;
-    gap: 10px;
+    padding: clamp(12px, calc(9.14px + 0.89vw), 16px) clamp(14px, calc(9.71px + 1.34vw), 20px) clamp(6px, calc(3.14px + 0.89vw), 10px);
+    gap: clamp(8px, calc(5.14px + 0.89vw), 12px);
   }
 
   .asp-intro__title {
-    font-size: 1.25rem;
+    font-size: clamp(1.05rem, calc(0.91rem + 0.71vw), 1.25rem);
   }
 
   .asp-intro__sub {
-    font-size: 0.78rem;
+    font-size: clamp(0.68rem, calc(0.61rem + 0.36vw), 0.78rem);
   }
 
+  /* A 2-column grid wrapped 5 tabs into 2+2+1, leaving "Schedule Requests"
+     alone on its own row, off-center from the columns above it — one
+     horizontally-scrollable row instead, so every tab lines up on the
+     same baseline regardless of count. */
   .asp-tabs--header {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
+    display: flex;
+    flex-wrap: nowrap;
     justify-content: flex-start;
     width: 100%;
     gap: 8px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .asp-tabs--header::-webkit-scrollbar {
+    display: none;
   }
 
   .asp-tab {
-    padding: 7px 10px;
-    font-size: 0.72rem;
-    text-align: center;
-  }
-
-  .asp-level-row {
-    padding: 0 16px 10px;
-  }
-
-  .asp-lvltabs {
-    display: flex;
-    width: 100%;
-    box-sizing: border-box;
-  }
-
-  .asp-lvltab {
-    flex: 1;
-    padding: 7px 4px;
-    font-size: 11px;
+    flex-shrink: 0;
+    padding: clamp(5px, calc(3.86px + 0.36vw), 7px) clamp(8px, calc(5.86px + 0.67vw), 11px);
+    font-size: clamp(0.56rem, calc(0.51rem + 0.22vw), 0.62rem);
+    white-space: nowrap;
     text-align: center;
   }
 
   .asp-card {
-    padding: 16px 14px;
+    padding: clamp(13px, calc(9.43px + 1.12vw), 18px) clamp(11px, calc(7.43px + 1.12vw), 16px);
   }
 
   .asp-card__toprow {
     flex-direction: column;
     align-items: flex-start;
-    gap: 12px;
+    gap: clamp(10px, calc(7.14px + 0.89vw), 14px);
   }
 
   .asp-card__toprow-right {
@@ -1466,12 +1481,64 @@
   .asp-total-box--wide {
     flex-wrap: wrap;
     justify-content: flex-start;
-    padding: 8px 12px;
-    gap: 12px;
+    padding: clamp(7px, calc(5.57px + 0.45vw), 9px) clamp(10px, calc(7.14px + 0.89vw), 14px);
+    gap: clamp(10px, calc(7.14px + 0.89vw), 14px);
   }
 
   .asp-total-div {
     display: none;
+  }
+
+  /* Registration Summary card: heading, the big Elementary/High School/
+     College/Total numbers, and the event chips below them were all
+     still full desktop size. */
+  .asp-card__heading {
+    font-size: 0.76rem;
+    gap: 6px;
+  }
+
+  .asp-card__icon {
+    font-size: 0.92rem;
+  }
+
+  .asp-refresh-btn {
+    font-size: 0.8rem;
+  }
+
+  .asp-total-seg {
+    min-width: 52px;
+    gap: 1px;
+  }
+
+  .asp-total-seg__num {
+    font-size: 1.3rem;
+  }
+
+  .asp-total-seg__label {
+    font-size: 0.58rem;
+  }
+
+  .asp-card__subtitle {
+    font-size: 0.68rem;
+    margin: 0 0 10px;
+    padding-bottom: 8px;
+  }
+
+  .asp-event-row__label {
+    font-size: 0.6rem;
+  }
+
+  .asp-event-chip {
+    min-width: 68px;
+    padding: 5px 10px;
+  }
+
+  .asp-event-chip__num {
+    font-size: 1rem;
+  }
+
+  .asp-event-chip__label {
+    font-size: 0.58rem;
   }
 }
 
@@ -1516,6 +1583,33 @@
 .asp-lvltab--active {
   color: #001529;
   background: #f5a623;
+}
+
+/* This mobile override used to live in the big @media block up near the
+   top of the file, but .asp-level-row/.asp-lvltabs/.asp-lvltab's own
+   base rules (above) sit AFTER that block in the file — same
+   specificity, later in source order, so the base rule always won
+   regardless of viewport width and the shrink silently never applied.
+   Moved down here, after the base rules it needs to override. */
+@media (max-width: 768px) {
+  .asp-level-row {
+    padding: 0 clamp(14px, calc(9.71px + 1.34vw), 20px) clamp(6px, calc(3.71px + 0.89vw), 10px);
+  }
+
+  .asp-lvltabs {
+    display: flex;
+    width: 100%;
+    gap: 2px;
+    padding: 2px;
+    box-sizing: border-box;
+  }
+
+  .asp-lvltab {
+    flex: 1;
+    padding: 3px 2px;
+    font-size: 7px;
+    text-align: center;
+  }
 }
 
 /* ══════════════════════════════════════════
@@ -3304,8 +3398,8 @@
     border: 1px solid #e2e9f2;
     border-bottom: 1px solid #e2e9f2;
     border-radius: 10px;
-    padding: 4px 12px;
-    margin-bottom: 10px;
+    padding: clamp(3px, calc(1.32px + 0.53vw), 5px) clamp(10px, calc(6.63px + 1.05vw), 14px);
+    margin-bottom: clamp(8px, calc(4.63px + 1.05vw), 12px);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   }
 
@@ -3321,7 +3415,7 @@
     gap: 10px;
     width: auto;
     min-width: 0;
-    padding: 7px 0;
+    padding: clamp(6px, calc(4.32px + 0.53vw), 8px) 0;
     border: none;
     border-bottom: 1px solid #f1f5f9;
     text-align: right;
@@ -3345,7 +3439,7 @@
   .asp-table td::before {
     content: attr(data-label);
     font-weight: 700;
-    font-size: 10.5px;
+    font-size: clamp(9.5px, calc(7.82px + 0.53vw), 11.5px);
     letter-spacing: 0.04em;
     text-transform: uppercase;
     color: #5a6a7a;
@@ -3358,7 +3452,7 @@
     justify-content: flex-start;
     border-bottom: 1px solid #e2e9f2;
     margin-bottom: 2px;
-    padding-bottom: 9px;
+    padding-bottom: clamp(8px, calc(6.32px + 0.53vw), 10px);
   }
 
   .asp-table:not(.asp-table--students) .asp-td--sport::before {
@@ -3376,7 +3470,7 @@
     justify-content: flex-start;
     border-bottom: 1px solid #e2e9f2;
     margin-bottom: 2px;
-    padding-bottom: 9px;
+    padding-bottom: clamp(8px, calc(6.32px + 0.53vw), 10px);
   }
 
   .asp-table--students .asp-td--name::before {
@@ -3416,16 +3510,19 @@
   }
 
   .msf-bsummary {
+    /* min-width stays a fixed 460px floor on purpose — see block comment
+       above, this table intentionally scrolls horizontally rather than
+       trying to fit a rowSpan'd layout into a stacked card. */
     min-width: 460px;
-    font-size: 11px;
+    font-size: clamp(10px, calc(8.32px + 0.53vw), 12px);
   }
 
   .msf-bsummary thead th {
-    padding: 7px 10px;
-    font-size: 9px;
+    padding: clamp(6px, calc(4.32px + 0.53vw), 8px) clamp(8px, calc(4.63px + 1.05vw), 12px);
+    font-size: clamp(8px, calc(6.32px + 0.53vw), 10px);
   }
 
   .msf-bsummary tbody td {
-    padding: 7px 10px;
+    padding: clamp(6px, calc(4.32px + 0.53vw), 8px) clamp(8px, calc(4.63px + 1.05vw), 12px);
   }
 }

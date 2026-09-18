@@ -4,14 +4,19 @@
    ═══════════════════════════════════════════ */
 
 /* ── Page shell ── */
+/* Unlike every other student page (Dashboard/Profile/Ranking/…), this
+   was the element that scrolled — header and intro included — instead
+   of just an inner body. That's why the navbar scrolled away with the
+   content here specifically. overflow: hidden here + overflow-y: auto
+   moved onto .ms-body (below) keeps the header pinned, matching the
+   pattern every other page already uses. */
 .ms-page {
   display: flex;
   flex-direction: column;
   width: 100%;
   flex: 1;
   min-height: 0;
-  overflow-y: auto;
-  -webkit-overflow-scrolling: touch;
+  overflow: hidden;
   background-color: #001529;
   color: #fff;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
@@ -66,6 +71,10 @@
 
 /* ── Body ── */
 .ms-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
   padding: 0 14px 20px;
   width: 100%;
   box-sizing: border-box;
@@ -617,6 +626,15 @@
   align-items: start;
 }
 
+/* Wraps the Time/Sport/Venue cells purely so the mobile stacked-card
+   layout can lay them out as one row (see the 640px query below) —
+   display: contents makes the wrapper invisible to the desktop grid,
+   so .ms-cell-time/-sport/-venue still act as plain grid items and line
+   up with the 4-column header row exactly as if unwrapped. */
+.ms-row-details {
+  display: contents;
+}
+
 .ms-cell {
   font-size: 0.9rem;
   font-weight: 700;
@@ -986,25 +1004,36 @@
    drop onto their own label/value lines underneath.
    ══════════════════════════════════════════ */
 @media (max-width: 640px) {
-  /* Shrink the segmented control so all four tabs ("All Levels",
-     "Elementary", "High School", "College") fit on one row instead of
-     "College" wrapping onto a second line — same fix as .ts-lvltabs on
-     the Team and Sports page: stretch each tab to fill the row evenly
-     via flex: 1 instead of sizing to its own text. */
+  /* Was stretched to fill the full row width (flex: 1 per tab, like
+     .ts-lvltabs on Team and Sports), which made each tab unnecessarily
+     wide/long on this page. Sized to its own content instead, so the
+     whole control stays compact rather than spanning the row. */
   .ms-lvltabs {
-    width: 100%;
+    width: auto;
     flex-wrap: nowrap;
-    gap: 4px;
-    padding: 4px;
+    gap: 2px;
+    padding: 2px;
   }
 
   .ms-lvltab {
-    flex: 1;
-    padding: 9px 4px;
-    font-size: 11px;
+    flex: 0 0 auto;
+    padding: 5px 8px;
+    font-size: 9px;
     letter-spacing: 0.01em;
     white-space: nowrap;
     text-align: center;
+  }
+
+  /* Sport category tabs ("Basketball", "Volleyball", …) were still
+     desktop-sized (12px / 6px 14px) — same "made smaller to match the
+     level tabs" pass as above. */
+  .ms-category-tabs {
+    gap: 3px;
+  }
+
+  .ms-category-tab {
+    padding: 4px 8px;
+    font-size: 9px;
   }
 
   .ms-row {
@@ -1017,10 +1046,18 @@
        rows each started at a different x depending on their own content
        length instead of lining up in a straight column. */
     align-items: stretch;
-    gap: 8px;
+    gap: 10px;
     border-top: none;
-    border-bottom: 1px solid rgba(0, 21, 41, 0.1);
-    padding: 14px 4px;
+    padding: 16px 16px 18px;
+  }
+
+  /* A day with several matches used to run them together with only a
+     hairline border between each (1px, 10% opacity) — barely visible,
+     so the whole card read as one dense, undifferentiated wall of text.
+     A thick light-gray gutter reads as a clear gap between matches
+     instead of a line you have to look for. */
+  .ms-table-wrap .ms-row:not(:last-child) {
+    border-bottom: 10px solid #eef2f8;
   }
 
   /* Declared after .ms-row so its display: none wins the tie (both are
@@ -1028,10 +1065,6 @@
      carries both classes) instead of being overridden back to flex. */
   .ms-row--head {
     display: none;
-  }
-
-  .ms-table-wrap .ms-row:last-child {
-    border-bottom: none;
   }
 
   /* .ms-cell-team's children (match-label pill, each team name, "vs",
@@ -1049,15 +1082,33 @@
     text-align: center;
   }
 
+  /* Time/Sport/Venue used to be left-aligned label: value rows stacked
+     under the centered team matchup — the mismatched alignment (centered
+     header, left-aligned details flush against the card edge) read as
+     messy. Laid out as one even, centered row instead — each a label-
+     above-value column, like a ticket stub — so the whole card reads as
+     one consistent, centered design. */
+  .ms-row-details {
+    order: 2;
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    padding-top: 10px;
+    border-top: 1.5px solid rgba(0, 21, 41, 0.18);
+  }
+
   .ms-cell-time,
   .ms-cell-sport,
   .ms-cell-venue {
-    order: 2;
+    flex: 1;
+    min-width: 0;
     display: flex;
-    justify-content: flex-start;
-    gap: 6px;
-    font-size: 12px;
-    font-weight: 600;
+    flex-direction: column;
+    align-items: center;
+    gap: 3px;
+    text-align: center;
+    font-size: 11px;
+    font-weight: 700;
   }
 
   .ms-cell-time::before,
@@ -1065,9 +1116,9 @@
   .ms-cell-venue::before {
     content: attr(data-label);
     font-weight: 700;
-    font-size: 10px;
-    letter-spacing: 0.05em;
+    font-size: 9px;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
-    color: #6c7a94;
+    color: #8593ad;
   }
 }

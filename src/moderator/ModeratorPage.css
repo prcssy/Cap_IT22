@@ -214,7 +214,11 @@
    longer fits on one line, so it wraps to two lines and grows taller than
    the single-line Elementary/College tabs next to it — the active pill
    looks mismatched/unaligned against the plain-text tabs beside it.
-   Shrinking padding + font-size here keeps every tab on one line. */
+   Shrinking padding + font-size here keeps every tab on one line.
+   These were previously flat values, so every width from 320px to 480px
+   (a >2x range) rendered identically — a 320px phone got the same
+   cramped tab as a 480px one had room to avoid. clamp() scales each
+   property continuously across that range instead. */
 @media (max-width: 480px) {
   .mp-levelband__tabs {
     gap: 2px;
@@ -222,8 +226,8 @@
   }
 
   .mp-levelband__tab {
-    font-size: 0.82rem;
-    padding: 9px 12px;
+    font-size: clamp(0.72rem, 0.52rem + 1vw, 0.82rem);
+    padding: clamp(7px, 3px + 1.25vw, 9px) clamp(8px, 2.5vw, 12px);
     letter-spacing: 0.03em;
   }
 }
@@ -323,6 +327,43 @@
   transition: border-color 0.15s, transform 0.1s, background 0.15s;
 }
 
+/* Was entirely inline styles (no stylesheet rule existed) — the mobile
+   query below couldn't shrink it no matter what since inline styles
+   always beat a stylesheet rule regardless of specificity. Moved the
+   static layout/type here so it can actually be overridden per width;
+   the two status pills below keep their per-match background/color
+   inline (that part is genuinely dynamic). */
+.mp-finished-card__sport {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  margin-bottom: 6px;
+}
+
+.mp-finished-card__status-pill {
+  padding: 2px 7px;
+  border-radius: 20px;
+  letter-spacing: 0.05em;
+}
+
+.mp-finished-card__label-pill {
+  font-size: 0.6rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #8a5f04;
+  background: #fff3d6;
+  padding: 2px 7px;
+  border-radius: 20px;
+  display: inline-block;
+  margin-bottom: 4px;
+}
+
 /* On narrow phones, a card's own natural (unwrapped) width — e.g. "Ateneo
    De Manila vs Dela Salle University" on one line — is wider than the
    screen, so the card gets clipped mid-text and the moderator has to
@@ -339,6 +380,67 @@
     width: 100%;
     min-width: 0;
     scroll-snap-align: start;
+  }
+
+  /* Panel + card were still full desktop size (padding, title, logos,
+     team-name text) just stretched to fill a full-width mobile card —
+     nothing here had actually been shrunk, only re-laid-out, so it read
+     as oversized/bulky next to the rest of the compact mobile UI. */
+  .mp-finished-panel {
+    padding: 8px 10px;
+    margin: 0 0 12px;
+  }
+
+  .mp-finished-panel__title {
+    font-size: 0.68rem;
+  }
+
+  .mp-finished-card {
+    padding: 6px 8px;
+  }
+
+  .mp-finished-card__sport {
+    font-size: 0.5rem;
+    margin-bottom: 4px;
+  }
+
+  .mp-finished-card__status-pill {
+    padding: 1px 5px;
+  }
+
+  .mp-finished-card__label-pill {
+    font-size: 0.52rem;
+    padding: 1px 5px;
+    margin-bottom: 3px;
+  }
+
+  .mp-finished-card__teams {
+    gap: 5px;
+    margin-bottom: 4px;
+  }
+
+  .mp-finished-card__logo {
+    width: 16px;
+    height: 16px;
+    font-size: 0.44rem;
+  }
+
+  .mp-finished-card__vs {
+    font-size: 0.48rem;
+  }
+
+  .mp-finished-card__names {
+    font-size: 0.58rem;
+  }
+
+  .mp-finished-card__meta {
+    font-size: 0.52rem;
+    margin-top: 3px;
+  }
+
+  .mp-finished-card__status {
+    margin-top: 4px;
+    font-size: 0.5rem;
   }
 }
 
@@ -584,14 +686,18 @@
    "not fitting" the phone with a wide unused strip beside it (the
    scrollbar for the "Before/After the game" content lives inside that
    same strip, right at the true edge). Shrink both paddings together on
-   phones so the card actually uses the width it has. */
+   phones so the card actually uses the width it has.
+   Both were flat values that gave a 320px phone the exact same padding as
+   a 480px one, so the narrowest phones still lost a disproportionate
+   share of their width to it — clamp() lets padding keep shrinking as the
+   viewport gets narrower instead of flatlining at the 480px figure. */
 @media (max-width: 480px) {
   .mp-body {
-    padding: 16px 16px 60px;
+    padding: clamp(12px, 4px + 2.5vw, 16px) clamp(12px, 4px + 2.5vw, 16px) 60px;
   }
 
   .mp-card {
-    padding: 18px 14px 16px;
+    padding: clamp(14px, 6px + 2.5vw, 18px) clamp(10px, 2px + 2.5vw, 14px) clamp(12px, 4px + 2.5vw, 16px);
   }
 }
 
@@ -3097,7 +3203,7 @@ input.mp-text-input:disabled {
     display: block;
     border: 1px solid #e4e8f1;
     border-radius: 10px;
-    padding: 4px 12px;
+    padding: clamp(3px, 2px + 0.3vw, 4px) clamp(10px, 8px + 0.5vw, 12px);
     margin-bottom: 10px;
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
   }
@@ -3111,15 +3217,18 @@ input.mp-text-input:disabled {
     align-items: center;
     justify-content: space-between;
     gap: 10px;
-    padding: 7px 0;
+    padding: clamp(6px, 5px + 0.3vw, 7px) 0;
     text-align: right;
     white-space: normal;
   }
 
+  /* Flat 10.5px meant this label held the same tiny size from 320px up to
+     700px — scaling it fluidly keeps it legible on the narrowest phones
+     without growing past its original size once more room opens up. */
   .mp-table td::before {
     content: attr(data-label);
     font-weight: 800;
-    font-size: 10.5px;
+    font-size: clamp(10px, 9px + 0.3vw, 11px);
     letter-spacing: 0.05em;
     text-transform: uppercase;
     color: #6c7a94;
@@ -3132,7 +3241,7 @@ input.mp-text-input:disabled {
     justify-content: flex-start;
     border-bottom: 1px solid #e4e8f1;
     margin-bottom: 2px;
-    padding-bottom: 9px;
+    padding-bottom: clamp(7px, 5px + 0.5vw, 9px);
   }
 
   .mp-table td:first-child::before {
@@ -3141,7 +3250,7 @@ input.mp-text-input:disabled {
 
   .mp-table td:has(.mp-table__edit-btn) {
     justify-content: center;
-    padding-top: 9px;
+    padding-top: clamp(7px, 5px + 0.5vw, 9px);
   }
 
   .mp-table td:has(.mp-table__edit-btn)::before {

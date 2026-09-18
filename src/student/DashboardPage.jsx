@@ -449,14 +449,22 @@ function ScrollRow({ children, label, variant, isEmpty, emptyText }) {
     const step = variant === 'upcoming' && window.innerWidth <= 600 ? ref.current.clientWidth : 180;
     ref.current.scrollBy({ left: dir * step, behavior: 'smooth' });
   };
+  // Ongoing's arrows only nudged by a fixed 180px regardless of card width,
+  // so seeing a whole card meant clicking several times. Dropped the
+  // buttons here in favor of touch swipe (native on .scroll-row's
+  // overflow-x), which now snaps one full card at a time on mobile — see
+  // .dash-section--ongoing .ongoing-card's scroll-snap-align below.
+  const showArrows = variant !== 'ongoing';
   return (
     <section className={`dash-section dash-section--${variant}`}>
       <div className="section-header">
         <h2 className="section-title">{label}</h2>
-        <div className="scroll-arrows">
-          <button className="arrow-btn" onClick={() => scroll(-1)} aria-label="Scroll left">&#8249;</button>
-          <button className="arrow-btn" onClick={() => scroll(1)}  aria-label="Scroll right">&#8250;</button>
-        </div>
+        {showArrows && (
+          <div className="scroll-arrows">
+            <button className="arrow-btn" onClick={() => scroll(-1)} aria-label="Scroll left">&#8249;</button>
+            <button className="arrow-btn" onClick={() => scroll(1)}  aria-label="Scroll right">&#8250;</button>
+          </div>
+        )}
       </div>
       {isEmpty ? <p className="dash-empty">{emptyText}</p> : <div className="scroll-row" ref={ref}>{children}</div>}
     </section>

@@ -465,14 +465,66 @@
 }
 
 @media (max-width: 620px) {
+  /* Activity Type / User Role / Date / Filter used to force each field
+     to full row width and wrap, stacking them into 3 separate rows.
+     One horizontally-scrollable lane instead — each field sized to its
+     own compact content, never wrapping — same pattern used for
+     AdminSchedulePage's section tabs and SuperAdminPage's level tabs.
+     Scoped to .arl-filters (not the bare .sa-select/.sa-icon-btn/
+     .sa-export classes, which are shared with the Data Analytics tab's
+     own controls) so only this filter bar is affected. The search bar
+     below is left at its normal size on purpose. */
   .arl-filters {
     width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+
+  .arl-filters::-webkit-scrollbar {
+    display: none;
+  }
+
+  .arl-field {
+    flex-shrink: 0;
+  }
+
+  .arl-field label {
+    font-size: 0.5rem;
+    white-space: nowrap;
   }
 
   .arl-field .sa-select,
-  .arl-search-input {
+  .arl-date-input {
     min-width: 0;
-    width: 100%;
+    width: auto;
+    height: 20px;
+    padding: 0 5px;
+    font-size: 9px;
+  }
+
+  .arl-date-input {
+    max-width: 92px;
+  }
+
+  /* .arl-filter-btn's own class alone is the same specificity as the
+     shared .sa-export class it's combined with (see the button's
+     className="sa-export arl-filter-btn" in the JSX) — a tie would be
+     broken by whichever stylesheet happens to load later, which isn't
+     reliable across files. .arl-filters .arl-filter-btn is unambiguous. */
+  .arl-filters .arl-filter-btn {
+    flex-shrink: 0;
+    height: 20px;
+    padding: 0 8px;
+    font-size: 9px;
+  }
+
+  .arl-filters .sa-icon-btn {
+    flex-shrink: 0;
+    height: 20px;
+    width: 20px;
+    font-size: 9px;
   }
 
   .arl-toolbar {
@@ -482,5 +534,13 @@
 
   .arl-count {
     margin-right: 0;
+  }
+
+  /* Search bar kept at its normal size (per request) — this just lets
+     it fill the now-stretched .arl-toolbar column instead of sitting at
+     its base min-width: 200px. */
+  .arl-search-input {
+    min-width: 0;
+    width: 100%;
   }
 }

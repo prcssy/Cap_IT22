@@ -632,10 +632,16 @@ function ScheduleDayTable({ day, matches, resultFor, search }) {
         </div>
         {matches.map((m) => (
           <div className="ms-row" role="row" key={m.id}>
-            <div className="ms-cell ms-cell-time" role="cell" data-label="Time">{formatTime(m.time)}</div>
-            <div className="ms-cell ms-cell-sport" role="cell" data-label="Sport">{categoryOf(m).label}</div>
-            <div className="ms-cell ms-cell-venue" role="cell" data-label="Venue">
-              <HighlightText text={m.location || 'TBA'} query={search} />
+            {/* Wrapped so mobile can lay these three out as an even,
+                centered row under the team matchup — display: contents
+                on desktop keeps them as plain grid items so the 4-column
+                grid still lines up with the header row above. */}
+            <div className="ms-row-details">
+              <div className="ms-cell ms-cell-time" role="cell" data-label="Time">{formatTime(m.time)}</div>
+              <div className="ms-cell ms-cell-sport" role="cell" data-label="Sport">{categoryOf(m).label}</div>
+              <div className="ms-cell ms-cell-venue" role="cell" data-label="Venue">
+                <HighlightText text={m.location || 'TBA'} query={search} />
+              </div>
             </div>
             <div className="ms-cell ms-cell-team ms-cell-team--body" role="cell">
               {(() => {

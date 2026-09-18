@@ -613,7 +613,12 @@
   }
 }
 
-/* Responsive */
+/* Responsive — this one query covers every phone from 320px up to 480px.
+   The fixed px values below were tuned for one width in that range, so a
+   320px phone (iPhone SE-class) rendered noticeably more cramped than a
+   480px one got any benefit from the same rule. clamp() scales each value
+   continuously across that range instead of jumping between two fixed
+   states. */
 @media (max-width: 480px) {
   .auth-modal-card {
     max-width: 100%;
@@ -621,17 +626,17 @@
   }
 
   .auth-modal-card__body {
-    padding: 2rem 1.5rem;
+    padding: clamp(1.5rem, 0.5rem + 5vw, 2rem) clamp(1.125rem, 0.375rem + 3.75vw, 1.5rem);
   }
 
   .auth-title {
-    font-size: 1.5rem;
-    margin-bottom: 1.5rem;
+    font-size: clamp(1.25rem, 0.75rem + 2.5vw, 1.5rem);
+    margin-bottom: clamp(1.125rem, 0.375rem + 3.75vw, 1.5rem);
   }
 
   .auth-logo img {
-    width: 70px;
-    height: 70px;
+    width: clamp(56px, 28px + 8.75vw, 70px);
+    height: clamp(56px, 28px + 8.75vw, 70px);
   }
 
   .auth-form {
@@ -639,13 +644,13 @@
   }
 
   .form-group input {
-    padding: 0.65rem 0.85rem;
-    font-size: 0.9rem;
+    padding: clamp(0.5625rem, 0.3875rem + 0.88vw, 0.65rem) clamp(0.6875rem, 0.3625rem + 1.63vw, 0.85rem);
+    font-size: clamp(0.8125rem, 0.6375rem + 0.88vw, 0.9rem);
   }
 
   .form-group select {
-    padding: 0.65rem 0.85rem;
-    font-size: 0.9rem;
+    padding: clamp(0.5625rem, 0.3875rem + 0.88vw, 0.65rem) clamp(0.6875rem, 0.3625rem + 1.63vw, 0.85rem);
+    font-size: clamp(0.8125rem, 0.6375rem + 0.88vw, 0.9rem);
   }
 
   .auth-form-row {
@@ -654,7 +659,7 @@
   }
 
   .auth-btn {
-    padding: 0.75rem 1.25rem;
-    font-size: 0.9rem;
+    padding: clamp(0.625rem, 0.375rem + 1.25vw, 0.75rem) clamp(1rem, 0.5rem + 2.5vw, 1.25rem);
+    font-size: clamp(0.8125rem, 0.6375rem + 0.88vw, 0.9rem);
   }
 }

@@ -2289,18 +2289,11 @@ export default function ModeratorPage() {
                     className={`mp-finished-card ${active ? 'mp-finished-card--active' : ''} ${done ? 'mp-finished-card--done' : ''}`}
                     onClick={() => handlePickFinishedMatch(s)}
                   >
-                    <div
-                      className="mp-finished-card__sport"
-                      style={{
-                        display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 6,
-                        fontSize: '0.58rem', fontWeight: 800, letterSpacing: '0.06em',
-                        textTransform: 'uppercase', marginBottom: 6,
-                      }}
-                    >
+                    <div className="mp-finished-card__sport">
                       <span style={{ opacity: 0.65 }}>{s.sport}{s.category ? ` · ${s.category}` : ''}</span>
                       <span
+                        className="mp-finished-card__status-pill"
                         style={{
-                          padding: '2px 7px', borderRadius: 20, letterSpacing: '0.05em',
                           background: MATCH_STATUS_COLOR[s.status].bg,
                           color: MATCH_STATUS_COLOR[s.status].fg,
                         }}
@@ -2318,13 +2311,7 @@ export default function ModeratorPage() {
                       </span>
                     </div>
                     {s.matchLabel && (
-                      <div
-                        style={{
-                          fontSize: '0.6rem', fontWeight: 800, letterSpacing: '0.04em', textTransform: 'uppercase',
-                          color: '#8a5f04', background: '#fff3d6', padding: '2px 7px', borderRadius: 20,
-                          display: 'inline-block', marginBottom: 4,
-                        }}
-                      >
+                      <div className="mp-finished-card__label-pill">
                         {s.matchLabel}
                       </div>
                     )}

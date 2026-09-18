@@ -56,20 +56,29 @@
 }
 
 /* Four tabs ("All Levels" included) in one un-wrapping inline-flex row
-   don't fit a phone's width — the row just overflowed past the edge, and
-   since .sa-body clips horizontal overflow (overflow-x: hidden) rather
-   than scrolling, "College" got cut off instead of showing. Shrink the
-   tabs enough to keep all four on one line instead. */
+   don't fit a phone's width. Shrinking them (previously flex-shrink: 1)
+   still squeezed each button narrower than its own label, wrapping
+   multi-word labels ("Roles & Permissions", "Web Customization") onto
+   two lines inside the pill instead of keeping them on one. Same fix as
+   AdminSchedulePage's .asp-tabs--header: one horizontally-scrollable
+   row, each tab sized to its own text and never wrapping internally.
+   This covers both usages of .sa-lvltabs/.sa-lvltab — the top section
+   switcher (Data Analytics/Roles & Permissions/Web Customization) and
+   the level filter (All Levels/Elementary/High School/College). */
 @media (max-width: 480px) {
   .sa-lvltabs {
-    flex-shrink: 1;
+    flex-shrink: 0;
+    flex-wrap: nowrap;
+    max-width: 100%;
     gap: 2px;
     padding: 3px;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
   }
 
-  .sa-lvltab {
-    padding: 5px 6px;
-    font-size: 10px;
+  .sa-lvltabs::-webkit-scrollbar {
+    display: none;
   }
 }
 
@@ -96,6 +105,20 @@
 .sa-lvltab--active {
   color: #fff;
   background: #16337a;
+}
+
+/* .sa-lvltab's own base rule (above) sits after the earlier mobile
+   @media block, so at equal specificity it always won regardless of
+   viewport width and the shrink silently never applied — same ordering
+   bug as AdminSchedulePage's .asp-lvltab. Moved down here, after the
+   base rule it needs to override. */
+@media (max-width: 480px) {
+  .sa-lvltab {
+    flex-shrink: 0;
+    padding: 4px 6px;
+    font-size: 8.5px;
+    white-space: nowrap;
+  }
 }
 
 /* ── Scrollable body ── */

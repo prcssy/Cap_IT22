@@ -686,12 +686,24 @@ export default function RankingPage() {
       {/* ── Scrollable body ── */}
       <div className="rk-body">
 
-        {/* Page intro — title/subtitle share the search bar's row */}
+        {/* Page intro — title/level tabs/search bar share one row */}
         <div className="rk-page-intro rk-top-row">
           <div>
             <h2 className="rk-page-title">Top Rankings</h2>
             <p className="rk-page-subtitle">Ranked by performance, not by chance. Every game counts. Every rank matters.</p>
           </div>
+          {/* Level tabs + search bar are grouped so they can be kept on one
+              row together on mobile (see .rk-controls-row), while the
+              title above them still gets its own line. */}
+          <div className="rk-controls-row">
+          <LevelTabs
+            levels={LEVELS}
+            value={levelLabel}
+            onChange={setLevelLabel}
+            containerClassName="rk-lvltabs"
+            tabClassName="rk-lvltab"
+            activeClassName="rk-lvltab--active"
+          />
           <div className="rk-search-wrap">
             <FaSearch className="rk-search-icon" />
             <input
@@ -702,17 +714,7 @@ export default function RankingPage() {
               onChange={e => setSearch(e.target.value)}
             />
           </div>
-        </div>
-
-        <div className="rk-lvltabs-row">
-          <LevelTabs
-            levels={LEVELS}
-            value={levelLabel}
-            onChange={setLevelLabel}
-            containerClassName="rk-lvltabs"
-            tabClassName="rk-lvltab"
-            activeClassName="rk-lvltab--active"
-          />
+          </div>
         </div>
 
         {loadError && <p className="rk-load-error">{loadError}</p>}
@@ -723,15 +725,22 @@ export default function RankingPage() {
             <h3 className="rk-section-title">Potential Champion</h3>
             <p className="rk-section-subtitle">Performance based</p>
           </div>
+          {/* Each label+dropdown grouped so flex-wrap wraps them as a pair
+              instead of stranding "Division" on one line and its dropdown
+              alone on the next. */}
           <div className="rk-division-row">
-            <label className="rk-division-label">Sport</label>
-            <SportSelect sports={availableSports} value={championSport} onChange={setChampionSport} />
-            <label className="rk-division-label">Division</label>
-            <DivisionSelect
-              value={championDivision}
-              onChange={setChampionDivision}
-              options={championDivisionOptions}
-            />
+            <div className="rk-division-group">
+              <label className="rk-division-label">Sport</label>
+              <SportSelect sports={availableSports} value={championSport} onChange={setChampionSport} />
+            </div>
+            <div className="rk-division-group">
+              <label className="rk-division-label">Division</label>
+              <DivisionSelect
+                value={championDivision}
+                onChange={setChampionDivision}
+                options={championDivisionOptions}
+              />
+            </div>
           </div>
           <div className="rk-card">
             {loading ? (
@@ -749,14 +758,18 @@ export default function RankingPage() {
             <p className="rk-section-subtitle">Win and Loss</p>
           </div>
           <div className="rk-division-row">
-            <label className="rk-division-label">Sport</label>
-            <SportSelect sports={availableSports} value={medalSport} onChange={setMedalSport} />
-            <label className="rk-division-label">Division</label>
-            <DivisionSelect
-              value={medalDivision}
-              onChange={setMedalDivision}
-              options={medalDivisionOptions}
-            />
+            <div className="rk-division-group">
+              <label className="rk-division-label">Sport</label>
+              <SportSelect sports={availableSports} value={medalSport} onChange={setMedalSport} />
+            </div>
+            <div className="rk-division-group">
+              <label className="rk-division-label">Division</label>
+              <DivisionSelect
+                value={medalDivision}
+                onChange={setMedalDivision}
+                options={medalDivisionOptions}
+              />
+            </div>
           </div>
           <div className="rk-card rk-card--light">
             <MedalTable data={medalData} search={search} />

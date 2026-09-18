@@ -42,6 +42,20 @@
   line-height: 1;
 }
 
+/* DashboardPage.css has a mobile rule (body .profile-page .dash-header
+   { padding-left: 64px }) that clears the floating hamburger button
+   (Sidebar.css takes it out of flow below 768px), but that's a
+   cross-file reuse the same way .profile-page-title was — it only
+   applies if DashboardPage.css's chunk happens to already be loaded.
+   On a fresh/direct load of Profile it isn't, so the title rendered
+   flush left, overlapping the hamburger. Redeclared here so this page
+   doesn't depend on Dashboard's CSS being loaded too. */
+@media (max-width: 768px) {
+  .profile-page .dash-header {
+    padding-left: 64px;
+  }
+}
+
 /* ── Page intro (title + subtitle) ── */
 .profile-page-intro {
   padding: 18px 25px 10px;
@@ -187,9 +201,17 @@
   font-size: 12px;
   color: #666;
   min-width: 110px;
+  flex-shrink: 0;
 }
 
+/* Flex children default to min-width: auto, which refuses to shrink
+   below the text's own unwrapped width — a long value like "BASA AIR
+   BASE NATIONAL HIGH SCHOOL" pushed .profile-identity-detail past the
+   card's edge instead of wrapping, causing the card to scroll
+   horizontally. flex: 1 + min-width: 0 lets it shrink and wrap. */
 .profile-detail-value {
+  flex: 1;
+  min-width: 0;
   font-size: 13px;
   font-weight: 800;
   color: #001529;
@@ -210,6 +232,56 @@
 
   .profile-identity-divider {
     display: none;
+  }
+
+  /* Everything below was still full desktop size on mobile — shrunk to
+     match the smaller, tighter sizing used elsewhere on this page's
+     mobile pass. */
+  .profile-page-intro {
+    padding: 12px 14px 6px;
+  }
+
+  .profile-page-title {
+    font-size: 20px;
+  }
+
+  .profile-page-subtitle {
+    font-size: 11px;
+  }
+
+  .profile-body {
+    padding: 0 10px 16px;
+  }
+
+  .profile-identity-card {
+    padding: 10px 12px;
+    gap: 10px;
+  }
+
+  .profile-full-name {
+    font-size: 15px;
+  }
+
+  .profile-student-number {
+    font-size: 10px;
+  }
+
+  .profile-role-badge {
+    padding: 2px 8px;
+    font-size: 9px;
+  }
+
+  .profile-detail-icon {
+    font-size: 11px;
+  }
+
+  .profile-detail-label {
+    font-size: 9px;
+    min-width: 74px;
+  }
+
+  .profile-detail-value {
+    font-size: 9px;
   }
 }
 
@@ -320,6 +392,82 @@
 @media (max-width: 700px) {
   .profile-details-grid {
     grid-template-columns: 1fr;
+  }
+
+  .profile-stats-row {
+    gap: 8px;
+  }
+
+  .profile-stat-card {
+    min-width: 110px;
+    padding: 8px 10px;
+    gap: 8px;
+  }
+
+  .profile-stat-icon-wrap {
+    width: 30px;
+    height: 30px;
+    border-radius: 8px;
+  }
+
+  .stat-icon-trophy,
+  .stat-icon-medal,
+  .stat-icon-reg {
+    font-size: 14px;
+  }
+
+  .profile-stat-label {
+    font-size: 7px;
+  }
+
+  .profile-stat-count {
+    font-size: 17px;
+  }
+
+  .profile-stat-sublabel {
+    font-size: 8px;
+  }
+
+  .profile-stat-arrow {
+    right: 8px;
+    font-size: 11px;
+  }
+
+  .profile-card-header {
+    padding: 8px 10px;
+  }
+
+  .profile-card-title {
+    font-size: 10px;
+  }
+
+  .profile-card-action {
+    font-size: 8px;
+    padding: 3px 8px;
+  }
+
+  .profile-card-body {
+    padding: 4px 10px 8px;
+  }
+
+  .profile-info-row {
+    padding: 6px 0;
+    gap: 8px;
+  }
+
+  .profile-info-icon {
+    width: 20px;
+    height: 20px;
+    font-size: 9px;
+  }
+
+  .profile-info-label {
+    font-size: 9px;
+    min-width: 74px;
+  }
+
+  .profile-info-value {
+    font-size: 10px;
   }
 }
 

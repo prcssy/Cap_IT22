@@ -85,22 +85,24 @@
   margin-left: -15px;
 }
 
-/* Intro row also carries the search bar, laid out beside the title. */
+/* Intro row also carries the level tabs and search bar, laid out beside
+   the title — level tabs sit in the gap between the title and the
+   search bar instead of wrapping to their own row underneath. */
 .rk-top-row {
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   gap: 16px;
   flex-wrap: wrap;
 }
 
-/* Level tabs sit on their own row below the title/search. */
-.rk-lvltabs-row {
+/* Groups the level tabs and search bar so they can be kept together on
+   one row on mobile, independent of the title above them. */
+.rk-controls-row {
   display: flex;
-  justify-content: flex-end;
-  padding: 0 25px 10px;
-  margin-left: -15px;
-  flex-shrink: 0;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
 }
 
 /* ── Level tabs — moved out of the small header dropdown (easy to miss)
@@ -215,6 +217,16 @@
   flex-wrap: wrap;
   gap: 10px 16px;
   margin: -6px 0 14px;
+}
+
+/* Groups each label with its own dropdown so flex-wrap on .rk-division-row
+   wraps them together as one unit — otherwise a label could wrap onto one
+   line while its dropdown landed alone on the next. */
+.rk-division-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
 }
 
 .rk-division-label {
@@ -461,19 +473,28 @@
 
 /* ── Responsive ── */
 @media (max-width: 560px) {
+  /* Search bar kept its full desktop padding/font/icon size here, so
+     next to the now much-smaller level tabs it read as oversized/
+     "chubby" — sized down to match. */
   .rk-search-input,
   .rk-search-input:focus {
     width: 100%;
+    padding: 5px 8px 5px 24px;
+    font-size: 10px;
+    border-radius: 14px;
   }
 
+  .rk-search-icon {
+    left: 9px;
+    font-size: 10px;
+  }
+
+  /* Was flex: 1 1 100%, which forced the search bar onto its own full
+     width row — now it shares .rk-controls-row with the level tabs
+     instead, so it only needs to fill whatever space is left over. */
   .rk-search-wrap {
-    flex: 1 1 100%;
-  }
-
-  .rk-lvltabs-row {
-    padding: 0 16px 8px;
-    margin-left: 0;
-    justify-content: flex-start;
+    flex: 1 1 auto;
+    min-width: 0;
   }
 
   .rk-row,
@@ -493,9 +514,14 @@
 
   /* Intro row + level tabs were sized for desktop (fixed padding, no
      wrap on the tabs), so "College" ran off the right edge and got
-     clipped by .rk-body's overflow-x: hidden instead of wrapping. */
+     clipped by .rk-body's overflow-x: hidden instead of wrapping.
+     .rk-page-intro sits inside .rk-body, so its own left/right padding
+     stacked on top of .rk-body's 14px (30px total) — the title/tabs
+     row sat noticeably further in than the ranking cards below, which
+     only get .rk-body's 14px. Dropped the left/right padding here so
+     both line up on the same left edge. */
   .rk-page-intro {
-    padding: 14px 16px 8px;
+    padding: 14px 0 8px;
     margin-left: 0;
   }
 
@@ -504,13 +530,64 @@
     align-items: flex-start;
   }
 
+  /* Level tabs + search bar stay on one row together below the title
+     (title keeps its own line above via .rk-top-row's column stack). */
+  .rk-controls-row {
+    width: 100%;
+    flex-wrap: nowrap;
+    gap: 8px;
+  }
+
   .rk-lvltabs {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    gap: 1px;
+    padding: 1px;
   }
 
   .rk-lvltab {
-    padding: 7px 12px;
-    font-size: 12px;
+    padding: 4px 5px;
+    font-size: 8px;
+  }
+
+  /* "Potential Champion"/"Medal Tally" headers and their Sport/Division
+     filter row were still full desktop size, and the row's mismatched
+     wrap (label on one line, its dropdown alone on the next — fixed by
+     .rk-division-group above) made it look broken on top of being
+     oversized. Shrunk everything here to match the rest of the mobile
+     pass, now that each label+dropdown wraps as a pair. */
+  .rk-section-title {
+    font-size: 15px;
+  }
+
+  .rk-section-icon {
+    font-size: 13px;
+  }
+
+  .rk-section-subtitle {
+    font-size: 10px;
+  }
+
+  .rk-division-row {
+    gap: 6px 10px;
+    margin: -4px 0 10px;
+  }
+
+  .rk-division-group {
+    gap: 5px;
+  }
+
+  .rk-division-label {
+    font-size: 9px;
+  }
+
+  .rk-division-btn {
+    padding: 4px 9px;
+    font-size: 10px;
+  }
+
+  .rk-division-chevron {
+    font-size: 8px;
   }
 }
 /* ── Mobile: leaves room for the floating hamburger button (Sidebar.css
@@ -540,9 +617,10 @@
     align-items: center;
     gap: 4px 10px;
     background: #fff;
-    border-radius: 10px;
-    padding: 10px 12px;
-    margin-bottom: 8px;
+    border-radius: 12px;
+    padding: 12px 14px;
+    margin-bottom: 10px;
+    box-shadow: 0 2px 10px rgba(0, 10, 30, 0.18);
   }
 
   /* Declared after .rk-row so its display: none wins the tie (both are
@@ -560,9 +638,25 @@
     padding: 0;
   }
 
+  /* Plain rank numbers (4+) had no visual weight next to rank 1's crown
+     icon — a small circular chip gives every rank the same "badge"
+     treatment instead of #1 standing alone as the only styled one. */
   .rk-cell-rank {
     order: 1;
-    min-width: 20px;
+    min-width: 22px;
+    height: 22px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 50%;
+    background: rgba(0, 25, 63, 0.06);
+    font-size: 12px;
+  }
+
+  .rk-row--rank-1 .rk-cell-rank,
+  .rk-row--rank-2 .rk-cell-rank,
+  .rk-row--rank-3 .rk-cell-rank {
+    background: rgba(255, 255, 255, 0.55);
   }
 
   .rk-cell-logo {
@@ -585,7 +679,12 @@
     width: 100%;
     padding-top: 8px;
     margin-top: 6px;
-    border-top: 1px solid #eef1f8;
+    /* A near-white #eef1f8 divider all but disappeared against the
+       gold/silver/bronze gradient on the top 3 rows (their background
+       starts as #fff and shades only lightly) — a translucent dark
+       tint instead stays visible on both the plain white rows and the
+       gradient ones. */
+    border-top: 1px solid rgba(0, 25, 63, 0.15);
     text-align: right;
   }
 
@@ -595,6 +694,6 @@
     font-size: 10px;
     letter-spacing: 0.05em;
     text-transform: uppercase;
-    color: #5a6a7a;
+    color: rgba(0, 25, 63, 0.6);
   }
 }

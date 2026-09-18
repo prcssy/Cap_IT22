@@ -42,6 +42,32 @@
   flex-shrink: 0;
 }
 
+/* .profile-page-title/.profile-page-subtitle are ProfilePage.css classes
+   reused here ("Home" heading), but this page only imports DashboardPage.css
+   — routes are code-split, so ProfilePage.css's rules for these classes
+   are only on the page if the user happened to visit Profile first in the
+   same session (its CSS chunk stays loaded). On a fresh load of Dashboard
+   they're missing entirely — not just the gold color, but the 26px/900/
+   Inter sizing too, so "Home" fell back to .user-dashboard's inherited
+   white Lalezar at browser-default h2 size/weight. Full rule (matching
+   ProfilePage.css's .profile-page-title/.profile-page-subtitle exactly)
+   duplicated here so this page renders correctly on its own regardless
+   of navigation history. */
+.user-dashboard .profile-page-title {
+  font-size: 26px;
+  font-weight: 900;
+  color: #FCBF19;
+  margin: 0 0 4px;
+  font-family: 'Inter', system-ui, sans-serif;
+}
+
+.user-dashboard .profile-page-subtitle {
+  font-family: "Inter", sans-serif;
+  font-size: 13px;
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0;
+}
+
 /* Intro row on Home now also carries the level switcher, so it needs to
    lay the title block and the tabs side by side instead of stacking. */
 .dash-intro-row {
@@ -327,6 +353,7 @@
   gap: 8px;
   overflow-x: auto;
   overflow-y: visible;
+  -webkit-overflow-scrolling: touch;
   width: 100%;
   box-sizing: border-box;
   padding-bottom: 6px;
@@ -1169,17 +1196,52 @@
     align-items: flex-start;
   }
 
+  /* Level tabs + Sport filter used to wrap onto two separate lines below
+     ~400px wide (each had flex-shrink: 0, so once their combined width
+     passed the screen width the sport filter got pushed to its own row).
+     Shrinking both further and switching the row to nowrap keeps them on
+     one line; overflow-x: auto is just a safety net for anything even
+     narrower than a typical phone, so it scrolls instead of wrapping
+     awkwardly rather than actually needing to on real devices. */
   .dash-lvltabs {
-    flex-wrap: wrap;
+    flex-wrap: nowrap;
+    flex-shrink: 0;
+    gap: clamp(2px, calc(-0.27px + 0.71vw), 4px);
+    padding: clamp(2px, calc(-0.27px + 0.71vw), 4px);
   }
 
   .dash-lvltab {
-    padding: 7px 12px;
-    font-size: 12px;
+    padding: clamp(3px, calc(0.73px + 0.71vw), 5px) clamp(5px, calc(0.42px + 1.43vw), 9px);
+    font-size: clamp(8px, calc(5.73px + 0.71vw), 10px);
+    white-space: nowrap;
   }
 
   .dash-filters-row {
     width: 100%;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .dash-filters-row::-webkit-scrollbar {
+    display: none;
+  }
+
+  .dash-sport-filter {
+    flex-shrink: 0;
+    gap: clamp(3px, calc(-0.42px + 1.07vw), 6px);
+    padding: clamp(2px, calc(-0.27px + 0.71vw), 4px) clamp(2px, calc(-0.27px + 0.71vw), 4px) clamp(2px, calc(-0.27px + 0.71vw), 4px) clamp(6px, calc(1.42px + 1.43vw), 10px);
+  }
+
+  .dash-sport-filter__label {
+    font-size: clamp(7px, calc(4.73px + 0.71vw), 9px);
+  }
+
+  .dash-sport-filter__trigger {
+    min-width: 0;
+    gap: clamp(3px, calc(-0.42px + 1.07vw), 6px);
+    padding: clamp(3px, calc(0.73px + 0.71vw), 5px) clamp(5px, calc(0.42px + 1.43vw), 9px);
+    font-size: clamp(8px, calc(5.73px + 0.71vw), 10px);
   }
 
   .dash-sport-filter__panel {
@@ -1191,9 +1253,21 @@
     padding: 12px 10px 8px;
   }
 
+  /* Ongoing Matches on mobile: same one-match-per-view treatment as
+     Upcoming below — a 260px partial-peek card meant you only ever saw
+     part of a match's info and had to scroll/click further to see the
+     rest. Full-width + scroll-snap makes a swipe (the arrows are gone
+     now — see ScrollRow's showArrows) land cleanly on exactly one
+     complete card. */
+  .dash-section--ongoing .scroll-row {
+    scroll-snap-type: x mandatory;
+  }
+
   .ongoing-card {
-    flex: 0 0 260px;
+    flex: 0 0 100%;
+    width: 100%;
     height: auto;
+    scroll-snap-align: center;
   }
 
   /* Upcoming Matches on mobile: one match per view instead of a
@@ -1298,6 +1372,18 @@
 
   .fc-highlight-icon {
     font-size: 12px;
+  }
+
+  /* .finished-carousel__track's height stayed fixed at the desktop
+     value (620px, sized for the worst case: 4 highlight bars at full
+     desktop padding/font size) while only its width is JS-driven per
+     viewport (see FinishedCarousel's ResizeObserver). The card above
+     shrinks its own padding/fonts/icons at this width, so the actual
+     rendered card is much shorter than 620px here — leaving a large
+     blank gap of empty track below it. Reduced to a worst case sized
+     for this width's smaller card instead. */
+  .finished-carousel__track {
+    height: 400px;
   }
 }
 /* ── Mobile: leaves room for the floating hamburger button (Sidebar.css

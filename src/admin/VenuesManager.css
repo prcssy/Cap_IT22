@@ -292,3 +292,54 @@
   border-radius: 12px;
   white-space: nowrap;
 }
+
+/* This file never had a mobile pass — the venue grid's 220px column
+   minimum meant only one (still full desktop-sized) card fit per row on
+   a phone, so the whole list read as unnecessarily tall/bulky. Lowering
+   the minimum lets two compact cards fit per row instead, and the card
+   itself (icon/name/count) is shrunk to match. */
+@media (max-width: 640px) {
+  .vm-add-form input {
+    min-width: 0;
+    flex: 1;
+    padding: 8px 10px;
+    font-size: 12px;
+  }
+
+  .vm-grid {
+    grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+    gap: 10px;
+    margin-top: 12px;
+  }
+
+  .vm-card {
+    padding: 12px 10px;
+  }
+
+  .vm-card__icon {
+    width: 28px;
+    height: 28px;
+    border-radius: 8px;
+    font-size: 12px;
+    margin-bottom: 8px;
+  }
+
+  .vm-card__name {
+    font-size: 12px;
+  }
+
+  .vm-card__count {
+    font-size: 10px;
+  }
+
+  .vm-card__actions {
+    top: 8px;
+    right: 8px;
+    gap: 4px;
+  }
+
+  .vm-icon-delete {
+    width: 22px;
+    height: 22px;
+  }
+}
