@@ -726,12 +726,21 @@
 }
 
 /* ── Potential Champion spotlight ──
-   An eye-catching gold-glow banner between Sports Statistics and Sports
-   Available, calling out the single highest-rated team school-wide
-   (computed client-side in LandingPage.jsx from public teamRankings +
+   Eye-catching gold-glow banners between Sports Statistics and Sports
+   Available, one per school level (Elementary/High School/College),
+   each calling out that level's single highest-rated team (computed
+   client-side in LandingPage.jsx from public teamRankings +
    sportsTeamsConfig — see computeTopTeamForLevel). Two blurred "ray"
-   blobs drift behind the card and its border glow pulses, so it reads
+   blobs drift behind each card and its border glow pulses, so it reads
    as a live spotlight rather than a static banner easy to scroll past. */
+.champion-spotlight-row {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-top: 2.5rem;
+}
+
 .champion-spotlight {
   position: relative;
   overflow: hidden;
@@ -740,8 +749,8 @@
   flex-direction: column;
   align-items: center;
   gap: 0.35rem;
-  margin: 2.5rem auto 0;
   padding: 1.75rem 2.5rem;
+  width: 100%;
   max-width: 420px;
   border-radius: 18px;
   background: linear-gradient(180deg, #0a2a52 0%, #001529 100%);
@@ -1241,6 +1250,10 @@
 
   .stat-divider {
     display: none;
+  }
+
+  .champion-spotlight-row {
+    gap: 1rem;
   }
 
   .champion-spotlight {

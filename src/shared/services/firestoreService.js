@@ -421,6 +421,27 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
     });
   }
 
+  // AdminSchedulePage/SuperAdminPage classify a student's Elementary/High
+  // School/College bucket from users/{uid}.gradeLevel — a value normally
+  // set once at signup and never touched again — not from this
+  // registration's own gradeLevel snapshot (see the comment on
+  // levelOfRegistration in SuperAdminPage.jsx for why). If a student's
+  // signup-time grade/year is stale or was never filled in, their
+  // registration silently lands in the wrong level bucket (or none at
+  // all) even though this form's gradeLevel/section are correct and
+  // fresher, and the student sees "Registration Submitted" with no sign
+  // anything is off. Keep the profile's copy in sync with whatever the
+  // student actually just submitted so the two can't drift apart.
+  // Fire-and-forget like the counter bump above: the registration itself
+  // is already saved, so a denied/failed profile sync must never surface
+  // as a failed registration.
+  setDoc(doc(db, 'users', uid), {
+    gradeLevel: registrationData.gradeLevel,
+    section:    registrationData.section,
+  }, { merge: true }).catch((err) => {
+    console.warn('Could not sync grade level/section to the user profile:', err);
+  });
+
   logActivity({
     actorRole,
     type: 'Registration Submitted',
@@ -1239,6 +1260,30 @@ export function subscribeTeamRankings(level, callback) {
   }, (error) => {
     console.warn('Team rankings listener failed:', error);
     callback({});
+  });
+}
+
+/**
+ * Live-subscribes to one level's match records. Used by the public landing
+ * page's "Potential Champion" spotlight so it can apply the exact same
+ * head-to-head/point-differential tie-break RankingPage uses (see
+ * shared/utils/tieBreakers.js) instead of falling back to array order when
+ * two teams land on the same rating. matchRecords/{level} is public-read
+ * (see firestore.rules) since it only holds rating changes, not personal
+ * data. Returns an unsubscribe function.
+ */
+export function subscribeMatchRecords(level, callback) {
+  if (!db) {
+    console.warn('Firestore not initialized. Cannot subscribe to match records.');
+    callback([]);
+    return () => {};
+  }
+  const configRef = doc(db, 'matchRecords', level);
+  return onSnapshot(configRef, (snapshot) => {
+    callback(snapshot.exists() ? (snapshot.data().records || []) : []);
+  }, (error) => {
+    console.warn('Match records listener failed:', error);
+    callback([]);
   });
 }
 

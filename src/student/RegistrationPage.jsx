@@ -820,17 +820,21 @@ export default function RegistrationPage() {
           <p className="reg-page-subtitle">Submit your player details to join a team and sport event</p>
         </div>
         <div className="reg-body">
-          <div className="reg-card" style={{ textAlign: 'center', padding: '48px 28px' }}>
-            <div style={{ fontSize: 52, marginBottom: 12 }}>✅</div>
-            <h2 style={{ fontFamily: 'Lalezar, sans-serif', fontSize: 22, margin: '0 0 8px', color: '#001529' }}>
-              Registration Submitted!
-            </h2>
-            <p style={{ fontSize: 13, color: '#5a6a7a', margin: '0 0 18px' }}>
-              Your registration for <strong style={{ color: '#001529' }}>{form.event || 'the event'}</strong> has
-              been received. You'll be notified once it's reviewed.
+          <div className="reg-card reg-card--success">
+            <div className="reg-card__head">
+              <div className="reg-card__icon">
+                <svg viewBox="0 0 24 24"><path d="M9 16.2 4.8 12l-1.4 1.4L9 19 20.6 7.4 19.2 6z"/></svg>
+              </div>
+              <h2 className="reg-card__title">Registration Submitted</h2>
+            </div>
+
+            <p className="reg-success__text">
+              Your registration for <strong>{form.event || 'the event'}</strong> has been received.
+              You'll be notified once it's reviewed.
             </p>
+
             {uploadIssues.length > 0 && (
-              <div className="reg-notice" role="alert" style={{ textAlign: 'left', margin: '0 0 18px' }}>
+              <div className="reg-notice" role="alert">
                 <svg className="reg-notice__icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                   <path d="M12 2 1 21h22L12 2zm0 5.5 6.9 12H5.1L12 7.5zM11 10v5h2v-5h-2zm0 6.5V18h2v-1.5h-2z"/>
                 </svg>
@@ -840,7 +844,8 @@ export default function RegistrationPage() {
                 </span>
               </div>
             )}
-            <div className="reg-event-counts reg-event-counts--center">
+
+            <div className="reg-event-counts">
               <span className="reg-event-counts__title">Players Registered per Event</span>
               <div className="reg-event-counts__chips">
                 {events.map(ev => (
@@ -856,7 +861,11 @@ export default function RegistrationPage() {
                 ))}
               </div>
             </div>
-            <button className="reg-btn-save" onClick={handleReset} style={{ margin: '0 auto' }}>
+
+            <div className="reg-divider" />
+
+            <button className="reg-btn-save" onClick={handleReset}>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6z"/></svg>
               Register Another Player
             </button>
           </div>

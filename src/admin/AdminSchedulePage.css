@@ -566,19 +566,51 @@
   white-space: nowrap;
 }
 
-/* Gender, Grade/Year, Level, Section and Sport columns should be centered
-   under their headers — Name (with the avatar) and Action stay as-is. */
+/* Gender, Grade/Year and Level always sit right after Name (column 2) on
+   both the Admin table (Section/Sport/Event columns follow) and the Super
+   Admin table (Status/Action follow instead — those two stay left-aligned,
+   same as Name/Action always have), so they're safe to target by position. */
 .asp-table--students th:nth-child(3),
 .asp-table--students th:nth-child(4),
 .asp-table--students th:nth-child(5),
-.asp-table--students th:nth-child(6),
-.asp-table--students th:nth-child(7),
 .asp-table--students td:nth-child(3),
 .asp-table--students td:nth-child(4),
-.asp-table--students td:nth-child(5),
-.asp-table--students td:nth-child(6),
-.asp-table--students td:nth-child(7) {
+.asp-table--students td:nth-child(5) {
   text-align: center;
+}
+
+/* Section and Sport only exist on the Admin table (StudentRegistrationDetails
+   scope="registrants") — position-based nth-child would wrongly hit
+   Status/Action on the Super Admin table (scope="allUsers"), which doesn't
+   render these columns, so they're targeted by class instead. */
+.asp-table--students .asp-col-center {
+  text-align: center;
+}
+
+/* Super Admin's Users Registration Details has only 7 real columns (no
+   Section/Sport/Event) worth of short, single-word content — roughly
+   half the width of the Admin table's 10 columns, so it doesn't need the
+   same width. Two things were both wanted here that pull in opposite
+   directions: the tight, gap-free spacing between Gender/Grade-Year/
+   Level/Status/Action (only possible if those columns size to their own
+   content, not stretched), and a card that still spans the full
+   dashboard width like the Admin table and the charts above it (not
+   shrunk to content, which is the OTHER way to get gap-free columns).
+   Reconciling both: keep every real column at its natural, tight size
+   (via .asp-table--compact's padding, same as before) and let one
+   extra, invisible 8th column absorb 100% of whatever width is left
+   over — the standard HTML-table way to say "this column gets the
+   leftover space" — so the leftover space becomes a single quiet strip
+   after Action instead of a gap between/inside the real columns. */
+.asp-table--compact th,
+.asp-table--compact td {
+  padding-left: 60px;
+  padding-right: 60px;
+}
+
+.asp-table--compact .asp-col-spacer {
+  width: 100%;
+  padding: 0;
 }
 
 .asp-td--num {
@@ -3630,13 +3662,12 @@
     white-space: normal;
   }
 
+  /* .asp-table--students td already gets text-align: right from the shared
+     rule above (every card-view cell), so it needs no nth-child list here
+     — unlike the desktop rule above, this one never depended on which
+     columns Section/Sport/Event scope adds or removes. */
   .asp-table:not(.asp-table--students) th:not(:first-child),
-  .asp-table:not(.asp-table--students) td:not(:first-child),
-  .asp-table--students td:nth-child(3),
-  .asp-table--students td:nth-child(4),
-  .asp-table--students td:nth-child(5),
-  .asp-table--students td:nth-child(6),
-  .asp-table--students td:nth-child(7) {
+  .asp-table:not(.asp-table--students) td:not(:first-child) {
     text-align: right;
   }
 

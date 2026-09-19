@@ -145,9 +145,13 @@ service cloud.firestore {
     // submitMatchRecord/editMatchRecord/removeScheduledMatchRecords Cloud
     // Functions (Admin SDK, bypasses these rules entirely), which always
     // recompute finalPoints themselves from prevPoints they read fresh out
-    // of teamRankings/{level}, never from anything a client sends. Reads
-    // are unchanged.
-    match /matchRecords/{level} { allow read: if signedIn(); allow write: if false; }
+    // of teamRankings/{level}, never from anything a client sends.
+    // Reads are public (same reasoning as teamRankings below — this only
+    // holds sport/team names and rating deltas, never anything personal)
+    // so the public landing page's Potential Champion spotlight can apply
+    // the same head-to-head/point-differential tie-break RankingPage uses
+    // instead of falling back to array order when ratings tie.
+    match /matchRecords/{level} { allow read: if true; allow write: if false; }
 
     // Team rankings are shown publicly (RankingPage). Same reasoning as
     // matchRecords above — writes only ever come from the Cloud Functions

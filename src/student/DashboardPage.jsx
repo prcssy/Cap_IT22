@@ -577,7 +577,7 @@ export default function DashboardPage() {
     { key: 'college', label: levelLabels.college },
   ], [levelLabels]);
 
-  const [levelKey, setLevelKey] = useState('highSchool');
+  const [levelKey, setLevelKey] = useState('elementary');
   const [matches, setMatches] = useState([]);
   const [records, setRecords] = useState([]);
   const [teamsByName, setTeamsByName] = useState({});
