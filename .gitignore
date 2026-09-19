@@ -12,6 +12,9 @@ dist
 dist-ssr
 *.local
 
+# Firebase CLI's local deploy cache — regenerated on every `firebase deploy`
+.firebase
+
 # Editor directories and files
 .vscode/*
 !.vscode/extensions.json
@@ -28,16 +31,3 @@ serviceAccountKey.json
 .env
 .env.*
 !.env.example
-
-# === EXTRA — HINDI ILALAGAY SA PUBLIC ===
-.git/
-functions/
-src/
-CLAUDE.md
-*.md
-create-staff-account.cjs
-.eslintrc.js
-firebase.json
-firestore.rules
-firestore.indexes.json
-serviceAccountKey.json

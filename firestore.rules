@@ -56,42 +56,39 @@ service cloud.firestore {
                             && request.resource.data.isAdmin == (
                                  request.resource.data.role == 'admin' || request.resource.data.role == 'superadmin'
                                );
-      // A Super Admin assigning/removing a staff role (Roles & Permissions
-      // tab) mirrors that change onto the TARGET user's own profile doc —
-      // a different uid than the Super Admin's own, so the rule above
-      // never covers it. Without this, assignStaffRole/removeStaffRole's
-      // users/{uid} write silently failed (caught, non-fatal), so the
-      // real access (admins/moderators/superadmins) updated correctly but
-      // the profile doc's `role` field kept its old value — meaning a
-      // reload of the Users list showed the change as having reverted.
+      // Historical note: this branch used to be load-bearing for
+      // assignStaffRole/removeStaffRole mirroring a role change onto the
+      // TARGET user's profile doc from the browser. Both are now Cloud
+      // Functions (Admin SDK, bypasses these rules entirely) so they can
+      // also set the `role` custom claim — something no client-side write
+      // could ever do. Left in place as a narrow, still-correctly-gated
+      // fallback (a Super Admin editing a profile some other way), not
+      // because anything in the app currently relies on it.
       allow write: if isSuperAdmin();
     }
 
     // ── Staff allowlists (doc id = lowercase email) ────────────
-    // Writable only by a verified Super Admin (via the Roles & Permissions
-    // panel's assignStaffRole/removeStaffRole) — checked here server-side
-    // with `isSuperAdmin()`, not just hidden client-side, so a direct API
-    // request from a non-superadmin is rejected the same as a UI click
-    // would be. A superadmin can never delete their OWN superadmins doc
-    // (self-lockout guard — the UI also refuses this, this is the second
-    // layer of the same protection).
+    // The ONLY writers are the assignStaffRole / removeStaffRole /
+    // createStaffAccount Cloud Functions (Admin SDK, bypasses these rules
+    // entirely, same trust boundary as matchRecords/teamRankings below) —
+    // `write: if false` here means even a Super Admin's own browser session
+    // cannot write these docs directly via the SDK, only through a Cloud
+    // Function that re-verifies the caller server-side and sets the
+    // matching custom claim in the same call. A superadmin can no longer
+    // "self-lockout-guard bypass" this via devtools even in principle.
     //
-    // Staff accounts are now only ever provisioned by a Super Admin
-    // running create-staff-account.cjs (Admin SDK, bypasses these rules
-    // entirely) — there is no more anonymous/pre-signup path that needs
-    // to read these docs before a session exists, so both `get` and
-    // `list` require signedIn(). (This used to allow public `get` for a
-    // staff sign-up screen that checked "is this gmail pre-cleared"
-    // before creating the Firebase Auth account — that screen is gone,
-    // since it was also the entry point for the account-takeover issue
-    // described in create-staff-account.cjs's header comment.)
-    match /admins/{email}      { allow get, list: if signedIn(); allow write: if isSuperAdmin(); }
-    match /moderators/{email}  { allow get, list: if signedIn(); allow write: if isSuperAdmin(); }
-    match /superadmins/{email} {
-      allow get, list: if signedIn();
-      allow create, update: if isSuperAdmin();
-      allow delete: if isSuperAdmin() && email != staffEmail();
-    }
+    // `get` is scoped to the caller's OWN doc (email == staffEmail()) —
+    // that's the only lookup AuthContext ever needs to resolve whether the
+    // signed-in user is staff at all — plus isSuperAdmin() for the Roles &
+    // Permissions panel, which is allowed to look up any specific staff
+    // doc. A plain student can no longer probe a *known* admin/moderator
+    // email to learn whether that person is staff (a `get` by exact id
+    // used to be signedIn()-only, i.e. any email, which leaked existence
+    // even though it never leaked the full roster). `list` stays narrowed
+    // to isSuperAdmin() as before.
+    match /admins/{email}      { allow get: if signedIn() && (email == staffEmail() || isSuperAdmin()); allow list: if isSuperAdmin(); allow write: if false; }
+    match /moderators/{email}  { allow get: if signedIn() && (email == staffEmail() || isSuperAdmin()); allow list: if isSuperAdmin(); allow write: if false; }
+    match /superadmins/{email} { allow get: if signedIn() && (email == staffEmail() || isSuperAdmin()); allow list: if isSuperAdmin(); allow write: if false; }
 
     // ── Player registrations ───────────────────────────────────
     // Students may create their own registration and read it back (their
@@ -148,9 +145,13 @@ service cloud.firestore {
     // submitMatchRecord/editMatchRecord/removeScheduledMatchRecords Cloud
     // Functions (Admin SDK, bypasses these rules entirely), which always
     // recompute finalPoints themselves from prevPoints they read fresh out
-    // of teamRankings/{level}, never from anything a client sends. Reads
-    // are unchanged.
-    match /matchRecords/{level} { allow read: if signedIn(); allow write: if false; }
+    // of teamRankings/{level}, never from anything a client sends.
+    // Reads are public (same reasoning as teamRankings below — this only
+    // holds sport/team names and rating deltas, never anything personal)
+    // so the public landing page's Potential Champion spotlight can apply
+    // the same head-to-head/point-differential tie-break RankingPage uses
+    // instead of falling back to array order when ratings tie.
+    match /matchRecords/{level} { allow read: if true; allow write: if false; }
 
     // Team rankings are shown publicly (RankingPage). Same reasoning as
     // matchRecords above — writes only ever come from the Cloud Functions

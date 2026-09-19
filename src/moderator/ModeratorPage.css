@@ -693,11 +693,109 @@
    viewport gets narrower instead of flatlining at the 480px figure. */
 @media (max-width: 480px) {
   .mp-body {
-    padding: clamp(12px, 4px + 2.5vw, 16px) clamp(12px, 4px + 2.5vw, 16px) 60px;
+    padding: clamp(8px, 2px + 2vw, 12px) clamp(8px, 2px + 2vw, 12px) 60px;
   }
 
   .mp-card {
-    padding: clamp(14px, 6px + 2.5vw, 18px) clamp(10px, 2px + 2.5vw, 14px) clamp(12px, 4px + 2.5vw, 16px);
+    padding: clamp(10px, 3px + 2vw, 14px) clamp(8px, 1px + 2vw, 10px) clamp(9px, 2px + 2vw, 12px);
+    border-radius: 14px;
+  }
+
+  .mp-card__title {
+    font-size: 0.95rem;
+  }
+
+  .mp-card__sub {
+    font-size: 0.7rem;
+    margin-bottom: 10px;
+  }
+
+  /* .mp-team-panel__badge straddles its panel's own top border by design
+     (see the comment above that class), floating up by half its own
+     height — sized to sit clear above whatever text is in the panel on
+     desktop. On mobile there's much less clearance above it (card padding
+     cut down, no side-by-side room), so a long team/school name in the
+     "Before the game" heading or the field label row next to it kept
+     reaching into the badge's floating box no matter how far that box
+     shrank — shrinking a fixed-position overlay never fixes an overlap
+     against text of unbounded length. Taking the badge out of absolute
+     positioning entirely (flowed above the heading, centered, sized by
+     its own box) removes the overlap outright regardless of name length,
+     instead of relying on there being enough empty space around a
+     floating element. */
+  .mp-team-panel {
+    padding: 10px 10px;
+    border-radius: 12px;
+  }
+
+  .mp-team-panel__badge {
+    position: static;
+    display: flex;
+    margin: 0 auto 6px;
+    width: 32px;
+    height: 32px;
+    transform: none;
+    font-size: 0.54rem;
+  }
+
+  .mp-sec-title {
+    font-size: 0.78rem;
+    margin: 0 0 8px;
+    padding-bottom: 6px;
+  }
+
+  .mp-field {
+    margin-bottom: 10px;
+  }
+
+  .mp-grid2 {
+    gap: 8px;
+    margin-bottom: 10px;
+  }
+
+  .mp-matchup {
+    gap: 10px;
+  }
+
+  .mp-field__label {
+    font-size: 0.6rem;
+    flex-wrap: wrap;
+    row-gap: 4px;
+    margin-bottom: 4px;
+  }
+
+  .mp-field__hint {
+    font-size: 0.58rem;
+    margin: -1px 0 4px;
+  }
+
+  .mp-select-trigger,
+  .mp-text-input {
+    padding: 7px 9px;
+    font-size: 0.76rem;
+  }
+
+  .mp-text-input--auto {
+    margin-top: 4px;
+  }
+
+  /* Long team/school names (e.g. "BASA AIR BASE NATIONAL HIGH SCHOOL")
+     in the read-only opponent field would otherwise overflow the input's
+     visible width with no indication anything was cut off — clip with an
+     ellipsis instead so the field never fights other elements for space. */
+  .mp-text-input {
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+  .mp-vs {
+    font-size: 1rem;
+    gap: 6px;
+  }
+
+  .mp-vs {
+    font-size: 1.1rem;
   }
 }
 

@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  frontend:
+    name: Frontend (lint, build, test)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      # Non-blocking for now: the repo has pre-existing lint errors
+      # (react-hooks/set-state-in-effect) in files unrelated to this CI
+      # setup. Surfaced in the log instead of failing the build until
+      # someone deliberately works through them.
+      - run: npm run lint
+        continue-on-error: true
+      - run: npm run build
+      - run: npm test
+
+  functions:
+    name: Cloud Functions (test)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: functions
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: functions/package-lock.json
+      - run: npm ci
+      - run: npm test

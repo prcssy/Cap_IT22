@@ -144,6 +144,46 @@
   color: #001529;
 }
 
+.reg-success__text {
+  font-size: 13px;
+  color: #5a6a7a;
+  line-height: 1.5;
+  margin: 0 0 18px;
+}
+
+.reg-success__text strong {
+  color: #001529;
+}
+
+/* ── Success card: centered variant ── */
+.reg-card--success {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding-top: 32px;
+  padding-bottom: 32px;
+}
+
+.reg-card--success .reg-card__head,
+.reg-card--success .reg-event-counts {
+  align-items: center;
+}
+
+.reg-card--success .reg-notice {
+  text-align: left;
+  align-self: stretch;
+}
+
+.reg-card--success .reg-event-counts {
+  margin-bottom: 20px;
+}
+
+.reg-card--success .reg-divider {
+  align-self: stretch;
+  margin: 20px 0;
+}
+
 /* ── Form grid ── */
 .reg-form {
   display: flex;
@@ -695,11 +735,6 @@
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-.reg-event-counts--center {
-  align-items: center;
-  margin-bottom: 22px;
 }
 
 .reg-event-counts__title {

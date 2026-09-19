@@ -2863,7 +2863,21 @@ const fetchSummary = useCallback(async () => {
       u => (u.role || 'student').toLowerCase() === 'student'
     );
     const studentUids = new Set(studentUsers.map(u => u.id));
-    const studentRegistrations = registrations.filter(r => studentUids.has(r.uid));
+    const studentUsersById = new Map(studentUsers.map(u => [u.id, u]));
+    // Elementary/High School/College is bucketed from gradeLevel, but a
+    // registration's own gradeLevel is just a snapshot of whatever the
+    // student picked on the form the moment they submitted it — it never
+    // gets updated if their account's grade/year level changes afterward
+    // (promotion, correction, etc.), so two registrations from the same
+    // student can carry two different snapshots. StudentRegistrationDetails
+    // (the table directly below these tiles) already sidesteps this by
+    // overriding gradeLevel with the student's current `users/{uid}` value
+    // instead of trusting the registration doc — do the same here so the
+    // tiles and the table always agree on which level a student counts
+    // toward, instead of the tiles occasionally showing a stale bucket.
+    const studentRegistrations = registrations
+      .filter(r => studentUids.has(r.uid))
+      .map(r => ({ ...r, gradeLevel: studentUsersById.get(r.uid)?.gradeLevel || '—' }));
 
     setStudentRegs(studentRegistrations);
     setSummaryRows(buildSummary(studentRegistrations));

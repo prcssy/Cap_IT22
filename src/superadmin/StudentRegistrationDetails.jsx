@@ -577,18 +577,28 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
             onChange={setFilterGrade}
             options={ALL_GRADES.map(g => ({ value: g, label: g }))}
           />
-          <FilterDropdown
-            label="Section ▾"
-            value={filterSection}
-            onChange={setFilterSection}
-            options={uniqueSections.map(s => ({ value: s, label: s }))}
-          />
-          <FilterDropdown
-            label="Sports ▾"
-            value={filterSport}
-            onChange={setFilterSport}
-            options={uniqueSports.map(s => ({ value: s, label: s }))}
-          />
+          {/* Section/Sport/Event are per-REGISTRATION details — Super
+              Admin's table (scope 'allUsers') is one row per student
+              ACCOUNT, many of whom have no registration at all, so these
+              filters/columns don't apply there. Admin's table (scope
+              'registrants') is one row per registration submission, where
+              they're meaningful. */}
+          {scope !== 'allUsers' && (
+            <FilterDropdown
+              label="Section ▾"
+              value={filterSection}
+              onChange={setFilterSection}
+              options={uniqueSections.map(s => ({ value: s, label: s }))}
+            />
+          )}
+          {scope !== 'allUsers' && (
+            <FilterDropdown
+              label="Sports ▾"
+              value={filterSport}
+              onChange={setFilterSport}
+              options={uniqueSports.map(s => ({ value: s, label: s }))}
+            />
+          )}
           <FilterDropdown
             label="Gender ▾"
             value={filterGender}
@@ -599,15 +609,17 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
               { value: 'Others', label: 'Others' },
             ]}
           />
-          <FilterDropdown
-            label="Event ▾"
-            value={filterEvent}
-            onChange={setFilterEvent}
-            options={[
-              ...events.map(ev => ({ value: ev.key, label: ev.label })),
-              { value: 'unassigned', label: 'No Event' },
-            ]}
-          />
+          {scope !== 'allUsers' && (
+            <FilterDropdown
+              label="Event ▾"
+              value={filterEvent}
+              onChange={setFilterEvent}
+              options={[
+                ...events.map(ev => ({ value: ev.key, label: ev.label })),
+                { value: 'unassigned', label: 'No Event' },
+              ]}
+            />
+          )}
           {hasFilters && (
             <button className="asp-clear-btn" onClick={clearFilters}>
               <FaTimes /> Clear Filter
@@ -622,18 +634,25 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
           ) : filteredStudents.length === 0 ? (
             <p className="asp-empty">{hasFilters ? 'No students match the selected filters.' : 'No registrations found.'}</p>
           ) : (
-            <table className="asp-table asp-table--students">
+            <table className={`asp-table asp-table--students${scope === 'allUsers' ? ' asp-table--compact' : ''}`}>
               <thead>
                 <tr>
                   <th>#</th>
                   <th>Name</th>
-                  <th>Gender</th>
-                  <th>Grade/Year</th>
-                  <th>Level</th>
-                  <th>Section</th>
-                  <th>Sport</th>
-                  <th>Event</th>
-                  <th>Status</th>
+                  {/* Absorbs the width Section/Sport/Event used to take up
+                      (see the .asp-table--compact comment in
+                      AdminSchedulePage.css) so the header band still spans
+                      the full card, and sits right after Name so
+                      Gender..Action stay flush against the right edge
+                      instead of hugging Name on the left. */}
+                  {scope === 'allUsers' && <th className="asp-col-spacer" />}
+                  <th className="asp-col-center">Gender</th>
+                  <th className="asp-col-center">Grade/Year</th>
+                  <th className="asp-col-center">Level</th>
+                  {scope !== 'allUsers' && <th className="asp-col-center">Section</th>}
+                  {scope !== 'allUsers' && <th className="asp-col-center">Sport</th>}
+                  {scope !== 'allUsers' && <th>Event</th>}
+                  {scope !== 'allUsers' && <th>Status</th>}
                   <th>Action</th>
                 </tr>
               </thead>
@@ -649,21 +668,24 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                         {reg.fullName || <em className="asp-placeholder">Last Name, First Name, Middle Name</em>}
                       </span>
                     </td>
-                    <td data-label="Gender">
+                    {scope === 'allUsers' && <td className="asp-col-spacer" />}
+                    <td className="asp-col-center" data-label="Gender">
                       <span className={`asp-gender-badge asp-gender--${(reg.gender || 'unknown').toLowerCase()}`}>
                         {reg.gender || '—'}
                       </span>
                     </td>
-                    <td data-label="Grade/Year">{reg.gradeLevel || '—'}</td>
-                    <td data-label="Level">{LEVEL_LABELS[getSchoolLevel(reg.gradeLevel)] || '—'}</td>
-                    <td data-label="Section">{reg.section || '—'}</td>
-                    <td className="asp-td--sport" data-label="Sport">{reg.sport || '—'}</td>
-                    <td data-label="Event">{reg.event || '—'}</td>
-                    <td data-label="Status">
-                      {reg.status ? (
-                        <span className={`asp-status-badge asp-status--${reg.status}`}>{reg.status}</span>
-                      ) : '—'}
-                    </td>
+                    <td className="asp-col-center" data-label="Grade/Year">{reg.gradeLevel || '—'}</td>
+                    <td className="asp-col-center" data-label="Level">{LEVEL_LABELS[getSchoolLevel(reg.gradeLevel)] || '—'}</td>
+                    {scope !== 'allUsers' && <td className="asp-col-center" data-label="Section">{reg.section || '—'}</td>}
+                    {scope !== 'allUsers' && <td className="asp-td--sport asp-col-center" data-label="Sport">{reg.sport || '—'}</td>}
+                    {scope !== 'allUsers' && <td data-label="Event">{reg.event || '—'}</td>}
+                    {scope !== 'allUsers' && (
+                      <td data-label="Status">
+                        {reg.status ? (
+                          <span className={`asp-status-badge asp-status--${reg.status}`}>{reg.status}</span>
+                        ) : '—'}
+                      </td>
+                    )}
                     <td data-label="Action">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                         <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>

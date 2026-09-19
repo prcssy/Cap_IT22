@@ -8,4 +8,10 @@ export default defineConfig({
   server: {
     host: true,
   },
+  // Scoped to src/ — functions/ has its own Node-based test suite
+  // (`node --test`, run via `npm test` inside functions/), since Cloud
+  // Functions are CommonJS and run under Node, not Vite.
+  test: {
+    include: ['src/**/*.test.{js,jsx}'],
+  },
 })

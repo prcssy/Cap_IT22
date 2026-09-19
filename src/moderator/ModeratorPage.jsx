@@ -1347,7 +1347,7 @@ export default function ModeratorPage() {
   ], [levelLabels]);
   const summaryRef = useRef(null);
 
-  const [level, setLevel] = useState('highSchool');
+  const [level, setLevel] = useState('elementary');
   const [sports, setSports] = useState([]);
   const [teams, setTeams] = useState([]);
   const [schedules, setSchedules] = useState([]);

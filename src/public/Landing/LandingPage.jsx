@@ -8,7 +8,8 @@ import { AuthContext } from '../../shared/context/AuthContext';
 import { BrandingContext } from '../../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../../shared/context/LevelLabelsContext';
 import { FaArrowRightLong } from "react-icons/fa6";
-import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchSchedules, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
+import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchSchedules, subscribeMatchRecords, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
+import { applyPointDifferentialTieBreakers } from '../../shared/utils/tieBreakers';
 import Contact from './Contact/Contact';
 
 /* ── NEW — additional icons for the scrollable content sections ── */
@@ -48,20 +49,26 @@ const CHAMPION_BASELINE_POINTS = 1200;
    the landing page's "Potential Champion" spotlight. Deliberately a
    simplified version of RankingPage's "All Sports" championData math
    (same idea — average a team's scopes within a sport, then sum each
-   sport's CHANGE from the 1200 baseline — but skipping win/loss, which
-   needs matchRecords, a signed-in-only collection the public landing
-   page can't read). teamRankings/{level} and sportsTeamsConfig/{level}
-   are both public-read, so this needs no auth. Teams with no recorded
-   result anywhere are skipped entirely — an untouched roster shouldn't
-   crown an arbitrary team "potential champion". */
-function computeTopTeamForLevel(teams, rankingPoints) {
+   sport's CHANGE from the 1200 baseline). teamRankings/{level},
+   sportsTeamsConfig/{level} and matchRecords/{level} are all public-read,
+   so this needs no auth. Teams with no recorded result anywhere are
+   skipped entirely — an untouched roster shouldn't crown an arbitrary
+   team "potential champion".
+
+   Two or more teams landing on the exact same rating (common right after
+   a scope where results are still thin) are resolved with the same
+   head-to-head/point-differential tie-break RankingPage's Potential
+   Champion table uses (see shared/utils/tieBreakers.js), scoped to "All
+   Sports"/"All Divisions" since this spotlight isn't split by sport —
+   otherwise the two pages could crown different teams out of a tie. */
+function computeTopTeamForLevel(teams, rankingPoints, records) {
   const scopes = Object.entries(rankingPoints || {}).map(([key, teamMap]) => {
     const [sport] = String(key).split('::');
     return { sport, teamMap: teamMap || {} };
   });
   if (!scopes.length) return null;
 
-  let best = null;
+  const candidates = [];
   (teams || []).forEach((t) => {
     if (!t?.name) return;
     const bySport = new Map();
@@ -79,11 +86,16 @@ function computeTopTeamForLevel(teams, rankingPoints) {
     const rating = Math.round(
       CHAMPION_BASELINE_POINTS + sportAverages.reduce((sum, avg) => sum + (avg - CHAMPION_BASELINE_POINTS), 0)
     );
-    if (!best || rating > best.rating) {
-      best = { id: t.id, team: t.name, logo: t.logo || null, rating };
-    }
+    candidates.push({ id: t.id, team: t.name, logo: t.logo || null, rating });
   });
-  return best;
+  if (!candidates.length) return null;
+
+  const byRating = [...candidates].sort((a, b) => b.rating - a.rating || a.team.localeCompare(b.team));
+  const [best] = applyPointDifferentialTieBreakers(
+    byRating, records, 'All Sports', 'All Divisions',
+    (a, b) => a.rating === b.rating,
+  );
+  return best || null;
 }
 
 /* Same assumed match length Admin/Moderator use to decide whether a
@@ -282,7 +294,7 @@ function LandingPage() {
   const [matches, setMatches] = useState(MATCHES);
   const [landingContent, setLandingContent] = useState(DEFAULT_LANDING_PAGE);
   const [hoveredSportKey, setHoveredSportKey] = useState(null);
-  const [topChampion, setTopChampion] = useState(null);
+  const [topChampionsByLevel, setTopChampionsByLevel] = useState({});
 
   const { openAuthModal = () => {} } = useContext(AuthContext);
   const { schoolName, tagline, motto, logo } = useContext(BrandingContext);
@@ -368,6 +380,7 @@ function LandingPage() {
     const configsByLevel = {};
     const schedulesByLevel = {};
     const rankingsByLevel = {};
+    const recordsByLevel = {};
     let liveCounters = {};
 
     const recompute = () => {
@@ -409,25 +422,24 @@ function LandingPage() {
       setStats((prev) => prev.map((s) => (s.label in computed ? { ...s, value: computed[s.label] } : s)));
       setSports(sportEntries);
 
-      /* "Potential Champion" spotlight: the single highest-rated team
-         across the whole school (all 3 levels), so it's visible the
-         instant the page loads rather than only after a visitor picks a
-         level in the Ongoing Matches dropdown. */
-      let overallBest = null;
+      /* "Potential Champion" spotlight: the single highest-rated team per
+         school level (Elementary, High School, College), so it's visible
+         the instant the page loads rather than only after a visitor picks
+         a level in the Ongoing Matches dropdown. */
+      const byLevel = {};
       ALL_LEVEL_KEYS.forEach((levelKey) => {
         const cfg = configsByLevel[levelKey] || { teams: [] };
-        const top = computeTopTeamForLevel(cfg.teams || [], rankingsByLevel[levelKey] || {});
-        if (top && (!overallBest || top.rating > overallBest.rating)) {
-          overallBest = { ...top, level: levelKey };
-        }
+        const top = computeTopTeamForLevel(cfg.teams || [], rankingsByLevel[levelKey] || {}, recordsByLevel[levelKey] || []);
+        if (top) byLevel[levelKey] = { ...top, level: levelKey };
       });
-      setTopChampion(overallBest);
+      setTopChampionsByLevel(byLevel);
     };
 
     const unsubscribers = ALL_LEVEL_KEYS.flatMap((levelKey) => [
       subscribeSportsTeamsConfig(levelKey, (cfg) => { configsByLevel[levelKey] = cfg; recompute(); }),
       subscribeMatchSchedules(levelKey, (matches) => { schedulesByLevel[levelKey] = matches; recompute(); }),
       subscribeTeamRankings(levelKey, (points) => { rankingsByLevel[levelKey] = points; recompute(); }),
+      subscribeMatchRecords(levelKey, (records) => { recordsByLevel[levelKey] = records; recompute(); }),
     ]);
     unsubscribers.push(subscribeLiveStatsCounters((counters) => { liveCounters = counters; recompute(); }));
 
@@ -796,17 +808,26 @@ function LandingPage() {
           ))}
         </div>
 
-        {/* ── Potential Champion spotlight — only appears once at least one
-            match has been scored anywhere, so it never crowns an arbitrary
-            untouched team. ── */}
-        {topChampion && (
-          <div className="champion-spotlight">
-            <span className="champion-spotlight__ray champion-spotlight__ray--1" aria-hidden="true" />
-            <span className="champion-spotlight__ray champion-spotlight__ray--2" aria-hidden="true" />
-            <FaCrown className="champion-spotlight__crown" aria-hidden="true" />
-            <span className="champion-spotlight__eyebrow">#1 Potential Champion</span>
-            <h3 className="champion-spotlight__team">{topChampion.team}</h3>
-            <span className="champion-spotlight__meta">{levelLabels[topChampion.level] || topChampion.level} &middot; {topChampion.rating} RATING</span>
+        {/* ── Potential Champion spotlight — one card per school level,
+            each only appearing once at least one match has been scored
+            for that level, so it never crowns an arbitrary untouched
+            team. ── */}
+        {ALL_LEVEL_KEYS.some((levelKey) => topChampionsByLevel[levelKey]) && (
+          <div className="champion-spotlight-row">
+            {ALL_LEVEL_KEYS.map((levelKey) => {
+              const champion = topChampionsByLevel[levelKey];
+              if (!champion) return null;
+              return (
+                <div className="champion-spotlight" key={levelKey}>
+                  <span className="champion-spotlight__ray champion-spotlight__ray--1" aria-hidden="true" />
+                  <span className="champion-spotlight__ray champion-spotlight__ray--2" aria-hidden="true" />
+                  <FaCrown className="champion-spotlight__crown" aria-hidden="true" />
+                  <span className="champion-spotlight__eyebrow">#1 Potential Champion</span>
+                  <h3 className="champion-spotlight__team">{champion.team}</h3>
+                  <span className="champion-spotlight__meta">{levelLabels[champion.level] || champion.level} &middot; {champion.rating} RATING</span>
+                </div>
+              );
+            })}
           </div>
         )}
 

@@ -13,9 +13,10 @@ npm run dev       # start Vite dev server (also aliased as `npm start`)
 npm run build     # production build
 npm run preview   # preview the production build
 npm run lint      # eslint .
+npm test          # vitest run — src/**/*.test.{js,jsx} only (pure logic, Firebase mocked out)
 ```
 
-There is no test suite configured in this repo.
+Cloud Functions have their own suite: `cd functions && npm test` (Node's built-in `node --test`, covers the rating-formula logic in `matchMath.js`). Test coverage is intentionally narrow — pure/business logic only (event-type resolution, match rating math), not component rendering or Firestore integration.
 
 Firebase config comes from `.env` (see `.env.example` for the required `VITE_FIREBASE_*` keys). Without it, `src/firebase.js` logs a warning and `auth`/`db`/`storage` are left undefined — most of the app degrades gracefully (empty lists) rather than crashing, since every Firestore helper in `src/services/firestoreService.js` checks `if (!db)` first.
 
