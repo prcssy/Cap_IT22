@@ -162,7 +162,19 @@ export function AuthProvider({ children }) {
             // Firestore error). Treat them as a plain student instead of
             // permanently stranding them as userRole 'guest' with no
             // self-heal path.
-            setUserProfile({ role: 'student', isAdmin: false, email: user.email, name: user.displayName || '' });
+            const fallbackProfile = { role: 'student', isAdmin: false, email: user.email, name: user.displayName || '' };
+            setUserProfile(fallbackProfile);
+            // Actually write the missing doc back to Firestore (fire-and-
+            // forget — doesn't block the UI) so this account starts
+            // showing up in Firestore-backed listings like Super Admin's
+            // "Users Registration Details" table, which reads the `users`
+            // collection rather than the Firebase Auth user list. Without
+            // this, an account that lost its profile doc at signup would
+            // silently stay invisible there forever, even after logging
+            // in again.
+            createUserProfile(user.uid, fallbackProfile).catch((err) => {
+              console.warn('Failed to self-heal missing user profile doc:', err);
+            });
           }
         } catch (error) {
           if (callId !== authCallIdRef.current) return;

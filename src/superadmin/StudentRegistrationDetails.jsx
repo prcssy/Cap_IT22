@@ -652,7 +652,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                   {scope !== 'allUsers' && <th className="asp-col-center">Section</th>}
                   {scope !== 'allUsers' && <th className="asp-col-center">Sport</th>}
                   {scope !== 'allUsers' && <th>Event</th>}
-                  <th>Status</th>
+                  {scope !== 'allUsers' && <th>Status</th>}
                   <th>Action</th>
                 </tr>
               </thead>
@@ -679,11 +679,13 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                     {scope !== 'allUsers' && <td className="asp-col-center" data-label="Section">{reg.section || '—'}</td>}
                     {scope !== 'allUsers' && <td className="asp-td--sport asp-col-center" data-label="Sport">{reg.sport || '—'}</td>}
                     {scope !== 'allUsers' && <td data-label="Event">{reg.event || '—'}</td>}
-                    <td data-label="Status">
-                      {reg.status ? (
-                        <span className={`asp-status-badge asp-status--${reg.status}`}>{reg.status}</span>
-                      ) : '—'}
-                    </td>
+                    {scope !== 'allUsers' && (
+                      <td data-label="Status">
+                        {reg.status ? (
+                          <span className={`asp-status-badge asp-status--${reg.status}`}>{reg.status}</span>
+                        ) : '—'}
+                      </td>
+                    )}
                     <td data-label="Action">
                       <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
                         <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
