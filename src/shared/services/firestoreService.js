@@ -223,74 +223,38 @@ export async function getActivityLogs() {
    Firestore rules also refuse to let a superadmin delete their own
    `superadmins` doc, as a second layer of the same guard).
 ───────────────────────────────────────────── */
-const STAFF_ROLE_COLLECTIONS = { admin: 'admins', moderator: 'moderators', superadmin: 'superadmins' };
-const STAFF_ROLE_LABELS = { admin: 'Admin', moderator: 'Moderator', superadmin: 'Super Admin' };
 
-export async function assignStaffRole(targetUser, role, actorRole) {
-  if (!db) throw new Error('Firestore not initialized.');
-  const collectionName = STAFF_ROLE_COLLECTIONS[role];
-  if (!collectionName) throw new Error(`Unknown staff role: ${role}`);
-  if (targetUser.id && auth?.currentUser?.uid === targetUser.id) {
-    throw new Error("You can't change your own role here.");
-  }
-
-  const email = (targetUser.email || '').trim().toLowerCase();
-  if (!email) throw new Error('This user has no email on file.');
-
-  await Promise.all(
-    Object.values(STAFF_ROLE_COLLECTIONS)
-      .filter((c) => c !== collectionName)
-      .map((c) => deleteDoc(doc(db, c, email)))
-  );
-  await setDoc(doc(db, collectionName, email), { email, addedAt: serverTimestamp() });
-
-  if (targetUser.id) {
-    await setDoc(
-      doc(db, 'users', targetUser.id),
-      { role, isAdmin: role === 'admin' || role === 'superadmin' },
-      { merge: true }
-    ).catch((error) => console.warn('Could not sync role onto user profile:', error));
-  }
-
-  await logActivity({
-    actorRole,
-    type: 'Role Assigned',
-    details: `Assigned ${STAFF_ROLE_LABELS[role]} role to ${targetUser.name || email}`,
-    targetType: 'user',
-    targetId: targetUser.id || email,
-    targetLabel: email,
+/**
+ * Both of these used to write straight to the admins/moderators/superadmins
+ * collections from the browser (gated only by firestore.rules'
+ * isSuperAdmin()). They now go through Cloud Functions instead — not
+ * because the direct write wasn't safe, but because only the Admin SDK can
+ * set the `role` custom claim, and there is no client-reachable way to do
+ * that. The Cloud Function re-checks the caller is a Super Admin
+ * server-side and re-derives actorRole itself; it doesn't trust anything
+ * the client sends beyond the target user and the role being assigned.
+ */
+export async function assignStaffRole(targetUser, role) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'assignStaffRole');
+  const { data } = await call({
+    targetUid: targetUser.id || null,
+    targetEmail: targetUser.email,
+    targetName: targetUser.name,
+    role,
   });
+  return data;
 }
 
-export async function removeStaffRole(targetUser, actorRole) {
-  if (!db) throw new Error('Firestore not initialized.');
-  if (targetUser.id && auth?.currentUser?.uid === targetUser.id) {
-    throw new Error("You can't change your own role here.");
-  }
-
-  const email = (targetUser.email || '').trim().toLowerCase();
-  if (!email) throw new Error('This user has no email on file.');
-
-  await Promise.all(
-    Object.values(STAFF_ROLE_COLLECTIONS).map((c) => deleteDoc(doc(db, c, email)))
-  );
-
-  if (targetUser.id) {
-    await setDoc(
-      doc(db, 'users', targetUser.id),
-      { role: 'student', isAdmin: false },
-      { merge: true }
-    ).catch((error) => console.warn('Could not sync role onto user profile:', error));
-  }
-
-  await logActivity({
-    actorRole,
-    type: 'Role Removed',
-    details: `Removed staff role from ${targetUser.name || email}`,
-    targetType: 'user',
-    targetId: targetUser.id || email,
-    targetLabel: email,
+export async function removeStaffRole(targetUser) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'removeStaffRole');
+  const { data } = await call({
+    targetUid: targetUser.id || null,
+    targetEmail: targetUser.email,
+    targetName: targetUser.name,
   });
+  return data;
 }
 
 /**

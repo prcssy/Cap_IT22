@@ -1,6 +1,6 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth } from 'firebase/auth';
-import { getFirestore } from 'firebase/firestore';
+import { getFirestore, collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
 
@@ -39,6 +39,18 @@ try {
   functions = getFunctions(app);
 } catch (error) {
   console.warn('Firebase initialization failed.', error);
+}
+
+// Dev-only console access, e.g. `await auth.currentUser.getIdTokenResult()`
+// to inspect custom claims. Gated behind import.meta.env.DEV so it never
+// ships in the production bundle.
+if (import.meta.env.DEV && auth) {
+  window.auth = auth;
+  window.db = db;
+  window.collection = collection;
+  window.doc = doc;
+  window.getDoc = getDoc;
+  window.getDocs = getDocs;
 }
 
 export { auth, db, storage, functions };

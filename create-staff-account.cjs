@@ -134,6 +134,14 @@ async function main() {
   }, { merge: true });
   console.log(`✅ users/${userRecord.uid} profile doc written`);
 
+  // Same `role` custom claim the createStaffAccount/assignStaffRole Cloud
+  // Functions set — keeps this script's accounts consistent with ones
+  // provisioned from the app, so functions/index.js's fast path (trust the
+  // claim, confirm with one read) applies to them too instead of always
+  // falling back to the slower 3-collection check.
+  await auth.setCustomUserClaims(userRecord.uid, { role });
+  console.log(`✅ custom claim { role: '${role}' } set on ${userRecord.uid}`);
+
   console.log('\nDone. They can log in immediately with the credentials above (email already verified).');
 }
 

@@ -28,16 +28,3 @@ serviceAccountKey.json
 .env
 .env.*
 !.env.example
-
-# === EXTRA — HINDI ILALAGAY SA PUBLIC ===
-.git/
-functions/
-src/
-CLAUDE.md
-*.md
-create-staff-account.cjs
-.eslintrc.js
-firebase.json
-firestore.rules
-firestore.indexes.json
-serviceAccountKey.json

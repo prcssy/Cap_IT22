@@ -24,18 +24,50 @@ function randomId() {
 }
 
 /**
+ * Sets (or clears, when role is null) the `role` custom claim on a Firebase
+ * Auth user. This is the only place a role ever reaches the ID token —
+ * setCustomUserClaims only exists on the Admin SDK, so there is no
+ * client-reachable path that can grant or change one. Firestore
+ * (admins/moderators/superadmins) stays the authoritative record; the claim
+ * is just a cache of it that lets resolveCallerRole() below skip straight to
+ * confirming ONE collection instead of reading all three every call.
+ */
+async function setStaffClaims(uid, role) {
+  await getAuth().setCustomUserClaims(uid, role ? { role } : {});
+}
+
+/**
  * Resolves the caller's staff role the same way AuthContext.jsx does on the
  * client: superadmin > admin > moderator, first match wins, by looking up
  * their (lowercased) email across the three allowlist collections. Throws
  * unauthenticated/permission-denied the same way every callable function
  * below expects, so a request with no valid session or no staff role never
  * reaches any of the actual match-recording logic.
+ *
+ * If the caller's ID token already carries a `role` claim, that's only a
+ * HINT for which collection to check — a claim is cached in the token for
+ * up to ~1hr after a Super Admin revokes it, so it's never trusted by
+ * itself. One fresh read against that single collection confirms it's still
+ * current (the "fast path": 1 read instead of 3). Anyone without a
+ * matching/valid claim falls back to checking all three collections, same
+ * as before — this is never less correct than the original check, only
+ * faster once a claim has been set via assignStaffRole/createStaffAccount.
  */
-async function requireStaff(request) {
+async function resolveCallerRole(request) {
   const email = (request.auth?.token?.email || "").trim().toLowerCase();
   if (!request.auth || !email) {
     throw new HttpsError("unauthenticated", "You must be signed in.");
   }
+
+  const claimedRole = request.auth.token.role;
+  const claimedCollection = STAFF_ROLE_COLLECTIONS[claimedRole];
+  if (claimedCollection) {
+    const snap = await db.collection(claimedCollection).doc(email).get();
+    if (snap.exists) {
+      return { email, role: claimedRole, uid: request.auth.uid, name: request.auth.token.name || "" };
+    }
+  }
+
   const [superadminDoc, adminDoc, moderatorDoc] = await Promise.all([
     db.collection("superadmins").doc(email).get(),
     db.collection("admins").doc(email).get(),
@@ -46,6 +78,19 @@ async function requireStaff(request) {
     throw new HttpsError("permission-denied", "Only staff accounts can do this.");
   }
   return { email, role, uid: request.auth.uid, name: request.auth.token.name || "" };
+}
+
+async function requireStaff(request) {
+  return resolveCallerRole(request);
+}
+
+/** Same as requireStaff, but also rejects a caller whose resolved role isn't superadmin. */
+async function requireSuperAdmin(request) {
+  const actor = await resolveCallerRole(request);
+  if (actor.role !== "superadmin") {
+    throw new HttpsError("permission-denied", "Only a Super Admin can do this.");
+  }
+  return actor;
 }
 
 function requireLevel(level) {
@@ -62,16 +107,7 @@ async function logActivity({ actorUid, actorEmail, actorName, actorRole, type, d
 }
 
 exports.createStaffAccount = onCall(async (request) => {
-  const callerEmail = (request.auth?.token?.email || "").trim().toLowerCase();
-  if (!request.auth || !callerEmail) {
-    throw new HttpsError("unauthenticated", "You must be signed in.");
-  }
-
-  // TIGNAN KUNG SUPER ADMIN — gamit ang tamang db
-  const superAdminDoc = await db.collection("superadmins").doc(callerEmail).get();
-  if (!superAdminDoc.exists) {
-    throw new HttpsError("permission-denied", "Only a Super Admin can create staff accounts.");
-  }
+  const actor = await requireSuperAdmin(request);
 
   //  Kunin ang ipinadala mula sa website
   const email = (request.data?.email || "").trim().toLowerCase();
@@ -128,11 +164,16 @@ exports.createStaffAccount = onCall(async (request) => {
     { merge: true }
   );
 
+  // Set the `role` custom claim so this account's ID token itself carries
+  // it from their next sign-in/token refresh onward (Admin SDK only — see
+  // setStaffClaims above).
+  await setStaffClaims(userRecord.uid, role);
+
   //  Mag-log ng aktibidad
   await db.collection("activityLogs").add({
-    actorUid: request.auth.uid,
-    actorEmail: callerEmail,
-    actorName: request.auth.token.name || "",
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    actorName: actor.name,
     actorRole: "superadmin",
     type: created ? "Staff Account Created" : "Staff Role Assigned",
     details: `${created ? "Created" : "Updated"} ${STAFF_ROLE_LABELS[role]} account for ${name || email}`,
@@ -142,9 +183,134 @@ exports.createStaffAccount = onCall(async (request) => {
     timestamp: FieldValue.serverTimestamp(),
   });
 
-  logger.info(`Staff account ${created ? "created" : "updated"} for ${email} as ${role} by ${callerEmail}`);
+  logger.info(`Staff account ${created ? "created" : "updated"} for ${email} as ${role} by ${actor.email}`);
 
   return { uid: userRecord.uid, email, role, created, tempPassword };
+});
+
+/**
+ * Changes an EXISTING user's staff role (the Roles & Permissions panel's
+ * role buttons). Unlike createStaffAccount, this never creates a new
+ * Firebase Auth user — only a Super Admin may call it, and never on their
+ * own account (self-lockout guard). Moved server-side (this used to be a
+ * direct client Firestore write, gated only by firestore.rules'
+ * isSuperAdmin()) specifically so it can also set the `role` custom claim —
+ * setCustomUserClaims only exists on the Admin SDK, so there was never a
+ * way to do that from the browser.
+ */
+exports.assignStaffRole = onCall(async (request) => {
+  const actor = await requireSuperAdmin(request);
+  const data = request.data || {};
+  const role = data.role;
+  const email = (data.targetEmail || "").trim().toLowerCase();
+  const targetName = (data.targetName || "").trim();
+
+  const collectionName = STAFF_ROLE_COLLECTIONS[role];
+  if (!collectionName) {
+    throw new HttpsError("invalid-argument", "role must be one of: admin, moderator, superadmin");
+  }
+  if (!email) {
+    throw new HttpsError("invalid-argument", "Target user's email is required.");
+  }
+  if (email === actor.email) {
+    throw new HttpsError("failed-precondition", "You can't change your own role here.");
+  }
+
+  await Promise.all(
+    Object.values(STAFF_ROLE_COLLECTIONS)
+      .filter((collection) => collection !== collectionName)
+      .map((collection) => db.collection(collection).doc(email).delete())
+  );
+  await db.collection(collectionName).doc(email).set(
+    { email, addedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+
+  // Resolve the Auth uid from email when the client didn't already have one
+  // on hand — needed to sync the profile doc and set the custom claim.
+  let uid = data.targetUid || null;
+  if (!uid) {
+    try {
+      uid = (await getAuth().getUserByEmail(email)).uid;
+    } catch (error) {
+      if (error.code !== "auth/user-not-found") throw error;
+    }
+  }
+  if (uid) {
+    await db.collection("users").doc(uid).set(
+      { role, isAdmin: role === "admin" || role === "superadmin" },
+      { merge: true }
+    ).catch((error) => logger.warn("Could not sync role onto user profile:", error));
+    await setStaffClaims(uid, role);
+  }
+
+  await logActivity({
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    actorName: actor.name,
+    actorRole: actor.role,
+    type: "Role Assigned",
+    details: `Assigned ${STAFF_ROLE_LABELS[role]} role to ${targetName || email}`,
+    targetType: "user",
+    targetId: uid || email,
+    targetLabel: email,
+  });
+
+  return { role, email };
+});
+
+/**
+ * Revokes an existing staff role — removes the allowlist doc from all three
+ * collections, demotes the `users/{uid}` profile back to student, and
+ * clears the custom claim. Same Super-Admin-only / never-self gate as
+ * assignStaffRole above.
+ */
+exports.removeStaffRole = onCall(async (request) => {
+  const actor = await requireSuperAdmin(request);
+  const data = request.data || {};
+  const email = (data.targetEmail || "").trim().toLowerCase();
+  const targetName = (data.targetName || "").trim();
+
+  if (!email) {
+    throw new HttpsError("invalid-argument", "Target user's email is required.");
+  }
+  if (email === actor.email) {
+    throw new HttpsError("failed-precondition", "You can't change your own role here.");
+  }
+
+  await Promise.all(
+    Object.values(STAFF_ROLE_COLLECTIONS).map((collection) => db.collection(collection).doc(email).delete())
+  );
+
+  let uid = data.targetUid || null;
+  if (!uid) {
+    try {
+      uid = (await getAuth().getUserByEmail(email)).uid;
+    } catch (error) {
+      if (error.code !== "auth/user-not-found") throw error;
+    }
+  }
+  if (uid) {
+    await db.collection("users").doc(uid).set(
+      { role: "student", isAdmin: false },
+      { merge: true }
+    ).catch((error) => logger.warn("Could not sync role onto user profile:", error));
+    await setStaffClaims(uid, null);
+  }
+
+  await logActivity({
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    actorName: actor.name,
+    actorRole: actor.role,
+    type: "Role Removed",
+    details: `Removed staff role from ${targetName || email}`,
+    targetType: "user",
+    targetId: uid || email,
+    targetLabel: email,
+  });
+
+  return { email };
 });
 
 /**
