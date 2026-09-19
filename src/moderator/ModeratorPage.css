@@ -127,9 +127,9 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-sport-trigger:hover {
-  border-color: #f5a623;
-}
+  .mp-sport-trigger:hover {
+    border-color: #f5a623;
+  }
 }
 
 .mp-sport-trigger:active {
@@ -158,10 +158,10 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-sport-trigger--pill:hover {
-  filter: brightness(0.97);
-  border-color: transparent;
-}
+  .mp-sport-trigger--pill:hover {
+    filter: brightness(0.97);
+    border-color: transparent;
+  }
 }
 
 .mp-sport-trigger--pill .mp-sport-trigger__arrow {
@@ -233,10 +233,10 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-levelband__tab:hover {
-  color: #fff;
-  background: rgba(245, 166, 35, 0.14);
-}
+  .mp-levelband__tab:hover {
+    color: #fff;
+    background: rgba(245, 166, 35, 0.14);
+  }
 }
 
 .mp-levelband__tab:active {
@@ -300,10 +300,10 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-finished-panel__unlock:hover {
-  background: #f5a623;
-  color: #0e1f3d;
-}
+  .mp-finished-panel__unlock:hover {
+    background: #f5a623;
+    color: #0e1f3d;
+  }
 }
 
 .mp-finished-panel__list {
@@ -445,10 +445,10 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-finished-card:hover {
-  border-color: #f5a623;
-  transform: translateY(-1px);
-}
+  .mp-finished-card:hover {
+    border-color: #f5a623;
+    transform: translateY(-1px);
+  }
 }
 
 .mp-finished-card--active {
@@ -622,9 +622,9 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-dd-option:hover {
-  background: #e3ecff;
-}
+  .mp-dd-option:hover {
+    background: #e3ecff;
+  }
 }
 
 .mp-dd-option:active {
@@ -664,9 +664,9 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-dd-panel--teams .mp-dd-option:hover {
-  background: #eef3ff;
-}
+  .mp-dd-panel--teams .mp-dd-option:hover {
+    background: #eef3ff;
+  }
 }
 
 /* ══════════════════════════════════════════
@@ -762,9 +762,26 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-schedule-hint__edit-link:hover {
-  filter: brightness(1.2);
+  .mp-schedule-hint__edit-link:hover {
+    filter: brightness(1.2);
+  }
 }
+
+/* .mp-team-panel__badge floats 23px above the panel's own top edge (half of
+   its 46px height) and sits at right:24px — the same corner the hint's
+   right-aligned "Cancel edit" link (.mp-schedule-hint__edit-link) occupies
+   when a locked/editing hint sits directly above the panel. The hint's
+   flat 18px margin-bottom leaves only ~5px of clearance for the badge
+   before it starts covering that link, and on narrow screens (~360px) the
+   hint's flex row wraps, dropping the link onto its own line right at the
+   box's bottom padding — closing that last bit of clearance and letting
+   the badge visibly cut the link off.
+   Adjoining margins collapse to their max (not their sum) in normal block
+   flow, so a plain margin-top here wouldn't add to the hint's 18px — it
+   has to outright exceed it for the collapsed gap to actually grow. */
+.mp-schedule-hint+.mp-matchup,
+.mp-schedule-hint+.mp-multi-grid {
+  margin-top: 34px;
 }
 
 .mp-matchup {
@@ -803,6 +820,9 @@
   padding: 18px;
   box-shadow: 0 1px 4px rgba(11, 36, 71, 0.06);
   transition: box-shadow 0.2s ease;
+  /* This panel is itself a grid item of .mp-matchup/.mp-multi-grid — same
+     automatic-min-width trap as .mp-field below, one level further out. */
+  min-width: 0;
 }
 
 .mp-team-panel--win {
@@ -881,6 +901,12 @@
 .mp-field {
   margin-bottom: 16px;
   position: relative;
+  /* Grid/flex items get an automatic min-width based on their content's
+     min-content size even when the track itself is minmax(0, 1fr) (as
+     .mp-grid2's are) — a long, unbreakable team name inside still forces
+     this item, and everything around it, wider than the viewport. min-
+     width:0 lets it actually shrink to the track's width. */
+  min-width: 0;
 }
 
 .mp-field:last-child {
@@ -945,28 +971,11 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-info-btn:hover .mp-tooltip {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-  pointer-events: auto;
-}
-}
-
-
-.mp-info-btn--drop .mp-tooltip {
-  bottom: auto;
-  top: calc(100% + 10px);
-  transform: translateX(-50%) translateY(-4px);
-}
-
-.mp-info-btn--drop:focus .mp-tooltip {
-  transform: translateX(-50%) translateY(0);
-}
-
-@media (hover: hover) and (pointer: fine) {
-.mp-info-btn--drop:hover .mp-tooltip {
-  transform: translateX(-50%) translateY(0);
-}
+  .mp-info-btn:hover .mp-tooltip {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+    pointer-events: auto;
+  }
 }
 
 
@@ -981,9 +990,9 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-info-btn--drop:hover .mp-tooltip {
-  transform: translateX(-50%) translateY(0);
-}
+  .mp-info-btn--drop:hover .mp-tooltip {
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 
@@ -998,9 +1007,26 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-info-btn--drop:hover .mp-tooltip {
+  .mp-info-btn--drop:hover .mp-tooltip {
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+
+.mp-info-btn--drop .mp-tooltip {
+  bottom: auto;
+  top: calc(100% + 10px);
+  transform: translateX(-50%) translateY(-4px);
+}
+
+.mp-info-btn--drop:focus .mp-tooltip {
   transform: translateX(-50%) translateY(0);
 }
+
+@media (hover: hover) and (pointer: fine) {
+  .mp-info-btn--drop:hover .mp-tooltip {
+    transform: translateX(-50%) translateY(0);
+  }
 }
 
 .mp-tooltip__cap {
@@ -1047,10 +1073,10 @@
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-select-trigger:hover {
-  border-color: #6d8fe0;
-  outline: none;
-}
+  .mp-select-trigger:hover {
+    border-color: #6d8fe0;
+    outline: none;
+  }
 }
 
 .mp-select-trigger--placeholder {
@@ -1066,6 +1092,13 @@
 
 .mp-select-trigger__label {
   flex: 1;
+  /* Flex items default to min-width:auto, which for nowrap text means
+     "as wide as the unwrapped string" — that refuses to shrink below the
+     full team-name width and pushes .mp-field/.mp-grid2/.mp-team-panel
+     wider than the viewport instead of ever reaching the ellipsis below.
+     min-width:0 lets this item actually shrink so overflow/ellipsis can
+     kick in for long team names. */
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1165,9 +1198,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--navy:hover:not(:disabled) {
-  filter: brightness(1.15);
-}
+  .mp-btn--navy:hover:not(:disabled) {
+    filter: brightness(1.15);
+  }
 }
 
 /* comeback checkbox — only rendered for the auto-detected winner's panel */
@@ -1211,6 +1244,13 @@ input.mp-text-input:disabled {
 
 .mp-points-box {
   flex: 1;
+  /* Same trap as .mp-select-trigger__label above: .mp-points-box__num is a
+     single unbreakable number string (no spaces to wrap on), so its
+     min-content width is its full rendered width. Without min-width:0
+     this flex:1 item can't shrink below that, and a longer rating value
+     (more digits, a minus sign) would push .mp-points-row past the
+     viewport instead of just fitting/wrapping. */
+  min-width: 0;
   background: #eef1f8;
   border-radius: 10px;
   padding: 12px 14px;
@@ -1236,6 +1276,10 @@ input.mp-text-input:disabled {
   font-weight: 800;
   color: #0b2447;
   transition: transform 0.2s ease;
+  /* Belt-and-suspenders alongside .mp-points-box's min-width:0: if a rating
+     value is ever wide enough that shrinking the box isn't enough on its
+     own, break the digit string rather than spill past the rounded box. */
+  overflow-wrap: anywhere;
 }
 
 .mp-points-box__num--bump {
@@ -1296,9 +1340,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--update:hover:not(:disabled) {
-  filter: brightness(1.2);
-}
+  .mp-btn--update:hover:not(:disabled) {
+    filter: brightness(1.2);
+  }
 }
 
 .mp-btn--reset {
@@ -1316,10 +1360,10 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--reset:hover {
-  background: #e2e7f2;
-  border-color: #a8b3cf;
-}
+  .mp-btn--reset:hover {
+    background: #e2e7f2;
+    border-color: #a8b3cf;
+  }
 }
 
 .mp-btn--reset svg {
@@ -1352,7 +1396,8 @@ input.mp-text-input:disabled {
 }
 
 .mp-modal {
-  position: relative; /* positioning context for absolutely-positioned close buttons (.mp-format-close etc.) — without this they escape to the fixed overlay instead of pinning to this box's own corner */
+  position: relative;
+  /* positioning context for absolutely-positioned close buttons (.mp-format-close etc.) — without this they escape to the fixed overlay instead of pinning to this box's own corner */
   background: #fff;
   color: #0b2447;
   border-radius: 18px;
@@ -1381,7 +1426,8 @@ input.mp-text-input:disabled {
 
 .mp-request-modal__body {
   flex: 1;
-  min-height: 0; /* lets this child actually shrink/scroll inside the flex column instead of forcing the outer shell to grow past max-height */
+  min-height: 0;
+  /* lets this child actually shrink/scroll inside the flex column instead of forcing the outer shell to grow past max-height */
   overflow-y: auto;
   padding: 26px;
 }
@@ -1619,9 +1665,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--reset-solid:hover {
-  filter: brightness(1.2);
-}
+  .mp-btn--reset-solid:hover {
+    filter: brightness(1.2);
+  }
 }
 
 .mp-reset-modal {
@@ -1629,9 +1675,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--cancel:hover {
-  background: #e2e7f2;
-}
+  .mp-btn--cancel:hover {
+    background: #e2e7f2;
+  }
 }
 
 .mp-btn--confirm {
@@ -1649,9 +1695,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--confirm:hover:not(:disabled) {
-  filter: brightness(1.08);
-}
+  .mp-btn--confirm:hover:not(:disabled) {
+    filter: brightness(1.08);
+  }
 }
 
 /* success / invalid modals */
@@ -1806,9 +1852,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--white:hover {
-  background: #f3f5f9;
-}
+  .mp-btn--white:hover {
+    background: #f3f5f9;
+  }
 }
 
 .mp-btn--navy-solid {
@@ -1822,9 +1868,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--navy-solid:hover {
-  filter: brightness(1.2);
-}
+  .mp-btn--navy-solid:hover {
+    filter: brightness(1.2);
+  }
 }
 
 .mp-btn--danger-solid {
@@ -1838,9 +1884,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--danger-solid:hover {
-  filter: brightness(1.15);
-}
+  .mp-btn--danger-solid:hover {
+    filter: brightness(1.15);
+  }
 }
 
 /* violations modal */
@@ -1952,9 +1998,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-viol-add:hover {
-  filter: brightness(1.2);
-}
+  .mp-viol-add:hover {
+    filter: brightness(1.2);
+  }
 }
 
 .mp-viol-add:active {
@@ -2044,9 +2090,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-viol-remove:hover {
-  opacity: 0.7;
-}
+  .mp-viol-remove:hover {
+    opacity: 0.7;
+  }
 }
 
 .mp-viol-actions {
@@ -2065,9 +2111,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--gray:hover {
-  background: #d9dfec;
-}
+  .mp-btn--gray:hover {
+    background: #d9dfec;
+  }
 }
 
 .mp-btn--submit {
@@ -2080,9 +2126,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-btn--submit:hover {
-  filter: brightness(1.2);
-}
+  .mp-btn--submit:hover {
+    filter: brightness(1.2);
+  }
 }
 
 .mp-modal-close-x {
@@ -2098,9 +2144,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-modal-close-x:hover {
-  color: #0b2447;
-}
+  .mp-modal-close-x:hover {
+    color: #0b2447;
+  }
 }
 
 /* ══════════════════════════════════════════
@@ -2232,9 +2278,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-table tbody tr:hover {
-  background: #eef1f8;
-}
+  .mp-table tbody tr:hover {
+    background: #eef1f8;
+  }
 }
 
 .mp-table tbody tr:last-child td {
@@ -2262,9 +2308,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-table__edit-btn:hover {
-  background: #e3ecff;
-}
+  .mp-table__edit-btn:hover {
+    background: #e3ecff;
+  }
 }
 
 .mp-table__edit-btn:active {
@@ -2378,7 +2424,7 @@ input.mp-text-input:disabled {
    instead of the far left — desktop already has both selects on one row
    with "vs" naturally between them. */
 @media (max-width: 480px) {
-  .mp-edit-form > .mp-vs-mini {
+  .mp-edit-form>.mp-vs-mini {
     margin-left: 130px;
   }
 }
@@ -2437,9 +2483,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-edit-form__save:hover {
-  filter: brightness(1.15);
-}
+  .mp-edit-form__save:hover {
+    filter: brightness(1.15);
+  }
 }
 
 .mp-edit-form__cancel {
@@ -2455,9 +2501,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-edit-form__cancel:hover {
-  background: #b7bfd4;
-}
+  .mp-edit-form__cancel:hover {
+    background: #b7bfd4;
+  }
 }
 
 /* misc */
@@ -2486,6 +2532,7 @@ input.mp-text-input:disabled {
     text-align: center;
   }
 }
+
 /* ═══════════════════════════════════════════
    STEP 1 — CHOOSE SPORTS FORMAT
    ═══════════════════════════════════════════ */
@@ -2516,9 +2563,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-format-close:hover {
-  background: rgba(255, 255, 255, 0.12);
-}
+  .mp-format-close:hover {
+    background: rgba(255, 255, 255, 0.12);
+  }
 }
 
 .mp-format-title {
@@ -2564,10 +2611,10 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-format-card:hover {
-  transform: translateY(-3px);
-  box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
-}
+  .mp-format-card:hover {
+    transform: translateY(-3px);
+    box-shadow: 0 12px 26px rgba(0, 0, 0, 0.28);
+  }
 }
 
 .mp-format-card--active {
@@ -2635,9 +2682,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-format-card__btn:hover {
-  filter: brightness(1.07);
-}
+  .mp-format-card__btn:hover {
+    filter: brightness(1.07);
+  }
 }
 
 .mp-format-card__btn:disabled {
@@ -2700,9 +2747,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-format-chip__btn:hover {
-  background: rgba(255, 255, 255, 0.18);
-}
+  .mp-format-chip__btn:hover {
+    background: rgba(255, 255, 255, 0.18);
+  }
 }
 
 .mp-card--empty {
@@ -2789,9 +2836,9 @@ input.mp-text-input:disabled {
 }
 
 @media (hover: hover) and (pointer: fine) {
-.mp-team-panel__remove:hover {
-  background: #f7d7cf;
-}
+  .mp-team-panel__remove:hover {
+    background: #f7d7cf;
+  }
 }
 
 /* ── Standing (win / lose radios) ── */
