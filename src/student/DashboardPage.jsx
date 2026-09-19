@@ -381,21 +381,30 @@ function FinishedCarousel({ matches, emptyText }) {
   // shrink the card to the measured container width so the active slide
   // fills the screen; above it, always keep the desktop/laptop CARD_W
   // untouched regardless of how the container happens to measure.
-  const containerRef = useRef(null);
+  // A plain useRef + mount-only effect would only ever observe whichever
+  // DOM node existed the first time this ran. `.finished-carousel` unmounts
+  // and remounts every time the sport filter toggles the match list between
+  // empty and non-empty (see the `total === 0` branch below), which detaches
+  // the observer from a node that's no longer in the DOM — cardW then stays
+  // stuck at whatever it last measured instead of re-measuring the new node,
+  // so the card visibly resizes wrong the next time matches reappear. A
+  // callback ref stored in state makes the effect re-run (and reattach the
+  // observer) every time the node itself is attached or detached.
+  const [containerEl, setContainerEl] = useState(null);
+  const containerRef = useCallback((node) => setContainerEl(node), []);
   const [cardW, setCardW] = useState(CARD_W);
 
   useEffect(() => {
-    const el = containerRef.current;
-    if (!el) return;
+    if (!containerEl) return;
     const update = () => {
       if (window.innerWidth > 600) { setCardW(CARD_W); return; }
-      setCardW(Math.min(CARD_W, el.clientWidth || CARD_W));
+      setCardW(Math.min(CARD_W, containerEl.clientWidth || CARD_W));
     };
     update();
     const ro = new ResizeObserver(update);
-    ro.observe(el);
+    ro.observe(containerEl);
     return () => ro.disconnect();
-  }, []);
+  }, [containerEl]);
 
   const step = cardW + GAP;
 
