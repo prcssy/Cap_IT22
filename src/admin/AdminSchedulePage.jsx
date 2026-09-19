@@ -2753,7 +2753,7 @@ export default function AdminSchedulePage() {
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState(REGISTRATION_TAB_INDEX);
-  const [level, setLevel] = useState('highSchool');
+  const [level, setLevel] = useState('elementary');
 
   // Registration data
   const [summaryRows,      setSummaryRows]      = useState([]);
