@@ -807,12 +807,10 @@ export default function DashboardPage() {
         >
           {visibleUpcoming.map(m => <UpcomingCard key={m.id} match={m} />)}
         </ScrollRow>
-        {finished.length > 0 && (
-          <FinishedCarousel
-            matches={visibleFinished}
-            emptyText={`No finished${sportSuffix} matches yet.`}
-          />
-        )}
+        <FinishedCarousel
+          matches={visibleFinished}
+          emptyText={`No finished${sportSuffix} matches yet.`}
+        />
         <Contact contactFooterRef={contactFooterRef} />
       </div>
     </div>
