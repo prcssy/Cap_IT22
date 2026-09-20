@@ -106,7 +106,7 @@ async function logActivity({ actorUid, actorEmail, actorName, actorRole, type, d
   });
 }
 
-exports.createStaffAccount = onCall(async (request) => {
+exports.createStaffAccount = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireSuperAdmin(request);
 
   //  Kunin ang ipinadala mula sa website
@@ -198,7 +198,7 @@ exports.createStaffAccount = onCall(async (request) => {
  * setCustomUserClaims only exists on the Admin SDK, so there was never a
  * way to do that from the browser.
  */
-exports.assignStaffRole = onCall(async (request) => {
+exports.assignStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireSuperAdmin(request);
   const data = request.data || {};
   const role = data.role;
@@ -265,7 +265,7 @@ exports.assignStaffRole = onCall(async (request) => {
  * clears the custom claim. Same Super-Admin-only / never-self gate as
  * assignStaffRole above.
  */
-exports.removeStaffRole = onCall(async (request) => {
+exports.removeStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireSuperAdmin(request);
   const data = request.data || {};
   const email = (data.targetEmail || "").trim().toLowerCase();
@@ -327,7 +327,7 @@ exports.removeStaffRole = onCall(async (request) => {
  * function computes. Pairs with the Firestore rules change that denies
  * direct client writes to matchRecords/{level} and teamRankings/{level}.
  */
-exports.submitMatchRecord = onCall(async (request) => {
+exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireStaff(request);
   const data = request.data || {};
   const {
@@ -490,7 +490,7 @@ exports.submitMatchRecord = onCall(async (request) => {
  * stored in Firestore (never from the client), and finalPoints is always
  * recomputed here, never accepted as-is.
  */
-exports.editMatchRecord = onCall(async (request) => {
+exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireStaff(request);
   const data = request.data || {};
   const {
@@ -596,7 +596,7 @@ exports.editMatchRecord = onCall(async (request) => {
  * but still has to run here once matchRecords/{level} denies direct client
  * writes, same as the two functions above.
  */
-exports.removeScheduledMatchRecords = onCall(async (request) => {
+exports.removeScheduledMatchRecords = onCall({ enforceAppCheck: true }, async (request) => {
   await requireStaff(request);
   const data = request.data || {};
   const { level, scheduleIds } = data;

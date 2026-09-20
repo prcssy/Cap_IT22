@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore, collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -32,7 +33,27 @@ let storage;
 let functions;
 
 try {
-  app       = initializeApp(firebaseConfig);
+  app = initializeApp(firebaseConfig);
+
+  const recaptchaSiteKey = import.meta.env.VITE_FIREBASE_RECAPTCHA_SITE_KEY;
+  if (recaptchaSiteKey) {
+    // Lets App Check attest from localhost/LAN dev (vite.config.js sets
+    // server.host: true) without a real reCAPTCHA pass — register the
+    // token this logs to the console as a debug token in Firebase Console
+    // > App Check > Apps > (this app) > Manage debug tokens.
+    if (import.meta.env.DEV) {
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } else {
+    console.warn(
+      'VITE_FIREBASE_RECAPTCHA_SITE_KEY not set — App Check is not active for this session.'
+    );
+  }
+
   auth      = getAuth(app);
   db        = getFirestore(app);
   storage   = getStorage(app);
