@@ -173,7 +173,7 @@ export default function ProfilePage() {
           <div className="profile-identity-left">
             <h2 className="profile-full-name">{displayName.toUpperCase()}</h2>
             <p className="profile-student-number">
-              Student Number &nbsp;<span className="profile-dots">{studentNumber}</span>
+              Student Name
             </p>
             <span className="profile-role-badge">
               <FaUserTag className="profile-role-icon" /> Role: {role}
