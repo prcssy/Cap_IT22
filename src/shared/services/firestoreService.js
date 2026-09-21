@@ -1248,6 +1248,18 @@ export async function submitMatchRecord(payload) {
 }
 
 /**
+ * Rebuilds every rating of a level from its match records via the
+ * `recalculateRatings` Cloud Function (each sport + division replayed from
+ * 1200, orphaned ratings dropped). Returns `{ records, rankings }`.
+ */
+export async function recalculateRatings(level) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'recalculateRatings');
+  const { data } = await call({ level });
+  return data;
+}
+
+/**
  * The Updated Match Summary table's inline quick-edit (1v1 records only),
  * via the `editMatchRecord` Cloud Function — same reasoning as
  * submitMatchRecord above: prevPoints/finalPoints are never trusted from

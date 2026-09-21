@@ -542,13 +542,37 @@ export default function RankingPage() {
      Sports & Teams roster is the source of truth for who even exists —
      a team shows up here with default rating/0-0 record even before its
      first match is recorded, same as Moderator's default-1200 baseline). */
+  /* Ratings are derived from match records, so a scope with no records left
+     (e.g. after the admin reset a format) must not keep showing its old
+     ratings — they are ignored until a new record is saved there. */
+  const activeRankings = useMemo(() => {
+    // scopeKey -> names of the teams that actually have a record in it.
+    const played = new Map();
+    records.forEach((r) => {
+      const key = `${norm(r.sportName)}::${norm(displayCategory(r.category))}`;
+      if (!played.has(key)) played.set(key, new Set());
+      const roster = r.participants?.length ? r.participants : [r.teamA, r.teamB];
+      roster.forEach((p) => { if (p?.name) played.get(key).add(norm(p.name)); });
+    });
+    // A team's saved points only count if it still has a record there too —
+    // deleting its records must not leave orphaned points behind.
+    return Object.fromEntries(
+      Object.entries(rankingPoints)
+        .filter(([key]) => played.has(key))
+        .map(([key, teamMap]) => [
+          key,
+          Object.fromEntries(Object.entries(teamMap || {}).filter(([name]) => played.get(key).has(norm(name)))),
+        ]),
+    );
+  }, [rankingPoints, records]);
+
   const championData = useMemo(() => {
     const divisionPicked = championDivision !== 'All Divisions';
 
     /* Which saved scopes the current tab + division actually cover. Every
        rating below is read from these and nothing else, so Basketball MEN
        can never borrow a point from Chess or from Basketball WOMEN. */
-    const scopesInView = Object.entries(rankingPoints)
+    const scopesInView = Object.entries(activeRankings)
       .map(([key, teamMap]) => {
         const [scopeSport, scopeCategory] = String(key).split('::');
         return { key, sport: scopeSport, category: scopeCategory, teamMap };
@@ -629,7 +653,7 @@ export default function RankingPage() {
       const carried = [];
       if (!sportAverages.length) {
         const bySportAll = new Map();
-        Object.entries(rankingPoints).forEach(([scopeKey, teamMap]) => {
+        Object.entries(activeRankings).forEach(([scopeKey, teamMap]) => {
           const [scopeSport] = String(scopeKey).split('::');
           if (championSport !== 'All Sports' && norm(scopeSport) !== norm(championSport)) return;
           const savedPoints = savedPointsForTeam(teamMap, t);
@@ -688,7 +712,7 @@ export default function RankingPage() {
         color: colorForTeam(t.name), rating, wins, losses, played, carriedOver,
       };
     });
-  }, [teams, sports, schedules, rankingPoints, records, championSport, championDivision]);
+  }, [teams, sports, schedules, activeRankings, records, championSport, championDivision]);
 
   /* Medal tally is driven only by finalized records saved by Moderator.
      For a 1-vs-many record, the saved finishing place determines
@@ -846,21 +870,25 @@ export default function RankingPage() {
       )));
     };
 
-    scopes.forEach(({ sportName, category, divLabel, standings }) => {
+    /* Medals follow the win-loss record only: most wins = gold, then silver,
+       then bronze. Teams level on the same record are NOT separated by point
+       difference or head-to-head — the positions they share stay unawarded
+       until a rematch (Request a Schedule) breaks the tie. */
+    scopes.forEach(({ sportName, divLabel, standings }) => {
       if (!scopeIsComplete(sportName, divLabel)) return;
       const sorted = [...standings.values()]
-        .map((s) => ({ ...s, team: s.name }))
-        .sort((a, b) => b.wins - a.wins || a.losses - b.losses || a.team.localeCompare(b.team));
-      const ranked = applyPointDifferentialTieBreakers(
-        sorted, records, sportName, category,
-        (a, b) => a.wins === b.wins && a.losses === b.losses,
-      );
+        .sort((a, b) => b.wins - a.wins || a.losses - b.losses);
       const medalKeys = ['gold', 'silver', 'bronze'];
-      [ranked[0], ranked[1], ranked[2]].forEach((entry, idx) => {
-        if (!entry) return;
-        const row = ensureTeam({ name: entry.name, logo: entry.logo });
-        if (row) row[medalKeys[idx]] += 1;
-      });
+      let pos = 0;
+      while (pos < sorted.length && pos < medalKeys.length) {
+        const group = sorted.filter((t) => t.wins === sorted[pos].wins && t.losses === sorted[pos].losses);
+        // Only a team alone at its record earns the medal for its position.
+        if (group.length === 1) {
+          const row = ensureTeam({ name: group[0].name, logo: group[0].logo });
+          if (row) row[medalKeys[pos]] += 1;
+        }
+        pos += group.length;
+      }
     });
 
     return [...byTeam.values()];
