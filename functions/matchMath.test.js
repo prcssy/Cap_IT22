@@ -186,3 +186,26 @@ test('replayScope orders by schedule, even when recorded out of order', () => {
   assert.equal(r1.teamA.prevPoints, 1200);                    // earlier game starts at the base
   assert.equal(r2.teamA.prevPoints, r1.teamA.finalPoints);    // later game adopts it
 });
+
+test('DRAW sentinel: equal ratings and scores leave both teams unchanged, both place 1st', () => {
+  const rows = [
+    { id: 'a', name: 'A', score: 11, totalViolations: 0, comeback: false, prevPoints: 1200 },
+    { id: 'b', name: 'B', score: 11, totalViolations: 0, comeback: false, prevPoints: 1200 },
+  ];
+  const comp = require('./matchMath').buildComputation({ rows, mode: 'points', winnerOverrideId: 'DRAW' });
+  assert.equal(comp.winnerId, 'DRAW');
+  comp.teams.forEach((t) => {
+    assert.equal(t.place, 1);
+    assert.equal(t.finalPoints, 1200);
+  });
+});
+
+test('DRAW: the lower-rated team gains and the higher-rated team loses', () => {
+  const rows = [
+    { id: 'a', name: 'A', score: 5, totalViolations: 0, comeback: false, prevPoints: 1400 },
+    { id: 'b', name: 'B', score: 5, totalViolations: 0, comeback: false, prevPoints: 1200 },
+  ];
+  const comp = require('./matchMath').buildComputation({ rows, mode: 'points', winnerOverrideId: 'DRAW' });
+  assert.ok(comp.teams[0].change < 0);
+  assert.ok(comp.teams[1].change > 0);
+});

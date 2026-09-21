@@ -182,7 +182,11 @@ function pairComputation({ mode, ownRating, oppRating, ownScore, oppScore, viola
 
 /* Full computation for a whole match: every team rated against every other
    team, changes summed, placements resolved from the raw scores. */
-function buildComputation({ rows, mode, winnerOverrideId }) {
+function buildComputation({ rows, mode, winnerOverrideId: rawWinnerOverrideId }) {
+  /* 'DRAW' is a sentinel winner: a two-team match that ended level. Each side
+     scores S = 0.5 against the other and both share 1st place. */
+  const isDraw = rawWinnerOverrideId === 'DRAW' && rows.length === 2;
+  const winnerOverrideId = isDraw ? null : rawWinnerOverrideId;
   /* A manual winner override applies regardless of team count: the
      overridden team is placed first (ties among the rest keep score order),
      and it's treated as beating every other team head-to-head — not just
@@ -197,14 +201,16 @@ function buildComputation({ rows, mode, winnerOverrideId }) {
     return mode === 'points' ? b.score - a.score : a.score - b.score;
   });
   const placeById = {};
-  ordered.forEach((r, i) => { placeById[r.id] = i + 1; });
+  ordered.forEach((r, i) => { placeById[r.id] = isDraw ? 1 : i + 1; });
 
   const teams = rows.map((t) => {
     const opponents = rows.filter((o) => o.id !== t.id);
     const pairings = opponents.map((o) => {
-      const sOverride = winnerOverrideId && (t.id === winnerOverrideId || o.id === winnerOverrideId)
-        ? (winnerOverrideId === t.id ? 1 : 0)
-        : null;
+      const sOverride = isDraw
+        ? 0.5
+        : winnerOverrideId && (t.id === winnerOverrideId || o.id === winnerOverrideId)
+          ? (winnerOverrideId === t.id ? 1 : 0)
+          : null;
       const p = pairComputation({
         mode,
         ownRating: t.prevPoints,
@@ -233,9 +239,11 @@ function buildComputation({ rows, mode, winnerOverrideId }) {
     };
   });
 
-  const winnerId = winnerOverrideId
-    ? winnerOverrideId
-    : (teams.find((t) => t.place === 1)?.id ?? null);
+  const winnerId = isDraw
+    ? 'DRAW'
+    : winnerOverrideId
+      ? winnerOverrideId
+      : (teams.find((t) => t.place === 1)?.id ?? null);
 
   return { teams, winnerId };
 }
@@ -529,18 +537,21 @@ function computeEditFinalPoints(record, editDraft, isPoints) {
   // producing a finalPoints value that silently disagrees with the score
   // shown right next to it. Only fall back to the original winner when the
   // edit is a genuine tie or the inputs are incomplete (f1A/f1B both 0).
+  const isDraw = f1A === 0 && record.winner === 'DRAW';
   const isWinnerA = f1A > 0 ? true : f1A < 0 ? false : record.winner === 'A';
   const ratingA = record.teamA.prevPoints ?? DEFAULT_POINTS;
   const ratingB = record.teamB.prevPoints ?? DEFAULT_POINTS;
   const eA = expectedScore(ratingA, ratingB);
   const eB = expectedScore(ratingB, ratingA);
-  const changeA = K_FACTOR * ((isWinnerA ? 1 : 0) - eA) + PPU * (f1A - violA + (record.teamA.comeback ? COMEBACK_BONUS : 0));
-  const changeB = K_FACTOR * ((!isWinnerA ? 1 : 0) - eB) + PPU * (f1B - violB + (record.teamB.comeback ? COMEBACK_BONUS : 0));
+  const sA = isDraw ? 0.5 : (isWinnerA ? 1 : 0);
+  const sB = isDraw ? 0.5 : (isWinnerA ? 0 : 1);
+  const changeA = K_FACTOR * (sA - eA) + PPU * (f1A - violA + (record.teamA.comeback ? COMEBACK_BONUS : 0));
+  const changeB = K_FACTOR * (sB - eB) + PPU * (f1B - violB + (record.teamB.comeback ? COMEBACK_BONUS : 0));
 
   return {
     finalPointsA: round4(ratingA + changeA),
     finalPointsB: round4(ratingB + changeB),
-    winner: isWinnerA ? 'A' : 'B',
+    winner: isDraw ? 'DRAW' : (isWinnerA ? 'A' : 'B'),
   };
 }
 
@@ -785,6 +796,7 @@ function ViolationsModal({ sideLabel, teamLabel, teamLogo, initialRows, violatio
 ═══════════════════════════════════════════ */
 function ConfirmModal({ pending, levelLabel, onCancel, onConfirm, saving }) {
   const { sportName, category, mode, multi, teams, winnerId, formatLabel } = pending;
+  const isDraw = winnerId === 'DRAW';
   const winnerTeam = teams.find((t) => t.id === winnerId) || teams[0];
   const diffLabel = mode === 'points' ? 'Total points difference' : 'Total time difference';
   const statLabel = mode === 'points' ? 'Points/Score' : 'Time';
@@ -801,7 +813,7 @@ function ConfirmModal({ pending, levelLabel, onCancel, onConfirm, saving }) {
           <span>Format: <b>{formatLabel}</b></span>
         </div>
 
-        <div className="mp-receipt__winner"><FaTrophy /> Winner: {winnerTeam.name}</div>
+        <div className="mp-receipt__winner"><FaTrophy /> {isDraw ? 'Draw — no winner' : `Winner: ${winnerTeam.name}`}</div>
 
         <div className={`mp-receipt__teams ${multi ? 'mp-receipt__teams--multi' : ''}`}>
           {teams.map((t, i) => (
@@ -828,7 +840,7 @@ function ConfirmModal({ pending, levelLabel, onCancel, onConfirm, saving }) {
                 </div>
 
                 <ul className="mp-rteam__facts">
-                  <li><FaMedal /> Standing: <b>{multi ? placeLabel(t.place) : (t.id === winnerId ? 'Winner = 1' : 'Lose = 0')}</b></li>
+                  <li><FaMedal /> Standing: <b>{multi ? placeLabel(t.place) : (isDraw ? 'Draw = 0.5' : t.id === winnerId ? 'Winner = 1' : 'Lose = 0')}</b></li>
                   <li>{mode === 'points' ? <FaStar /> : <FaClock />} {statLabel}: <b>{mode === 'points' ? t.score : formatMinutes(t.score)}</b></li>
                   <li><FaExclamationTriangle /> Violations: <b>{t.totalViolations}</b></li>
                   <li><FaExchangeAlt /> Comeback: <b>{t.comeback ? `Yes (+${COMEBACK_BONUS})` : 'No (0)'}</b></li>
@@ -875,6 +887,7 @@ function SuccessModal({ record, onClose, onViewRanking }) {
   const list = record.participants && record.participants.length
     ? record.participants
     : [record.teamA, record.teamB];
+  const isDraw = record.winner === 'DRAW' || record.draw;
   const winner = record.participants && record.participants.length
     ? [...record.participants].sort((a, b) => (a.place || 99) - (b.place || 99))[0]
     : (record.winner === 'A' ? record.teamA : record.teamB);
@@ -885,7 +898,7 @@ function SuccessModal({ record, onClose, onViewRanking }) {
         <button className="mp-result-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
         <div className="mp-result-icon mp-result-icon--success"><FaCheck /></div>
         <h2 className="mp-result-title">Match record updated successfully!</h2>
-        <p className="mp-result-sub">{winner.name} takes the win</p>
+        <p className="mp-result-sub">{isDraw ? 'The match ended in a draw' : `${winner.name} takes the win`}</p>
         <div className="mp-result-score">
           {list.map((t) => `${t.name}: ${fmtPts(t.finalPoints)}`).join('  •  ')}
         </div>
@@ -1106,12 +1119,12 @@ function MatchPanel({
   entry, index, mode, multi, teamOptions, teamLabel,
   onChange, onOpenViolations, onRemove, canRemove,
   prevPoints, compute, opponentLabel, opponentRating, opponentScoreText,
-  isWinner, hasWinner, onSetWinner, onSetLoser,
+  isWinner, hasWinner, isDraw, onSetWinner, onSetLoser, onSetDraw,
   readOnly, teamLocked,
 }) {
   const selectedTeam = teamOptions.find((o) => o.key === entry.teamId);
   const totalViolations = entry.violations.reduce((s, r) => s + (parseInt(r.count, 10) || 0), 0);
-  const status = hasWinner ? (isWinner ? 'win' : 'lose') : null;
+  const status = isDraw ? 'draw' : hasWinner ? (isWinner ? 'win' : 'lose') : null;
 
   const [vBump, setVBump] = useState(false);
   const prevViol = useRef(totalViolations);
@@ -1232,6 +1245,18 @@ function MatchPanel({
                 disabled={readOnly}
               />
             </label>
+            {!multi && (
+              <label className="mp-standing__opt">
+                <span className="mp-standing__chip mp-standing__chip--draw">Draw</span>
+                <input
+                  type="radio"
+                  name={`standing-${entry.id}`}
+                  checked={status === 'draw'}
+                  onChange={() => onSetDraw()}
+                  disabled={readOnly}
+                />
+              </label>
+            )}
           </div>
         </div>
       </div>
@@ -1338,8 +1363,8 @@ function MatchPanel({
 
       <div className="mp-pill">
         <div className="mp-pill__seg">{selectedTeam ? selectedTeam.label : teamLabel}</div>
-        <div className={`mp-pill__seg ${status === 'win' ? 'mp-pill__seg--win' : status === 'lose' ? 'mp-pill__seg--lose' : ''}`}>
-          <FaTrophy /> {status === 'win' ? 'Win' : status === 'lose' ? 'Lose' : '—'}
+        <div className={`mp-pill__seg ${status === 'win' ? 'mp-pill__seg--win' : status === 'lose' ? 'mp-pill__seg--lose' : status === 'draw' ? 'mp-pill__seg--draw' : ''}`}>
+          <FaTrophy /> {status === 'win' ? 'Win' : status === 'lose' ? 'Lose' : status === 'draw' ? 'Draw' : '—'}
         </div>
       </div>
     </div>
@@ -1957,10 +1982,15 @@ export default function ModeratorPage() {
 
   const readyRows = useMemo(() => rows.filter((r) => r.ready), [rows]);
 
+  /* Equal scores in a one-on-one match are a draw unless the moderator picks
+     a winner by hand. */
+  const autoDraw = !isMulti && readyRows.length === 2 && readyRows[0].score === readyRows[1].score;
+  const winnerOverride = winnerManual ? winnerId : (autoDraw ? 'DRAW' : null);
+
   const computation = useMemo(() => {
     if (readyRows.length < 2) return null;
-    return buildComputation({ rows: readyRows, mode, winnerOverrideId: winnerManual ? winnerId : null });
-  }, [readyRows, mode, winnerManual, winnerId]);
+    return buildComputation({ rows: readyRows, mode, winnerOverrideId: winnerOverride });
+  }, [readyRows, mode, winnerOverride]);
 
   const computeById = useMemo(() => {
     const map = {};
@@ -1980,8 +2010,13 @@ export default function ModeratorPage() {
     setWinnerManual(true);
     setWinnerId(entryId);
   }
+  function handleSetDraw() {
+    if (entries.length !== 2) return; // draws only exist in one-on-one matches
+    setWinnerManual(true);
+    setWinnerId('DRAW');
+  }
   function handleSetLoser(entryId) {
-    if (winnerId !== entryId) return; // already a loser — nothing to do
+    if (winnerId !== entryId && winnerId !== 'DRAW') return; // already a loser — nothing to do
     if (entries.length === 2) {
       const other = entries.find((e) => e.id !== entryId);
       setWinnerManual(true);
@@ -2011,7 +2046,9 @@ export default function ModeratorPage() {
       ? list.findIndex((p) => p.place === 1)
       : (rec.winner === 'A' ? 0 : 1);
     setWinnerManual(true);
-    setWinnerId(next[winnerIdx >= 0 ? winnerIdx : 0].id);
+    setWinnerId(rec.winner === 'DRAW' && !(rec.participants && rec.participants.length)
+      ? 'DRAW'
+      : next[winnerIdx >= 0 ? winnerIdx : 0].id);
   }
 
   /* Point the sport/division pickers at whatever the chosen fixture says,
@@ -2108,14 +2145,20 @@ export default function ModeratorPage() {
     if (reasons.length === 0 && computation) {
       const best = computation.teams.filter((t) => t.place === 1);
       const tiedTop = computation.teams.filter((t) => t.score === best[0].score);
-      if (tiedTop.length > 1 && !winnerManual) {
-        reasons.push('The top scores are tied — set the winner with the Win/Lose buttons, or correct the scores.');
+      if (tiedTop.length > 1 && !winnerManual && !autoDraw) {
+        reasons.push(isMulti
+          ? 'The top scores are tied — set the winner with the Win/Lose buttons, or correct the scores.'
+          : 'The scores are tied — choose Draw, set the winner with the Win/Lose buttons, or correct the scores.');
+      }
+      if (winnerManual && winnerId === 'DRAW' && computation.teams.length === 2
+        && computation.teams[0].score !== computation.teams[1].score) {
+        reasons.push('A draw needs equal scores — correct the scores, or set a winner instead.');
       }
     }
 
     if (reasons.length) { setInvalidReasons(reasons); return; }
 
-    const comp = buildComputation({ rows: readyRows, mode, winnerOverrideId: winnerManual ? winnerId : null });
+    const comp = buildComputation({ rows: readyRows, mode, winnerOverrideId: winnerOverride });
 
     setPending({
       mode,
@@ -2133,7 +2176,7 @@ export default function ModeratorPage() {
       // Captured here (not re-read from state in handleConfirm) so the
       // Cloud Function's own buildComputation run is given the exact same
       // input that produced this preview.
-      winnerOverrideId: winnerManual ? winnerId : null,
+      winnerOverrideId: winnerOverride,
     });
   }
 
@@ -2533,6 +2576,8 @@ export default function ModeratorPage() {
                       opponentScoreText={opp.scoreText}
                       isWinner={winnerId === entry.id}
                       hasWinner={!!winnerId}
+                      isDraw={winnerId === 'DRAW'}
+                      onSetDraw={handleSetDraw}
                       onSetWinner={() => handleSetWinner(entry.id)}
                       onSetLoser={() => handleSetLoser(entry.id)}
                       readOnly={!!lockedRecord}

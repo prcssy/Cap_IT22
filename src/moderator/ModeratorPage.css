@@ -1483,6 +1483,11 @@ input.mp-text-input:disabled {
   color: #fff;
 }
 
+.mp-pill__seg--draw {
+  background: #cbd5e1;
+  color: #1e293b;
+}
+
 /* Update button footer */
 .mp-update-row {
   display: flex;
@@ -3038,6 +3043,11 @@ input.mp-text-input:disabled {
 
 .mp-standing__chip--lose {
   background: #ea3b2a;
+}
+
+.mp-standing__chip--draw {
+  background: #cbd5e1;
+  color: #1e293b;
 }
 
 .mp-standing__opt input[type='radio'] {

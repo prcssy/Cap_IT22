@@ -386,6 +386,11 @@ exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) =>
   if (!Array.isArray(rows) || rows.length < 2) {
     throw new HttpsError("invalid-argument", "At least two teams are required.");
   }
+  if (winnerOverrideId === "DRAW") {
+    if (multi || rows.length !== 2 || rows[0].score !== rows[1].score) {
+      throw new HttpsError("invalid-argument", "A draw needs exactly two teams with equal scores.");
+    }
+  }
   rows.forEach((r) => {
     if (!r || typeof r.id !== "string" || !r.name || typeof r.score !== "number" || Number.isNaN(r.score)) {
       throw new HttpsError("invalid-argument", "Each row needs an id, name, and numeric score.");
@@ -470,7 +475,8 @@ exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) =>
     const ordered = [...cTeams].sort((a, b) => a.place - b.place);
     const teamA = asStored(cTeams[0]);
     const teamB = asStored(cTeams[1]);
-    const winnerSide = cTeams[0].id === comp.winnerId ? "A" : "B";
+    const isDraw = comp.winnerId === "DRAW";
+    const winnerSide = isDraw ? "DRAW" : (cTeams[0].id === comp.winnerId ? "A" : "B");
     const diff = Math.abs((cTeams[0].score ?? 0) - (cTeams[1].score ?? 0));
 
     const yearLevelLabel = yearLevel ? (matchMath.LEVEL_LABELS[yearLevel] || yearLevel) : "";
@@ -491,6 +497,7 @@ exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) =>
       label,
       diff: matchMath.round4(diff),
       winner: winnerSide,
+      draw: isDraw,
       teamA,
       teamB,
       participants: multi ? ordered.map(asStored) : [],
@@ -525,7 +532,7 @@ exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) =>
     actorName: actor.name,
     actorRole: actor.role,
     type: "Match Record Saved",
-    details: `Saved the ${record.sportName || "match"} result for ${record.teamA?.name || "?"} vs ${record.teamB?.name || "?"}`,
+    details: `Saved the ${record.sportName || "match"} result for ${record.teamA?.name || "?"} vs ${record.teamB?.name || "?"}${record.draw ? " (draw)" : ""}`,
     targetType: "matchRecord",
     targetId: record.id,
     targetLabel: record.sportName,
@@ -589,6 +596,7 @@ exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
     const nextRecord = {
       ...record,
       winner,
+      draw: winner === "DRAW",
       teamA: {
         ...record.teamA,
         id: teamAObj.id || record.teamA.id,

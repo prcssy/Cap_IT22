@@ -87,7 +87,11 @@ function pairComputation({ mode, ownRating, oppRating, ownScore, oppScore, viola
   return { E, S, f1, f2, f3, change, ownRating, oppRating };
 }
 
-function buildComputation({ rows, mode, winnerOverrideId }) {
+function buildComputation({ rows, mode, winnerOverrideId: rawWinnerOverrideId }) {
+  /* 'DRAW' is a sentinel winner: a two-team match that ended level. Each side
+     scores S = 0.5 against the other and both share 1st place. */
+  const isDraw = rawWinnerOverrideId === 'DRAW' && rows.length === 2;
+  const winnerOverrideId = isDraw ? null : rawWinnerOverrideId;
   const ordered = [...rows].sort((a, b) => {
     if (winnerOverrideId) {
       if (a.id === winnerOverrideId && b.id !== winnerOverrideId) return -1;
@@ -96,14 +100,16 @@ function buildComputation({ rows, mode, winnerOverrideId }) {
     return mode === 'points' ? b.score - a.score : a.score - b.score;
   });
   const placeById = {};
-  ordered.forEach((r, i) => { placeById[r.id] = i + 1; });
+  ordered.forEach((r, i) => { placeById[r.id] = isDraw ? 1 : i + 1; });
 
   const teams = rows.map((t) => {
     const opponents = rows.filter((o) => o.id !== t.id);
     const pairings = opponents.map((o) => {
-      const sOverride = winnerOverrideId && (t.id === winnerOverrideId || o.id === winnerOverrideId)
-        ? (winnerOverrideId === t.id ? 1 : 0)
-        : null;
+      const sOverride = isDraw
+        ? 0.5
+        : winnerOverrideId && (t.id === winnerOverrideId || o.id === winnerOverrideId)
+          ? (winnerOverrideId === t.id ? 1 : 0)
+          : null;
       const p = pairComputation({
         mode,
         ownRating: t.prevPoints,
@@ -132,9 +138,11 @@ function buildComputation({ rows, mode, winnerOverrideId }) {
     };
   });
 
-  const winnerId = winnerOverrideId
-    ? winnerOverrideId
-    : (teams.find((t) => t.place === 1)?.id ?? null);
+  const winnerId = isDraw
+    ? 'DRAW'
+    : winnerOverrideId
+      ? winnerOverrideId
+      : (teams.find((t) => t.place === 1)?.id ?? null);
 
   return { teams, winnerId };
 }
@@ -153,16 +161,20 @@ function computeEditFinalPoints({ ratingA, ratingB, violA, violB, comebackA, com
     f1B = valid ? mA - mB : 0;
   }
 
+  // An edit that leaves a recorded draw level stays a draw (S = 0.5 each).
+  const isDraw = f1A === 0 && fallbackWinner === 'DRAW';
   const isWinnerA = f1A > 0 ? true : f1A < 0 ? false : fallbackWinner === 'A';
   const eA = expectedScore(ratingA, ratingB);
   const eB = expectedScore(ratingB, ratingA);
-  const changeA = K_FACTOR * ((isWinnerA ? 1 : 0) - eA) + PPU * (f1A - violA + (comebackA ? COMEBACK_BONUS : 0));
-  const changeB = K_FACTOR * ((!isWinnerA ? 1 : 0) - eB) + PPU * (f1B - violB + (comebackB ? COMEBACK_BONUS : 0));
+  const sA = isDraw ? 0.5 : (isWinnerA ? 1 : 0);
+  const sB = isDraw ? 0.5 : (isWinnerA ? 0 : 1);
+  const changeA = K_FACTOR * (sA - eA) + PPU * (f1A - violA + (comebackA ? COMEBACK_BONUS : 0));
+  const changeB = K_FACTOR * (sB - eB) + PPU * (f1B - violB + (comebackB ? COMEBACK_BONUS : 0));
 
   return {
     finalPointsA: round4(ratingA + changeA),
     finalPointsB: round4(ratingB + changeB),
-    winner: isWinnerA ? 'A' : 'B',
+    winner: isDraw ? 'DRAW' : (isWinnerA ? 'A' : 'B'),
   };
 }
 
@@ -237,6 +249,8 @@ function replayScope(records, scopeKey, orderOf) {
     if (multi) {
       const first = list.find((p) => p.place === 1);
       winnerOverrideId = first ? (first.id || null) : null;
+    } else if (rec.winner === 'DRAW') {
+      winnerOverrideId = 'DRAW';
     } else if (rec.winner === 'A' || rec.winner === 'B') {
       winnerOverrideId = rows[rec.winner === 'A' ? 0 : 1].id;
     }
