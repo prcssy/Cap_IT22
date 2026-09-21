@@ -316,6 +316,29 @@ function buildSportOnlyOptions(sports) {
   }));
 }
 
+/* Request-a-schedule picker: unlike the rating scope, the admin schedules
+   each division of a multi-division group separately, so a group with
+   Senior + Junior is offered as "MEN (Senior)" and "MEN (Junior)" — the same
+   labels the admin's category dropdown uses. */
+function buildRequestDivisionOptionsForSport(sport) {
+  if (!sport) return [];
+  const byLabel = new Map();
+  (sport.categoryGroups || []).forEach((g) => {
+    const divs = g.divisions || [];
+    const groupLabel = displayCategory((g.label || '').trim());
+    (divs.length ? divs : [null]).forEach((d) => {
+      const dName = (d?.name || '').trim();
+      const label = divs.length > 1 && dName && norm(dName) !== norm(groupLabel)
+        ? `${groupLabel} (${dName})`
+        : (groupLabel || dName);
+      if (label && !byLabel.has(norm(label))) {
+        byLabel.set(norm(label), { key: d?.id || g.id, label, category: label, format: d?.format || '' });
+      }
+    });
+  });
+  return [...byLabel.values()];
+}
+
 /* Divisions belonging to a single sport. The group label is the displayed
    division; the child division name is the format and is not shown. */
 function buildDivisionOptionsForSport(sport) {
@@ -1598,7 +1621,7 @@ export default function ModeratorPage() {
   const requestSportOptions = useMemo(() => buildSportOnlyOptions(requestSports), [requestSports]);
   const requestSelectedSport = requestSports.find((s) => s.id === requestSportId) || null;
   const requestDivisionOptions = useMemo(
-    () => buildDivisionOptionsForSport(requestSelectedSport),
+    () => buildRequestDivisionOptionsForSport(requestSelectedSport),
     [requestSelectedSport],
   );
   const requestDivisionRequired = requestDivisionOptions.length > 0;
