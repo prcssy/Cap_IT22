@@ -106,7 +106,7 @@ async function logActivity({ actorUid, actorEmail, actorName, actorRole, type, d
   });
 }
 
-exports.createStaffAccount = onCall(async (request) => {
+exports.createStaffAccount = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireSuperAdmin(request);
 
   //  Kunin ang ipinadala mula sa website
@@ -198,7 +198,7 @@ exports.createStaffAccount = onCall(async (request) => {
  * setCustomUserClaims only exists on the Admin SDK, so there was never a
  * way to do that from the browser.
  */
-exports.assignStaffRole = onCall(async (request) => {
+exports.assignStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireSuperAdmin(request);
   const data = request.data || {};
   const role = data.role;
@@ -265,7 +265,7 @@ exports.assignStaffRole = onCall(async (request) => {
  * clears the custom claim. Same Super-Admin-only / never-self gate as
  * assignStaffRole above.
  */
-exports.removeStaffRole = onCall(async (request) => {
+exports.removeStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireSuperAdmin(request);
   const data = request.data || {};
   const email = (data.targetEmail || "").trim().toLowerCase();
@@ -327,7 +327,7 @@ exports.removeStaffRole = onCall(async (request) => {
  * function computes. Pairs with the Firestore rules change that denies
  * direct client writes to matchRecords/{level} and teamRankings/{level}.
  */
-exports.submitMatchRecord = onCall(async (request) => {
+exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireStaff(request);
   const data = request.data || {};
   const {
@@ -354,9 +354,11 @@ exports.submitMatchRecord = onCall(async (request) => {
 
   const recordsRef = db.collection("matchRecords").doc(level);
   const rankingsRef = db.collection("teamRankings").doc(level);
+  const schedulesRef = db.collection("matchSchedules").doc(level);
 
   const { record, records, rankings } = await db.runTransaction(async (tx) => {
-    const [recordsSnap, rankingsSnap] = await Promise.all([tx.get(recordsRef), tx.get(rankingsRef)]);
+    const [recordsSnap, rankingsSnap, schedulesSnap] = await Promise.all([tx.get(recordsRef), tx.get(rankingsRef), tx.get(schedulesRef)]);
+    const orderOf = matchMath.scheduleOrder(schedulesSnap.exists ? (schedulesSnap.data().matches || []) : []);
     const existingRecords = recordsSnap.exists ? (recordsSnap.data().records || []) : [];
     const rankingsAll = rankingsSnap.exists ? (rankingsSnap.data().points || {}) : {};
 
@@ -454,18 +456,24 @@ exports.submitMatchRecord = onCall(async (request) => {
     };
 
     const idx = existingRecords.findIndex((r) => r.id === newRecord.id);
-    const nextRecords = idx >= 0
+    const withNew = idx >= 0
       ? existingRecords.map((r) => (r.id === newRecord.id ? newRecord : r))
       : [...existingRecords, newRecord];
 
-    const nextScope = { ...scoped };
-    cTeams.forEach((t) => { nextScope[t.name] = matchMath.round4(t.finalPoints); });
+    // Replay the whole scope so every later game of these teams picks up the
+    // rating this save produced (and this game picks up earlier ones).
+    const replay = matchMath.replayScope(withNew, scopeKey, orderOf);
+    const nextRecords = replay.records;
+    const savedRecord = nextRecords.find((r) => r.id === newRecord.id) || newRecord;
+
+    const nextScope = { ...scoped, ...replay.latest };
+    cTeams.forEach((t) => { if (!(t.name in replay.latest)) nextScope[t.name] = matchMath.round4(t.finalPoints); });
     const nextRankings = { ...rankingsAll, [scopeKey]: nextScope };
 
     tx.set(recordsRef, { records: nextRecords, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.set(rankingsRef, { points: nextRankings, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
-    return { record: newRecord, records: nextRecords, rankings: nextRankings };
+    return { record: savedRecord, records: nextRecords, rankings: nextRankings };
   });
 
   await logActivity({
@@ -490,7 +498,7 @@ exports.submitMatchRecord = onCall(async (request) => {
  * stored in Firestore (never from the client), and finalPoints is always
  * recomputed here, never accepted as-is.
  */
-exports.editMatchRecord = onCall(async (request) => {
+exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireStaff(request);
   const data = request.data || {};
   const {
@@ -503,9 +511,11 @@ exports.editMatchRecord = onCall(async (request) => {
 
   const recordsRef = db.collection("matchRecords").doc(level);
   const rankingsRef = db.collection("teamRankings").doc(level);
+  const schedulesRef = db.collection("matchSchedules").doc(level);
 
   const { updated, records, rankings } = await db.runTransaction(async (tx) => {
-    const [recordsSnap, rankingsSnap] = await Promise.all([tx.get(recordsRef), tx.get(rankingsRef)]);
+    const [recordsSnap, rankingsSnap, schedulesSnap] = await Promise.all([tx.get(recordsRef), tx.get(rankingsRef), tx.get(schedulesRef)]);
+    const orderOf = matchMath.scheduleOrder(schedulesSnap.exists ? (schedulesSnap.data().matches || []) : []);
     const existingRecords = recordsSnap.exists ? (recordsSnap.data().records || []) : [];
     const rankingsAll = rankingsSnap.exists ? (rankingsSnap.data().points || {}) : {};
 
@@ -559,18 +569,23 @@ exports.editMatchRecord = onCall(async (request) => {
       updatedAt: Date.now(),
     };
 
-    const nextRecords = existingRecords.map((r) => (r.id === recordId ? nextRecord : r));
+    const withEdit = existingRecords.map((r) => (r.id === recordId ? nextRecord : r));
 
+    // Replay the scope so later games of these teams follow the edited result.
     const scopeKey = matchMath.rankingScopeKey(nextRecord.sportName, nextRecord.category);
-    const nextScope = { ...(rankingsAll[scopeKey] || {}) };
-    nextScope[nextRecord.teamA.name] = finalPointsA;
-    nextScope[nextRecord.teamB.name] = finalPointsB;
+    const replay = matchMath.replayScope(withEdit, scopeKey, orderOf);
+    const nextRecords = replay.records;
+    const savedRecord = nextRecords.find((r) => r.id === recordId) || nextRecord;
+
+    const nextScope = { ...(rankingsAll[scopeKey] || {}), ...replay.latest };
+    if (!(nextRecord.teamA.name in replay.latest)) nextScope[nextRecord.teamA.name] = finalPointsA;
+    if (!(nextRecord.teamB.name in replay.latest)) nextScope[nextRecord.teamB.name] = finalPointsB;
     const nextRankings = { ...rankingsAll, [scopeKey]: nextScope };
 
     tx.set(recordsRef, { records: nextRecords, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.set(rankingsRef, { points: nextRankings, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
-    return { updated: nextRecord, records: nextRecords, rankings: nextRankings };
+    return { updated: savedRecord, records: nextRecords, rankings: nextRankings };
   });
 
   await logActivity({
@@ -596,7 +611,7 @@ exports.editMatchRecord = onCall(async (request) => {
  * but still has to run here once matchRecords/{level} denies direct client
  * writes, same as the two functions above.
  */
-exports.removeScheduledMatchRecords = onCall(async (request) => {
+exports.removeScheduledMatchRecords = onCall({ enforceAppCheck: true }, async (request) => {
   await requireStaff(request);
   const data = request.data || {};
   const { level, scheduleIds } = data;

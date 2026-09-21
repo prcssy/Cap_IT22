@@ -5,6 +5,7 @@ import './RankingPage.css';
 import { FaSearch, FaCrown, FaMedal, FaChevronDown } from 'react-icons/fa';
 import Contact from '../public/Landing/Contact/Contact';
 import LevelTabs from '../shared/components/LevelTabs';
+import { useLockedLevel } from '../shared/utils/schoolLevel';
 import { getSportsTeamsConfig, getTeamRankings, getMatchRecords } from '../shared/services/firestoreService';
 import { applyPointDifferentialTieBreakers } from '../shared/utils/tieBreakers';
 
@@ -380,7 +381,9 @@ export default function RankingPage() {
     { key: 'highSchool', label: levelLabels.highSchool },
     { key: 'college', label: levelLabels.college },
   ], [levelLabels]);
-  const [levelKey, setLevelKey] = useState('elementary');
+  const lockedLevel = useLockedLevel();
+  const [pickedLevel, setLevelKey] = useState('elementary');
+  const levelKey = lockedLevel || pickedLevel;
   const [championSport, setChampionSport] = useState('All Sports');
   const [medalSport, setMedalSport] = useState('All Sports');
   const [medalDivision, setMedalDivision] = useState('All Divisions');
@@ -631,11 +634,24 @@ export default function RankingPage() {
   }, [teams, rankingPoints, records, championSport, championDivision]);
 
   /* Medal tally is driven only by finalized records saved by Moderator.
-     For a 1-vs-1 record, the selected winner receives gold and the other
-     team receives silver. For a 1-vs-many record, the saved finishing place
-     determines gold/silver/bronze. This is intentionally separate from
-     championData so changing the medal tally cannot affect champion
-     prediction/ranking calculations. */
+     For a 1-vs-many record, the saved finishing place determines
+     gold/silver/bronze straight away — each race is its own event.
+
+     For 1-vs-1 (head-to-head) records, a medal is NOT handed out per match
+     won — a team that goes 5-0 in a round robin used to rack up 5 golds for
+     one sport/division, which is wrong: only one gold/silver/bronze exists
+     per sport+division. Instead, every head-to-head match in a sport+
+     division is rolled up into that scope's overall win-loss standings
+     (same participants a team would face across a round robin or bracket),
+     and exactly one gold/silver/bronze is awarded there — to whichever team
+     holds the best win-loss record, 2nd best, 3rd best. Ties on win-loss
+     reuse the same head-to-head/point-differential tie-breakers as the
+     Potential Champion and Medal tables elsewhere on this page, scoped to
+     that match's own sport/category so a tie-break never pulls in results
+     from an unrelated sport.
+
+     This is intentionally separate from championData so changing the medal
+     tally cannot affect champion prediction/ranking calculations. */
   const medalData = useMemo(() => {
     const byTeam = new Map();
 
@@ -682,33 +698,64 @@ export default function RankingPage() {
       ensureTeam({ id: team.id, name: team.name, logo: team.logo });
     });
 
-    records.forEach((record) => {
-      if (medalSport !== 'All Sports' && norm(record.sportName) !== norm(medalSport)) return;
-      if (divisionPicked && !categoriesMatch(record.category, medalDivision)) return;
+    const relevantRecords = records.filter((record) => (
+      (medalSport === 'All Sports' || norm(record.sportName) === norm(medalSport))
+      && (!divisionPicked || categoriesMatch(record.category, medalDivision))
+    ));
 
+    // 1-vs-many events (races): each record is its own event, so the saved
+    // finishing place awards its medal immediately, one race at a time.
+    relevantRecords.forEach((record) => {
       const participants = record.participants || [];
-      if (participants.length > 2) {
-        participants.forEach((participant) => {
-          const row = ensureTeam(participant);
-          if (!row) return;
-          if (participant.place === 1) row.gold += 1;
-          else if (participant.place === 2) row.silver += 1;
-          else if (participant.place === 3) row.bronze += 1;
-        });
-        return;
-      }
+      if (participants.length <= 2) return;
+      participants.forEach((participant) => {
+        const row = ensureTeam(participant);
+        if (!row) return;
+        if (participant.place === 1) row.gold += 1;
+        else if (participant.place === 2) row.silver += 1;
+        else if (participant.place === 3) row.bronze += 1;
+      });
+    });
 
-      const teamA = ensureTeam(record.teamA);
-      const teamB = ensureTeam(record.teamB);
-      if (!teamA && !teamB) return;
+    // 1-vs-1 matches: roll every decided head-to-head result up into its
+    // sport+division's overall win-loss standings, then award exactly one
+    // gold/silver/bronze per scope to the top 3 records.
+    const scopes = new Map(); // scopeKey -> { sportName, category, standings: Map }
+    relevantRecords.forEach((record) => {
+      const participants = record.participants || [];
+      if (participants.length > 2) return;
       if (record.draw || record.winner === 'DRAW') return;
-      if (record.winner === 'A') {
-        if (teamA) teamA.gold += 1;
-        if (teamB) teamB.silver += 1;
-      } else if (record.winner === 'B') {
-        if (teamB) teamB.gold += 1;
-        if (teamA) teamA.silver += 1;
+      const winnerTeam = record.winner === 'A' ? record.teamA : record.winner === 'B' ? record.teamB : null;
+      const loserTeam = record.winner === 'A' ? record.teamB : record.winner === 'B' ? record.teamA : null;
+      if (!winnerTeam?.name || !loserTeam?.name) return;
+
+      const scopeKey = `${norm(record.sportName)}::${norm(displayCategory(record.category))}`;
+      if (!scopes.has(scopeKey)) {
+        scopes.set(scopeKey, { sportName: record.sportName, category: record.category, standings: new Map() });
       }
+      const { standings } = scopes.get(scopeKey);
+      [winnerTeam, loserTeam].forEach((t) => {
+        const key = norm(t.name);
+        if (!standings.has(key)) standings.set(key, { name: t.name, logo: t.logo || null, wins: 0, losses: 0 });
+      });
+      standings.get(norm(winnerTeam.name)).wins += 1;
+      standings.get(norm(loserTeam.name)).losses += 1;
+    });
+
+    scopes.forEach(({ sportName, category, standings }) => {
+      const sorted = [...standings.values()]
+        .map((s) => ({ ...s, team: s.name }))
+        .sort((a, b) => b.wins - a.wins || a.losses - b.losses || a.team.localeCompare(b.team));
+      const ranked = applyPointDifferentialTieBreakers(
+        sorted, records, sportName, category,
+        (a, b) => a.wins === b.wins && a.losses === b.losses,
+      );
+      const medalKeys = ['gold', 'silver', 'bronze'];
+      [ranked[0], ranked[1], ranked[2]].forEach((entry, idx) => {
+        if (!entry) return;
+        const row = ensureTeam({ name: entry.name, logo: entry.logo });
+        if (row) row[medalKeys[idx]] += 1;
+      });
     });
 
     return [...byTeam.values()];
@@ -735,6 +782,7 @@ export default function RankingPage() {
               row together on mobile (see .rk-controls-row), while the
               title above them still gets its own line. */}
           <div className="rk-controls-row">
+          {!lockedLevel && (
           <LevelTabs
             levels={LEVELS}
             value={levelKey}
@@ -743,6 +791,7 @@ export default function RankingPage() {
             tabClassName="rk-lvltab"
             activeClassName="rk-lvltab--active"
           />
+          )}
           <div className="rk-search-wrap">
             <FaSearch className="rk-search-icon" />
             <input

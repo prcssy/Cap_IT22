@@ -3,6 +3,7 @@ import { getAuth } from 'firebase/auth';
 import { getFirestore, collection, doc, getDoc, getDocs } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 import { getFunctions } from 'firebase/functions';
+import { initializeAppCheck, ReCaptchaEnterpriseProvider } from 'firebase/app-check';
 
 const firebaseConfig = {
   apiKey:            import.meta.env.VITE_FIREBASE_API_KEY,
@@ -32,7 +33,39 @@ let storage;
 let functions;
 
 try {
-  app       = initializeApp(firebaseConfig);
+  app = initializeApp(firebaseConfig);
+
+  const recaptchaSiteKey = import.meta.env.VITE_FIREBASE_RECAPTCHA_SITE_KEY;
+  if (recaptchaSiteKey) {
+    // Lets App Check attest from localhost/LAN dev (vite.config.js sets
+    // server.host: true) without a real reCAPTCHA pass — register the
+    // token this logs to the console as a debug token in Firebase Console
+    // > App Check > Apps > (this app) > Manage debug tokens.
+    if (import.meta.env.DEV) {
+      // crypto.randomUUID only exists in secure contexts (HTTPS/localhost);
+      // over plain-HTTP LAN dev (http://192.168.x.x) App Check's debug-token
+      // generation would otherwise throw and every callable would fail.
+      if (typeof crypto !== 'undefined' && typeof crypto.randomUUID !== 'function') {
+        crypto.randomUUID = () => {
+          const b = crypto.getRandomValues(new Uint8Array(16));
+          b[6] = (b[6] & 0x0f) | 0x40;
+          b[8] = (b[8] & 0x3f) | 0x80;
+          const h = Array.from(b, (x) => x.toString(16).padStart(2, '0'));
+          return `${h.slice(0, 4).join('')}-${h.slice(4, 6).join('')}-${h.slice(6, 8).join('')}-${h.slice(8, 10).join('')}-${h.slice(10).join('')}`;
+        };
+      }
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+    }
+    initializeAppCheck(app, {
+      provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),
+      isTokenAutoRefreshEnabled: true,
+    });
+  } else {
+    console.warn(
+      'VITE_FIREBASE_RECAPTCHA_SITE_KEY not set — App Check is not active for this session.'
+    );
+  }
+
   auth      = getAuth(app);
   db        = getFirestore(app);
   storage   = getStorage(app);

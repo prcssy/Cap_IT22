@@ -23,6 +23,7 @@ import {
   getBarangaysByMunicipality,
   getBarangayByCode,
 } from '@aivangogh/ph-address';
+import { getSchoolLevel } from '../shared/utils/schoolLevel';
 import './RegistrationPage.css';
 import Contact from '../public/Landing/Contact/Contact';
 
@@ -34,18 +35,6 @@ const GRADE_LEVELS = ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Gr
    the admin has configured for the student's school level in the
    "Sports & Teams" manager (see SportsTeamsManager.jsx /
    getSportsTeamsConfig). Same source, same shape, for both dropdowns. */
-const ELEMENTARY_GRADES = new Set(['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6']);
-const HIGH_SCHOOL_GRADES = new Set(['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']);
-const COLLEGE_GRADES = new Set(['1st Year', '2nd Year', '3rd Year', '4th Year']);
-
-function getSchoolLevel(gradeLevel) {
-  if (!gradeLevel) return null;
-  if (ELEMENTARY_GRADES.has(gradeLevel)) return 'elementary';
-  if (HIGH_SCHOOL_GRADES.has(gradeLevel)) return 'highSchool';
-  if (COLLEGE_GRADES.has(gradeLevel)) return 'college';
-  return null;
-}
-
 function gradeLevelDisplayLabel(gradeLevel, levelLabels) {
   const label = levelLabels[getSchoolLevel(gradeLevel)];
   return label ? `${gradeLevel} (${label})` : gradeLevel;
