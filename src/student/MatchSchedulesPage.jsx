@@ -226,7 +226,7 @@ function RoundsView({ matches, resultFor, champion }) {
         <div className="ms-bracket-champion-box">
           {champion
             ? <span className="ms-bracket-champion-name" style={{ fontWeight: 800 }}>{champion}</span>
-            : <span className="ms-bracket-champion-placeholder">?</span>}
+            : <span className="ms-bracket-champion-placeholder">TBA</span>}
         </div>
       </div>
     </div>
@@ -905,8 +905,8 @@ export default function MatchSchedulesPage() {
      - Round-robin / rounds view: nobody until EVERY game in the category has
        a saved result, then the team with the most wins. Games added later
        (extra schedule / requested game) count too, so the champion reopens
-       until those are played. Ties on wins fall to point difference; a
-       still-tied top spot means no champion yet. */
+       until those are played. A tie on wins for first place means no
+       champion yet (TBA) — it is not settled by point difference. */
   const champion = useMemo(() => {
     if (generatedMatches.length === 0) return null;
 
@@ -977,7 +977,9 @@ export default function MatchSchedulesPage() {
     }
     const ranked = [...standings.values()].sort((x, y) => y.wins - x.wins || y.diff - x.diff);
     if (!ranked.length) return null;
-    if (ranked[1] && ranked[0].wins === ranked[1].wins && ranked[0].diff === ranked[1].diff) return null;
+    // Level on wins for first place: no champion yet (TBA) until a tie-break
+    // game is added and played — point difference doesn't decide it.
+    if (ranked[1] && ranked[0].wins === ranked[1].wins) return null;
     return ranked[0].name.toUpperCase();
   }, [generatedMatches, categoryMatches, isBracketShaped, isDoubleBracketShaped, resultFor, rankingsByLevel]);
 

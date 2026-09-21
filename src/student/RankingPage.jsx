@@ -65,35 +65,50 @@ function medalDivisionLabel(group, division) {
   const multi = (group.divisions || []).length > 1;
   return multi && dName && norm(dName) !== norm(label) ? `${label} (${dName})` : label;
 }
-function medalOptionsForSport(sport) {
-  const byLabel = new Map();
-  (sport?.categoryGroups || []).forEach((g) => {
-    const divs = g.divisions || [];
-    (divs.length ? divs : [null]).forEach((d) => {
-      const label = medalDivisionLabel(g, d);
-      if (label && !byLabel.has(norm(label))) byLabel.set(norm(label), { key: d?.id || g.id, label });
-    });
-  });
-  return [...byLabel.values()];
-}
-/* Under "All Sports" only the group ("MEN", "WOMEN") is offered — the
-   Senior/Junior/event divisions only mean something inside one sport. */
-function medalOptionsForSports(sports) {
-  const byLabel = new Map();
-  (sports || []).forEach((sport) => {
-    medalOptionsForSport(sport).forEach((o) => {
-      const label = baseDivision(o.label);
-      if (label && !byLabel.has(norm(label))) byLabel.set(norm(label), { key: o.key, label });
-    });
-  });
-  return [...byLabel.values()];
-}
 /* A plain pick ("MEN") covers every division of that group; a full pick
    ("MEN (Senior)") covers only that one. */
 function matchesPick(label, pick) {
   if (norm(label) === norm(pick)) return true;
   return !/\(/.test(pick) && norm(baseDivision(label)) === norm(pick);
 }
+/* Category (group: MEN, WOMEN) and Division (Senior, Junior, …) are separate
+   filters. Categories come from every group of the chosen sport; divisions
+   only exist within one sport + category that has more than one division. */
+function categoryOptionsFor(sports, sportName) {
+  const list = sportName === 'All Sports'
+    ? sports
+    : sports.filter((s) => norm(s.name) === norm(sportName));
+  const byLabel = new Map();
+  list.forEach((sport) => {
+    (sport.categoryGroups || []).forEach((g) => {
+      const label = displayCategory((g.label || '').trim());
+      if (label && !byLabel.has(norm(label))) byLabel.set(norm(label), { key: g.id, label });
+    });
+  });
+  return [...byLabel.values()];
+}
+function divisionNamesFor(sports, sportName, category) {
+  if (sportName === 'All Sports' || category === 'All Categories') return [];
+  const sport = sports.find((s) => norm(s.name) === norm(sportName));
+  const byName = new Map();
+  (sport?.categoryGroups || []).forEach((g) => {
+    if (norm(displayCategory(g.label)) !== norm(category)) return;
+    const divs = g.divisions || [];
+    if (divs.length < 2) return;
+    divs.forEach((d) => {
+      const name = (d.name || '').trim();
+      if (name && !byName.has(norm(name))) byName.set(norm(name), { key: d.id, label: name });
+    });
+  });
+  return [...byName.values()];
+}
+/* Category + division → the single label the filters below understand
+   ("All Divisions", "MEN" or "MEN (Senior)"). */
+function combineDivision(category, divisionName) {
+  if (category === 'All Categories') return 'All Divisions';
+  return divisionName === 'All Divisions' ? category : `${category} (${divisionName})`;
+}
+
 /* "MEN (Senior)" → "MEN" — the plain category that records/tie-breakers use. */
 function baseDivision(label) {
   return (label || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
@@ -237,7 +252,7 @@ function SportSelect({ value, onChange, sports }) {
    `option`. Built as a custom button + list instead (same pattern as
    the landing page's Levels dropdown), so the open menu can actually
    match the site's dark navy / gold theme. */
-function DivisionSelect({ value, onChange, options }) {
+function DivisionSelect({ value, onChange, options, allLabel = 'All Divisions' }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -250,7 +265,7 @@ function DivisionSelect({ value, onChange, options }) {
     return () => document.removeEventListener('mousedown', onClickOutside);
   }, [open]);
 
-  const allLabels = ['All Divisions', ...options.map(d => d.label)];
+  const allLabels = [allLabel, ...options.map(d => d.label)];
 
   return (
     <div className="rk-division-dropdown" ref={wrapRef}>
@@ -414,7 +429,9 @@ export default function RankingPage() {
   const levelKey = lockedLevel || pickedLevel;
   const [championSport, setChampionSport] = useState('All Sports');
   const [medalSport, setMedalSport] = useState('All Sports');
-  const [medalDivision, setMedalDivision] = useState('All Divisions');
+  const [medalCategory, setMedalCategory] = useState('All Categories');
+  const [medalDivName, setMedalDivName] = useState('All Divisions');
+  const medalDivision = combineDivision(medalCategory, medalDivName);
   const [search, setSearch] = useState('');
   const contactRef = React.useRef(null);
 
@@ -425,7 +442,9 @@ export default function RankingPage() {
   const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
-  const [championDivision, setChampionDivision] = useState('All Divisions');
+  const [championCategory, setChampionCategory] = useState('All Categories');
+  const [championDivName, setChampionDivName] = useState('All Divisions');
+  const championDivision = combineDivision(championCategory, championDivName);
 
   useEffect(() => {
     let cancelled = false;
@@ -478,25 +497,22 @@ export default function RankingPage() {
      within one specific sport. Resets to "All Divisions" whenever the
      sport changes, so you're never stuck on a division that doesn't
      exist for the newly selected sport. */
-  const championDivisionOptions = useMemo(() => {
-    if (championSport === 'All Sports') return medalOptionsForSports(sports);
-    const sport = sports.find(s => norm(s.name) === norm(championSport));
-    return medalOptionsForSport(sport);
-  }, [sports, championSport]);
+  const championCategoryOptions = useMemo(() => categoryOptionsFor(sports, championSport), [sports, championSport]);
+  const championDivisionOptions = useMemo(
+    () => divisionNamesFor(sports, championSport, championCategory),
+    [sports, championSport, championCategory],
+  );
+  const medalCategoryOptions = useMemo(() => categoryOptionsFor(sports, medalSport), [sports, medalSport]);
+  const medalDivisionOptions = useMemo(
+    () => divisionNamesFor(sports, medalSport, medalCategory),
+    [sports, medalSport, medalCategory],
+  );
 
-  const medalDivisionOptions = useMemo(() => {
-    if (medalSport === 'All Sports') return medalOptionsForSports(sports);
-    const sport = sports.find(s => norm(s.name) === norm(medalSport));
-    return medalOptionsForSport(sport);
-  }, [sports, medalSport]);
-
-  useEffect(() => {
-    setChampionDivision('All Divisions');
-  }, [championSport]);
-
-  useEffect(() => {
-    setMedalDivision('All Divisions');
-  }, [medalSport]);
+  // Changing a parent filter clears the ones under it.
+  const pickChampionSport = (v) => { setChampionSport(v); setChampionCategory('All Categories'); setChampionDivName('All Divisions'); };
+  const pickChampionCategory = (v) => { setChampionCategory(v); setChampionDivName('All Divisions'); };
+  const pickMedalSport = (v) => { setMedalSport(v); setMedalCategory('All Categories'); setMedalDivName('All Divisions'); };
+  const pickMedalCategory = (v) => { setMedalCategory(v); setMedalDivName('All Divisions'); };
 
   /* TeamAndSportsPage displays team.sportIds. Use that same source for the
      ranking filters, deduplicated case-insensitively while preserving the
@@ -908,13 +924,22 @@ export default function RankingPage() {
           <div className="rk-division-row">
             <div className="rk-division-group">
               <label className="rk-division-label">Sport</label>
-              <SportSelect sports={availableSports} value={championSport} onChange={setChampionSport} />
+              <SportSelect sports={availableSports} value={championSport} onChange={pickChampionSport} />
+            </div>
+            <div className="rk-division-group">
+              <label className="rk-division-label">Category</label>
+              <DivisionSelect
+                value={championCategory}
+                onChange={pickChampionCategory}
+                options={championCategoryOptions}
+                allLabel="All Categories"
+              />
             </div>
             <div className="rk-division-group">
               <label className="rk-division-label">Division</label>
               <DivisionSelect
-                value={championDivision}
-                onChange={setChampionDivision}
+                value={championDivName}
+                onChange={setChampionDivName}
                 options={championDivisionOptions}
               />
             </div>
@@ -943,13 +968,22 @@ export default function RankingPage() {
           <div className="rk-division-row">
             <div className="rk-division-group">
               <label className="rk-division-label">Sport</label>
-              <SportSelect sports={availableSports} value={medalSport} onChange={setMedalSport} />
+              <SportSelect sports={availableSports} value={medalSport} onChange={pickMedalSport} />
+            </div>
+            <div className="rk-division-group">
+              <label className="rk-division-label">Category</label>
+              <DivisionSelect
+                value={medalCategory}
+                onChange={pickMedalCategory}
+                options={medalCategoryOptions}
+                allLabel="All Categories"
+              />
             </div>
             <div className="rk-division-group">
               <label className="rk-division-label">Division</label>
               <DivisionSelect
-                value={medalDivision}
-                onChange={setMedalDivision}
+                value={medalDivName}
+                onChange={setMedalDivName}
                 options={medalDivisionOptions}
               />
             </div>
