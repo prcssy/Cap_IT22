@@ -318,7 +318,13 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
   }, [ranked, search]);
 
   if (visible.length === 0) {
-    return <div className="rk-table-empty">No teams found for this sport/level yet.</div>;
+    return (
+      <div className="rk-table-empty">
+        {divisionFilter && divisionFilter !== 'All Divisions'
+          ? `No matches recorded for ${divisionFilter} yet — teams appear here once they play in it.`
+          : 'No teams found for this sport/level yet.'}
+      </div>
+    );
   }
 
   return (
