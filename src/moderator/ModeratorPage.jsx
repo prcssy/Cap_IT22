@@ -343,27 +343,6 @@ function pointsInScope(teamMap, teamName) {
   return Number.isFinite(value) ? value : null;
 }
 
-/* A team's overall standing across every scope it has been rated in —
-   the same number the Ranking page shows under All Sports / All
-   Divisions. Divisions of one sport are averaged into a single sport
-   rating first, then the sports are averaged, so a sport with two
-   divisions doesn't count twice. Returns null for a team that has never
-   been rated anywhere. */
-function overallRating(allRankings, teamName) {
-  const bySport = new Map();
-  Object.entries(allRankings || {}).forEach(([scopeKey, teamMap]) => {
-    const points = pointsInScope(teamMap, teamName);
-    if (points == null) return;
-    const [scopeSport] = String(scopeKey).split('::');
-    if (!bySport.has(scopeSport)) bySport.set(scopeSport, []);
-    bySport.get(scopeSport).push(points);
-  });
-  const sportAverages = [...bySport.values()]
-    .map((list) => list.reduce((sum, p) => sum + p, 0) / list.length);
-  if (!sportAverages.length) return null;
-  return sportAverages.reduce((sum, avg) => sum + avg, 0) / sportAverages.length;
-}
-
 /* Team rankings are scoped per sport + division. */
 function rankingScopeKey(sportName, category) {
   return `${norm(sportName)}::${norm(displayCategory(category))}`;
@@ -1967,16 +1946,10 @@ export default function ModeratorPage() {
     const inScope = pointsInScope(scopedRankings, teamName);
     if (inScope != null) return inScope;
 
-    /* First match in this division, but the team is already ranked
-       elsewhere — carry its standing over instead of resetting it to the
-       new-team baseline. A team on 1224 from another division starts here
-       on 1224, not 1200; only a team that has never been rated at all
-       starts from scratch. */
-    const carried = overallRating(rankings, teamName);
-    if (carried != null) return round4(carried);
-
+    /* Ratings are per sport + division: a team with no rating in this scope
+       starts from the baseline, whatever it earned in other sports. */
     return DEFAULT_POINTS;
-  }, [scopedRankings, rankings, records, schedules, scopeKey, lockedMatch, editingRecord, lockedRecord]);
+  }, [scopedRankings, records, schedules, scopeKey, lockedMatch, editingRecord, lockedRecord]);
 
   const entryScore = useCallback((entry) => {
     if (mode === 'points') return entry.points === '' ? null : Number(entry.points);

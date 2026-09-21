@@ -429,10 +429,9 @@ exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) =>
         const inScope = matchMath.pointsInScope(scoped, r.name);
         if (inScope != null) prevPoints = inScope;
       }
-      if (prevPoints == null) {
-        const carried = matchMath.overallRating(rankingsAll, r.name);
-        prevPoints = carried != null ? matchMath.round4(carried) : matchMath.DEFAULT_POINTS;
-      }
+      // Ratings are per sport + division: no rating in this scope means the
+      // baseline, whatever the team earned in other sports.
+      if (prevPoints == null) prevPoints = matchMath.DEFAULT_POINTS;
       return {
         id: r.id,
         teamId: r.teamId || null,
