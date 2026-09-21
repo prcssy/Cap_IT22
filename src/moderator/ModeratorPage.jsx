@@ -1902,7 +1902,11 @@ export default function ModeratorPage() {
        always followed by the next — regardless of the order they were saved. */
     const schedById = new Map(schedules.map((x) => [x.id, x]));
     const orderOf = (rec) => {
-      const sc = rec?.scheduleId ? schedById.get(rec.scheduleId) : null;
+      /* A record points at its fixture via scheduleId; a locked fixture (no
+         record yet) IS the schedule, so read its own date/time. Without this
+         its order fell to 0, every saved game looked "later", and the form
+         showed the 1200 baseline instead of the team's saved rating. */
+      const sc = rec?.scheduleId ? schedById.get(rec.scheduleId) : (rec?.date ? rec : null);
       if (sc?.date) {
         const t = new Date(`${sc.date}T${sc.time || '00:00'}`).getTime();
         if (!Number.isNaN(t)) return t;
@@ -1921,7 +1925,10 @@ export default function ModeratorPage() {
         && rankingScopeKey(r.sportName, r.category) === targetKey && sideOf(r));
       const earlier = sameScope
         .filter((r) => orderOf(r) < targetOrder
-          || (orderOf(r) === targetOrder && (r.createdAt || 0) <= (snapshot?.createdAt || 0)))
+          // A brand-new entry (no snapshot) comes after every already-saved
+          // game that shares its slot; only a reopened record is bounded by
+          // its own createdAt.
+          || (orderOf(r) === targetOrder && (r.createdAt || 0) <= (snapshot ? snapshot.createdAt || 0 : Infinity)))
         .sort((a, b) => orderOf(a) - orderOf(b) || (a.createdAt || 0) - (b.createdAt || 0));
       if (earlier.length) {
         const fp = sideOf(earlier[earlier.length - 1]).finalPoints;

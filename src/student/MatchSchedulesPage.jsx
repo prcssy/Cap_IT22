@@ -7,7 +7,7 @@ import './MatchSchedulesPage.css';
 import '../admin/AdminSchedulePage.css';
 import Contact from '../public/Landing/Contact/Contact';
 import { FaSearch, FaTrophy } from 'react-icons/fa';
-import { getMatchSchedules, getMatchRecords } from '../shared/services/firestoreService';
+import { getMatchSchedules, getMatchRecords, getTeamRankings } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
 
@@ -64,6 +64,17 @@ function winnerNameOf(record) {
   if (!record || record.draw || record.winner === 'DRAW') return null;
   const roster = record.participants?.length ? record.participants : [];
   if (roster.length > 2) return roster.find(p => p.place === 1)?.name || null;
+  /* Follow the saved scores (higher points / lower time) so an edited result
+     can't leave a stale `winner` flag crowning the wrong team. The flag only
+     decides when the scores are level or missing. */
+  const { teamA, teamB } = record;
+  const higherIsBetter = teamA?.points != null && teamB?.points != null;
+  const num = (v) => (v === null || v === undefined || v === '' ? NaN : Number(v));
+  const a = num(higherIsBetter ? teamA.points : teamA?.minutes);
+  const b = num(higherIsBetter ? teamB.points : teamB?.minutes);
+  if (!Number.isNaN(a) && !Number.isNaN(b) && a !== b) {
+    return (higherIsBetter ? a > b : a < b) ? teamA.name || null : teamB.name || null;
+  }
   if (record.winner === 'A') return record.teamA?.name || null;
   if (record.winner === 'B') return record.teamB?.name || null;
   return null;
@@ -228,7 +239,7 @@ function RoundsView({ matches, resultFor, champion }) {
    two-team box per node at EVERY round (not just round 1), joined by
    connector lines that converge into a Champion box.
    ═══════════════════════════════════════════════════════════ */
-function BracketTree({ stages, resultFor }) {
+function BracketTree({ stages, resultFor, champion }) {
   const ROW_H = 74;
   const NODE_W = 200;
   const NODE_H = 56;
@@ -271,11 +282,17 @@ function BracketTree({ stages, resultFor }) {
   connectors.push(`M ${colX(totalRounds - 1) + NODE_W} ${championY} H ${championX}`);
 
   const finalMatch = stages[totalRounds - 1]?.matches[0] || null;
+  /* The page-level champion also honours later extra games between the
+     finalists; fall back to the final's own result if it isn't supplied. */
   const finalRecord = finalMatch ? resultFor(finalMatch) : null;
-  const championName = finalRecord ? winnerNameOf(finalRecord) : null;
-  const championLogo = finalMatch && championName === finalMatch.teamA ? finalMatch.teamALogo
-    : finalMatch && championName === finalMatch.teamB ? finalMatch.teamBLogo
-    : null;
+  const championName = champion || (finalRecord ? winnerNameOf(finalRecord) : null);
+  const teamLogo = (name) => {
+    if (!finalMatch || !name) return null;
+    if (norm(name) === norm(finalMatch.teamA)) return finalMatch.teamALogo;
+    if (norm(name) === norm(finalMatch.teamB)) return finalMatch.teamBLogo;
+    return null;
+  };
+  const championLogo = teamLogo(championName);
 
   return (
     <div className="ms-btree" style={{ minHeight: height }}>
@@ -703,6 +720,7 @@ export default function MatchSchedulesPage() {
   const [loading, setLoading] = useState(true);
   const [matchesByLevel, setMatchesByLevel] = useState({ elementary: [], highSchool: [], college: [] });
   const [records, setRecords] = useState([]); // Moderator results, all levels
+  const [rankingsByLevel, setRankingsByLevel] = useState({}); // { [level]: { [scopeKey]: { [team]: rating } } }
   const contactRef = React.useRef(null);
 
   /* ── Load real data from Firestore for every level ── */
@@ -727,6 +745,19 @@ export default function MatchSchedulesPage() {
         );
         if (cancelled) return;
         setRecords(recordLists.flat().filter(Boolean));
+
+        /* Team ratings decide an elimination bracket's champion. Optional:
+           without them the champion falls back to the game results. */
+        const rankingLists = await Promise.all(
+          ['elementary', 'highSchool', 'college'].map(levelKey =>
+            getTeamRankings(levelKey).catch(() => ({}))),
+        );
+        if (cancelled) return;
+        setRankingsByLevel({
+          elementary: rankingLists[0] || {},
+          highSchool: rankingLists[1] || {},
+          college: rankingLists[2] || {},
+        });
 
         const tag = (levelKey, matches) =>
           (matches || [])
@@ -848,9 +879,22 @@ export default function MatchSchedulesPage() {
     const used = new Set();
     return (match) => {
       if (byScheduleId.has(match.id)) return byScheduleId.get(match.id);
-      const hit = records.find((record, index) =>
-        !used.has(index) && recordMatchesSchedule(record, match)) || null;
-      if (hit) used.add(records.indexOf(hit));
+      /* A record saved against this exact fixture beats a name-only match,
+         and among several the most recently saved one wins — otherwise a
+         stale earlier result for the same two teams can shadow the current. */
+      const stamp = (r) => r.updatedAt || r.createdAt || 0;
+      let hitIndex = -1;
+      records.forEach((record, index) => {
+        if (used.has(index) || !recordMatchesSchedule(record, match)) return;
+        if (hitIndex < 0) { hitIndex = index; return; }
+        const cur = records[hitIndex];
+        const exact = record.scheduleId != null && String(record.scheduleId) === String(match.id);
+        const curExact = cur.scheduleId != null && String(cur.scheduleId) === String(match.id);
+        if (exact && !curExact) hitIndex = index;
+        else if (exact === curExact && exact && stamp(record) > stamp(cur)) hitIndex = index;
+      });
+      const hit = hitIndex >= 0 ? records[hitIndex] : null;
+      if (hit) used.add(hitIndex);
       byScheduleId.set(match.id, hit);
       return hit;
     };
@@ -874,11 +918,43 @@ export default function MatchSchedulesPage() {
       const maxRound = Math.max(...generatedMatches.map(m => (m.round != null ? m.round : -1)));
       const lastRound = maxRound >= 0 ? generatedMatches.filter(m => m.round === maxRound) : [];
       const candidates = finals.length ? finals : lastRound;
+      let finalMatch = null;
+      let champ = null;
       for (const match of candidates) {
         const winner = winnerNameOf(resultFor(match));
-        if (winner) return winner.toUpperCase();
+        if (winner) { finalMatch = match; champ = winner; break; }
       }
-      return null;
+      if (!champ) return null;
+
+      /* Rule: once the final is played, the finalist with the higher rating
+         (the same rating the Ranking page shows for this sport + division)
+         is the champion. The game-result logic below only decides when the
+         ratings are unavailable or level. */
+      const scopeKey = `${norm(finalMatch.sport)}::${norm(displayCategory(finalMatch.category))}`;
+      const scope = rankingsByLevel[finalMatch.level]?.[scopeKey];
+      const ratingOf = (team) => {
+        const hit = scope && Object.entries(scope).find(([name]) => norm(name) === norm(team));
+        const value = hit ? Number(hit[1]) : NaN;
+        return Number.isFinite(value) ? value : null;
+      };
+      const rA = ratingOf(finalMatch.teamA);
+      const rB = ratingOf(finalMatch.teamB);
+      if (rA != null && rB != null && rA !== rB) {
+        return (rA > rB ? finalMatch.teamA : finalMatch.teamB).toUpperCase();
+      }
+
+      /* An extra game between the same two finalists (e.g. a tie-break added
+         to the schedule after the final) that was played later supersedes the
+         final's result — the latest recorded game between them decides. */
+      const pairKey = (m) => [norm(m.teamA), norm(m.teamB)].sort().join('|');
+      const when = (m) => (m.date ? new Date(`${m.date}T${m.time || '00:00'}`).getTime() || 0 : 0);
+      const finalKey = pairKey(finalMatch);
+      let latest = finalMatch;
+      for (const m of categoryMatches) {
+        if (m === finalMatch || pairKey(m) !== finalKey || when(m) <= when(latest)) continue;
+        if (winnerNameOf(resultFor(m))) latest = m;
+      }
+      return (latest === finalMatch ? champ : winnerNameOf(resultFor(latest))).toUpperCase();
     }
 
     const standings = new Map(); // norm(name) -> { name, wins, diff }
@@ -903,7 +979,7 @@ export default function MatchSchedulesPage() {
     if (!ranked.length) return null;
     if (ranked[1] && ranked[0].wins === ranked[1].wins && ranked[0].diff === ranked[1].diff) return null;
     return ranked[0].name.toUpperCase();
-  }, [generatedMatches, categoryMatches, isBracketShaped, isDoubleBracketShaped, resultFor]);
+  }, [generatedMatches, categoryMatches, isBracketShaped, isDoubleBracketShaped, resultFor, rankingsByLevel]);
 
   const hasAnyData = categories.length > 0;
 
@@ -964,7 +1040,7 @@ export default function MatchSchedulesPage() {
               <h3 className="ms-bracket-title">{category?.label || ''}</h3>
               {generatedMatches.length > 0 ? (
                 isBracketShaped ? (
-                  <BracketTree stages={buildBracketStages(generatedMatches)} resultFor={resultFor} />
+                  <BracketTree stages={buildBracketStages(generatedMatches)} resultFor={resultFor} champion={champion} />
                 ) : isDoubleBracketShaped ? (
                   <div className="msf-dbracket">
                     <div className="msf-dbracket__scroll">
