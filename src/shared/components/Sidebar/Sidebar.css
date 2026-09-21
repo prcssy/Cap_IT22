@@ -294,3 +294,44 @@
     left: 0;
   }
 }
+
+/* Profile button pinned to the upper-right corner, level with the page header */
+.sidebar-profile-top {
+  position: fixed;
+  top: 11px;
+  right: 25px;
+  z-index: 300;
+  width: 32px;
+  height: 32px;
+  font-size: 1.35rem;
+  color: #fff;
+  background: rgba(255, 255, 255, 0.14);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+  border-radius: 50%;
+}
+
+.sidebar-profile-top.active {
+  color: #001529;
+  background: #FCBF19;
+  border-color: #FCBF19;
+}
+
+/* Tooltip opens downward-left so it stays on screen at the right edge */
+.sidebar-profile-top::after {
+  left: 50%;
+  right: auto;
+  top: calc(100% + 8px);
+  transform: translateX(-50%) translateY(-4px);
+}
+
+@media (hover: hover) and (pointer: fine) {
+.sidebar-profile-top:hover::after {
+  transform: translateX(-50%) translateY(0);
+}
+}
+
+@media (max-width: 768px) {
+  .sidebar-profile-top {
+    right: 12px;
+  }
+}
