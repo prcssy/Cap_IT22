@@ -6,7 +6,7 @@ import { FaSearch, FaCrown, FaMedal, FaChevronDown } from 'react-icons/fa';
 import Contact from '../public/Landing/Contact/Contact';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
-import { getSportsTeamsConfig, getTeamRankings, getMatchRecords } from '../shared/services/firestoreService';
+import { getSportsTeamsConfig, getTeamRankings, getMatchRecords, getMatchSchedules } from '../shared/services/firestoreService';
 import { applyPointDifferentialTieBreakers } from '../shared/utils/tieBreakers';
 
 /* ── Sport filter tabs (shared by both tables) ──
@@ -394,6 +394,7 @@ export default function RankingPage() {
   const [sports, setSports] = useState([]);
   const [rankingPoints, setRankingPoints] = useState({}); // { [scopeKey]: { [teamName]: points } }
   const [records, setRecords] = useState([]);
+  const [schedules, setSchedules] = useState([]);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState(null);
   const [championDivision, setChampionDivision] = useState('All Divisions');
@@ -403,12 +404,16 @@ export default function RankingPage() {
     setLoading(true);
     setLoadError(null);
     (async () => {
-      const [configR, ranksR, recsR] = await Promise.allSettled([
+      const [configR, ranksR, recsR, schedR] = await Promise.allSettled([
         getSportsTeamsConfig(levelKey),
         getTeamRankings(levelKey),
         getMatchRecords(levelKey),
+        getMatchSchedules(levelKey),
       ]);
       if (cancelled) return;
+      // Schedules only gate when medals are handed out; if they fail to load
+      // we fall back to the old behaviour rather than hiding every medal.
+      setSchedules(schedR.status === 'fulfilled' ? (schedR.value || []) : []);
 
       if (configR.status === 'fulfilled') {
         setTeams(configR.value.teams || []);
@@ -742,7 +747,25 @@ export default function RankingPage() {
       standings.get(norm(loserTeam.name)).losses += 1;
     });
 
+    // A sport+division's medals are only handed out once EVERY scheduled
+    // match in it has a saved record — before that the standings are still
+    // moving, so nobody holds gold/silver/bronze yet. Scopes with no
+    // schedule at all (manually entered records) count as complete.
+    const scopeIsComplete = (sportName, category) => {
+      const scopeSchedules = schedules.filter((s) => (
+        norm(s.sport) === norm(sportName) && categoriesMatch(s.category, displayCategory(category))
+      ));
+      if (!scopeSchedules.length) return true;
+      return scopeSchedules.every((s) => records.some((r) => (
+        r.scheduleId
+          ? String(r.scheduleId) === String(s.id)
+          : norm(r.sportName) === norm(s.sport)
+            && norm(r.teamA?.name) === norm(s.teamA) && norm(r.teamB?.name) === norm(s.teamB)
+      )));
+    };
+
     scopes.forEach(({ sportName, category, standings }) => {
+      if (!scopeIsComplete(sportName, category)) return;
       const sorted = [...standings.values()]
         .map((s) => ({ ...s, team: s.name }))
         .sort((a, b) => b.wins - a.wins || a.losses - b.losses || a.team.localeCompare(b.team));
@@ -759,7 +782,7 @@ export default function RankingPage() {
     });
 
     return [...byTeam.values()];
-  }, [teams, records, medalSport, medalDivision]);
+  }, [teams, records, schedules, medalSport, medalDivision]);
 
   return (
     <div className="rk-page">
