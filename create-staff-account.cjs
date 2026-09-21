@@ -38,6 +38,8 @@
  *       # via Profile → Change Password)
  *
  *   --role must be one of: admin | moderator | superadmin
+ *   --level=elementary|highSchool|college is required for admin/moderator
+ *       (each is scoped to one school level); ignored for superadmin.
  *   --password=... optionally sets a specific temp password instead of
  *       generating a random one (must be 6+ characters, per Firebase Auth).
  */
@@ -58,6 +60,7 @@ function parseArgs() {
   return args;
 }
 
+const LEVELS = ['elementary', 'highSchool', 'college'];
 const ROLE_COLLECTIONS = { admin: 'admins', moderator: 'moderators', superadmin: 'superadmins' };
 
 function randomPassword() {
@@ -83,6 +86,13 @@ async function main() {
     process.exit(1);
   }
 
+  const scoped = role === 'admin' || role === 'moderator';
+  const level = scoped ? (args.level || 'elementary') : null;
+  if (scoped && !LEVELS.includes(level)) {
+    console.error('❌ --level must be one of: elementary | highSchool | college');
+    process.exit(1);
+  }
+
   const serviceAccount = require(path.join(__dirname, 'serviceAccountKey.json'));
   initializeApp({ credential: cert(serviceAccount) });
   const auth = getAuth();
@@ -94,6 +104,7 @@ async function main() {
   console.log(DRY_RUN ? '🔍 DRY RUN — no account will be created (pass --yes to actually create it)\n' : '⚠️  LIVE RUN — this will create a real account\n');
   console.log(`Email:      ${email}`);
   console.log(`Role:       ${role}  (${collectionName}/${email})`);
+  if (scoped) console.log(`Level:      ${level}`);
   console.log(`Name:       ${name || '(none given)'}`);
   console.log(`users/{uid} profile doc will be created, isAdmin=${role === 'admin' || role === 'superadmin'}`);
 
@@ -121,6 +132,7 @@ async function main() {
 
   await db.collection(collectionName).doc(email).set({
     email,
+    ...(scoped ? { level } : {}),
     addedAt: FieldValue.serverTimestamp(),
   }, { merge: true });
   console.log(`✅ ${collectionName}/${email} allowlist doc written`);

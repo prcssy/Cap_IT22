@@ -23,6 +23,17 @@ service cloud.firestore {
       return signedIn() && exists(/databases/$(database)/documents/superadmins/$(staffEmail()));
     }
 
+    // Admins/moderators are scoped to ONE school level (`level` on their
+    // admins/{email} or moderators/{email} doc; missing = 'elementary').
+    // A Super Admin may manage every level.
+    function canManageLevel(level) {
+      let adminPath = /databases/$(database)/documents/admins/$(staffEmail());
+      let modPath = /databases/$(database)/documents/moderators/$(staffEmail());
+      return isSuperAdmin()
+        || (signedIn() && exists(adminPath) && get(adminPath).data.get('level', 'elementary') == level)
+        || (signedIn() && exists(modPath) && get(modPath).data.get('level', 'elementary') == level);
+    }
+
     // True if `claimedRole` is a role the CALLER'S OWN email is actually
     // entitled to — 'student' always is, anything else requires the
     // matching allowlist doc to exist for request.auth.token.email (never
@@ -132,8 +143,8 @@ service cloud.firestore {
     // Available sections read for anonymous visitors — same reasoning
     // already applied to teamRankings below, so these get the same
     // public-read treatment instead of being gated to signed-in users.
-    match /sportsTeamsConfig/{level} { allow read: if true; allow write: if isStaff(); }
-    match /matchSchedules/{level}    { allow read: if true; allow write: if isStaff(); }
+    match /sportsTeamsConfig/{level} { allow read: if true; allow write: if canManageLevel(level); }
+    match /matchSchedules/{level}    { allow read: if true; allow write: if canManageLevel(level); }
     match /venuesConfig/{docId}      { allow read: if signedIn(); allow write: if isStaff(); }
 
     // matchRecords/{level} holds every confirmed match's rating change

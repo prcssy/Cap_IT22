@@ -10,6 +10,21 @@
 ───────────────────────────────────────────── */
 export const STAFF_ROLES = ['moderator', 'admin', 'superadmin'];
 
+/* Admins and moderators are scoped to ONE school level (the `level` field on
+   their admins/{email} or moderators/{email} doc). Super Admins span all
+   levels, so they carry no level. A staff doc with no/invalid level (every
+   account created before levels existed) is treated as Elementary for now. */
+export const STAFF_LEVELS = ['elementary', 'highSchool', 'college'];
+export const DEFAULT_STAFF_LEVEL = 'elementary';
+
+export function isLevelScopedRole(role) {
+  return role === 'admin' || role === 'moderator';
+}
+
+export function normalizeStaffLevel(level) {
+  return STAFF_LEVELS.includes(level) ? level : DEFAULT_STAFF_LEVEL;
+}
+
 export const ROLE_LABELS = {
   student: 'Player',
   moderator: 'Moderator',

@@ -234,7 +234,7 @@ export async function getActivityLogs() {
  * server-side and re-derives actorRole itself; it doesn't trust anything
  * the client sends beyond the target user and the role being assigned.
  */
-export async function assignStaffRole(targetUser, role) {
+export async function assignStaffRole(targetUser, role, level = null) {
   if (!functions) throw new Error('Firebase Functions not initialized.');
   const call = httpsCallable(functions, 'assignStaffRole');
   const { data } = await call({
@@ -242,6 +242,7 @@ export async function assignStaffRole(targetUser, role) {
     targetEmail: targetUser.email,
     targetName: targetUser.name,
     role,
+    level,
   });
   return data;
 }
@@ -270,10 +271,10 @@ export async function removeStaffRole(targetUser) {
  * omitted if the email already had an account, in which case only the
  * allowlist/profile docs were updated).
  */
-export async function createStaffAccount({ email, role, name }) {
+export async function createStaffAccount({ email, role, name, level = null }) {
   if (!functions) throw new Error('Firebase Functions not initialized.');
   const call = httpsCallable(functions, 'createStaffAccount');
-  const { data } = await call({ email, role, name });
+  const { data } = await call({ email, role, name, level });
   return data;
 }
 

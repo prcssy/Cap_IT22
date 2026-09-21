@@ -14,6 +14,25 @@ const db = getFirestore(); //  ISA LANG — sa labas ng function!
 
 const STAFF_ROLE_COLLECTIONS = { admin: "admins", moderator: "moderators", superadmin: "superadmins" };
 const STAFF_ROLE_LABELS = { admin: "Admin", moderator: "Moderator", superadmin: "Super Admin" };
+const SCHOOL_LEVELS = ["elementary", "highSchool", "college"];
+const DEFAULT_STAFF_LEVEL = "elementary";
+
+/** Admins/moderators are scoped to one school level; superadmins span all (null). */
+function levelForRole(role, docData) {
+  if (role !== "admin" && role !== "moderator") return null;
+  return SCHOOL_LEVELS.includes(docData?.level) ? docData.level : DEFAULT_STAFF_LEVEL;
+}
+
+/** Validates the `level` a Super Admin picked when granting admin/moderator. */
+function levelFieldsForRole(role, level) {
+  if (role === "admin" || role === "moderator") {
+    if (!SCHOOL_LEVELS.includes(level)) {
+      throw new HttpsError("invalid-argument", "level must be one of: elementary, highSchool, college");
+    }
+    return { level };
+  }
+  return { level: FieldValue.delete() };
+}
 
 function randomPassword() {
   return crypto.randomBytes(16).toString("base64url");
@@ -33,7 +52,15 @@ function randomId() {
  * confirming ONE collection instead of reading all three every call.
  */
 async function setStaffClaims(uid, role) {
-  await getAuth().setCustomUserClaims(uid, role ? { role } : {});
+  try {
+    await getAuth().setCustomUserClaims(uid, role ? { role } : {});
+  } catch (error) {
+    // A stale users/{uid} profile can outlive its Auth account. The role
+    // itself lives in the allowlist doc (already written), the claim is only
+    // a cache, so don't fail the whole call over it.
+    if (error.code !== "auth/user-not-found") throw error;
+    logger.warn(`No Auth user for uid ${uid}; skipped setting role claim.`);
+  }
 }
 
 /**
@@ -64,7 +91,7 @@ async function resolveCallerRole(request) {
   if (claimedCollection) {
     const snap = await db.collection(claimedCollection).doc(email).get();
     if (snap.exists) {
-      return { email, role: claimedRole, uid: request.auth.uid, name: request.auth.token.name || "" };
+      return { email, role: claimedRole, level: levelForRole(claimedRole, snap.data()), uid: request.auth.uid, name: request.auth.token.name || "" };
     }
   }
 
@@ -77,7 +104,8 @@ async function resolveCallerRole(request) {
   if (!role) {
     throw new HttpsError("permission-denied", "Only staff accounts can do this.");
   }
-  return { email, role, uid: request.auth.uid, name: request.auth.token.name || "" };
+  const roleDoc = role === "admin" ? adminDoc : role === "moderator" ? moderatorDoc : null;
+  return { email, role, level: levelForRole(role, roleDoc?.data()), uid: request.auth.uid, name: request.auth.token.name || "" };
 }
 
 async function requireStaff(request) {
@@ -89,6 +117,19 @@ async function requireSuperAdmin(request) {
   const actor = await resolveCallerRole(request);
   if (actor.role !== "superadmin") {
     throw new HttpsError("permission-denied", "Only a Super Admin can do this.");
+  }
+  return actor;
+}
+
+/**
+ * Staff gate for anything that writes one school level's data: a Super Admin
+ * may touch any level, an admin/moderator only the level on their own doc.
+ */
+async function requireStaffForLevel(request, level) {
+  requireLevel(level);
+  const actor = await resolveCallerRole(request);
+  if (actor.role !== "superadmin" && actor.level !== level) {
+    throw new HttpsError("permission-denied", "You can only manage your own school level.");
   }
   return actor;
 }
@@ -121,6 +162,7 @@ exports.createStaffAccount = onCall({ enforceAppCheck: true }, async (request) =
   if (!collectionName) {
     throw new HttpsError("invalid-argument", "role must be one of: admin, moderator, superadmin");
   }
+  const levelFields = levelFieldsForRole(role, request.data?.level);
 
   const auth = getAuth();
   let userRecord;
@@ -148,7 +190,7 @@ exports.createStaffAccount = onCall({ enforceAppCheck: true }, async (request) =
       .map((collection) => db.collection(collection).doc(email).delete())
   );
   await db.collection(collectionName).doc(email).set(
-    { email, addedAt: FieldValue.serverTimestamp() },
+    { email, ...levelFields, addedAt: FieldValue.serverTimestamp() },
     { merge: true }
   );
 
@@ -176,7 +218,7 @@ exports.createStaffAccount = onCall({ enforceAppCheck: true }, async (request) =
     actorName: actor.name,
     actorRole: "superadmin",
     type: created ? "Staff Account Created" : "Staff Role Assigned",
-    details: `${created ? "Created" : "Updated"} ${STAFF_ROLE_LABELS[role]} account for ${name || email}`,
+    details: `${created ? "Created" : "Updated"} ${STAFF_ROLE_LABELS[role]}${levelFields.level && typeof levelFields.level === "string" ? ` (${levelFields.level})` : ""} account for ${name || email}`,
     targetType: "user",
     targetId: userRecord.uid,
     targetLabel: email,
@@ -185,7 +227,7 @@ exports.createStaffAccount = onCall({ enforceAppCheck: true }, async (request) =
 
   logger.info(`Staff account ${created ? "created" : "updated"} for ${email} as ${role} by ${actor.email}`);
 
-  return { uid: userRecord.uid, email, role, created, tempPassword };
+  return { uid: userRecord.uid, email, role, level: typeof levelFields.level === "string" ? levelFields.level : null, created, tempPassword };
 });
 
 /**
@@ -215,6 +257,7 @@ exports.assignStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
   if (email === actor.email) {
     throw new HttpsError("failed-precondition", "You can't change your own role here.");
   }
+  const levelFields = levelFieldsForRole(role, data.level);
 
   await Promise.all(
     Object.values(STAFF_ROLE_COLLECTIONS)
@@ -222,7 +265,7 @@ exports.assignStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
       .map((collection) => db.collection(collection).doc(email).delete())
   );
   await db.collection(collectionName).doc(email).set(
-    { email, addedAt: FieldValue.serverTimestamp() },
+    { email, ...levelFields, addedAt: FieldValue.serverTimestamp() },
     { merge: true }
   );
 
@@ -256,7 +299,7 @@ exports.assignStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
     targetLabel: email,
   });
 
-  return { role, email };
+  return { role, email, level: typeof levelFields.level === "string" ? levelFields.level : null };
 });
 
 /**
@@ -328,8 +371,8 @@ exports.removeStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
  * direct client writes to matchRecords/{level} and teamRankings/{level}.
  */
 exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
-  const actor = await requireStaff(request);
   const data = request.data || {};
+  const actor = await requireStaffForLevel(request, data.level);
   const {
     level, recordId, scheduleId, mode, multi, formatId,
     sportId, sportName, category, format, yearLevel,
@@ -499,8 +542,8 @@ exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) =>
  * recomputed here, never accepted as-is.
  */
 exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
-  const actor = await requireStaff(request);
   const data = request.data || {};
+  const actor = await requireStaffForLevel(request, data.level);
   const {
     level, recordId, teamA: teamAIn, teamB: teamBIn,
     totalViolationsA, totalViolationsB, pointsA, pointsB, minutesA, minutesB,
@@ -612,9 +655,9 @@ exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
  * writes, same as the two functions above.
  */
 exports.removeScheduledMatchRecords = onCall({ enforceAppCheck: true }, async (request) => {
-  await requireStaff(request);
   const data = request.data || {};
   const { level, scheduleIds } = data;
+  await requireStaffForLevel(request, level);
 
   requireLevel(level);
   if (!Array.isArray(scheduleIds) || scheduleIds.length === 0) {

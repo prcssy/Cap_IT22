@@ -1356,14 +1356,18 @@ export default function ModeratorPage() {
   const { currentUser, userProfile } = useContext(AuthContext);
   const { schoolName } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
+  // Moderators are scoped to one school level (set by a Super Admin); only
+  // a Super Admin (staffLevel null) can switch between levels.
+  const staffLevel = userProfile?.staffLevel || null;
   const LEVELS = useMemo(() => [
     { key: 'elementary', label: levelLabels.elementary },
     { key: 'highSchool', label: levelLabels.highSchool },
     { key: 'college', label: levelLabels.college },
-  ], [levelLabels]);
+  ].filter((l) => !staffLevel || l.key === staffLevel), [levelLabels, staffLevel]);
   const summaryRef = useRef(null);
 
-  const [level, setLevel] = useState('elementary');
+  const [pickedLevel, setLevel] = useState('elementary');
+  const level = staffLevel || pickedLevel;
   const [sports, setSports] = useState([]);
   const [teams, setTeams] = useState([]);
   const [schedules, setSchedules] = useState([]);

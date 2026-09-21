@@ -2824,15 +2824,19 @@ export default function AdminSchedulePage() {
   const { isAdmin, authLoading, userProfile } = useContext(AuthContext);
   const { schoolName, events } = useContext(BrandingContext);
   const LEVEL_LABELS = useContext(LevelLabelsContext);
+  // Admins are scoped to one school level (set by a Super Admin); only a
+  // Super Admin (staffLevel null) can switch between levels.
+  const staffLevel = userProfile?.staffLevel || null;
   const LEVELS = useMemo(() => [
     { key: 'elementary', label: LEVEL_LABELS.elementary },
     { key: 'highSchool',  label: LEVEL_LABELS.highSchool },
     { key: 'college',     label: LEVEL_LABELS.college },
-  ], [LEVEL_LABELS]);
+  ].filter((l) => !staffLevel || l.key === staffLevel), [LEVEL_LABELS, staffLevel]);
   const navigate = useNavigate();
 
   const [activeTab, setActiveTab] = useState(REGISTRATION_TAB_INDEX);
-  const [level, setLevel] = useState('elementary');
+  const [pickedLevel, setLevel] = useState('elementary');
+  const level = staffLevel || pickedLevel;
 
   // Registration data
   const [summaryRows,      setSummaryRows]      = useState([]);
@@ -2958,14 +2962,20 @@ const fetchSummary = useCallback(async () => {
       .filter(r => studentUids.has(r.uid))
       .map(r => ({ ...r, gradeLevel: studentUsersById.get(r.uid)?.gradeLevel || '—' }));
 
-    setStudentRegs(studentRegistrations);
-    setSummaryRows(buildSummary(studentRegistrations));
+    // A level-scoped admin only sees their own level's registrations on
+    // screen. The PUBLIC counters below are still computed from every
+    // level — they're site-wide totals, not this admin's view.
+    const visibleRegistrations = staffLevel
+      ? studentRegistrations.filter(r => getSchoolLevel(r.gradeLevel) === staffLevel)
+      : studentRegistrations;
+    setStudentRegs(visibleRegistrations);
+    setSummaryRows(buildSummary(visibleRegistrations));
 
     // Recompute the per-event totals from the real documents and publish
     // them, which also repairs any drift in the counter the registration
     // form increments as students submit.
     const freshEventCounts = buildEventCounts(studentRegistrations, events);
-    setEventCounts(freshEventCounts);
+    setEventCounts(staffLevel ? buildEventCounts(visibleRegistrations, events) : freshEventCounts);
     setEventRegistrationCounts(freshEventCounts, events).catch((err) => {
       console.error('Failed to publish event registration counts:', err);
     });
@@ -2989,7 +2999,7 @@ const fetchSummary = useCallback(async () => {
   } finally {
     setSummaryLoading(false);
   }
-}, [events]);
+}, [events, staffLevel]);
 
   useEffect(() => { if (activeTab === REGISTRATION_TAB_INDEX) fetchSummary(); }, [activeTab, fetchSummary]);
 
@@ -3226,7 +3236,7 @@ const fetchSummary = useCallback(async () => {
                 Total Players tiles (and the public counters they publish)
                 update immediately, instead of only after switching tabs or
                 reloading the page. */}
-            <StudentRegistrationDetails onStatusChange={fetchSummary} onDeleted={fetchSummary} />
+            <StudentRegistrationDetails levelFilter={staffLevel || undefined} onStatusChange={fetchSummary} onDeleted={fetchSummary} />
 
           </div>
         )}

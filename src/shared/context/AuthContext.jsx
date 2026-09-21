@@ -11,6 +11,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
 import { createUserProfile, getUserProfile, logActivity } from '../services/firestoreService';
+import { isLevelScopedRole, normalizeStaffLevel } from '../constants/roles';
 
 // ════════════════════════════════════════════════════════════════════════════════
 // STAFF ACCOUNTS CONFIGURATION
@@ -31,6 +32,8 @@ const ROLE_COLLECTIONS = [
   { role: 'moderator', collection: 'moderators' },
 ];
 
+const EMPTY_STAFF_DOCS = { admin: false, moderator: false, superadmin: false, adminLevel: null, moderatorLevel: null };
+
 export const AuthContext = createContext({
   authModal: { isOpen: false, screen: 'login' },
   openAuthModal: () => {},
@@ -40,6 +43,7 @@ export const AuthContext = createContext({
   userProfile: null,
   userRole: 'guest',
   isAdmin: false,
+  staffLevel: null,
   authLoading: false,
   login: async () => {},
   signup: async () => {},
@@ -62,7 +66,17 @@ export const AuthContext = createContext({
  * instead of a fresh closure every render.
  */
 async function resolveStaffRole(email) {
-  if (!db || !email) return 'student';
+  const { role } = await resolveStaffAccess(email);
+  return role;
+}
+
+/**
+ * Same lookup as resolveStaffRole, but also returns the school level an
+ * admin/moderator is scoped to (`level` on their allowlist doc, defaulting
+ * to Elementary when missing). Superadmins/students have no level (null).
+ */
+async function resolveStaffAccess(email) {
+  if (!db || !email) return { role: 'student', level: null };
   const lower = email.toLowerCase();
   // The 3 checks are independent reads (different docs, different
   // collections) — firing them in parallel instead of one-at-a-time in a
@@ -76,14 +90,19 @@ async function resolveStaffRole(email) {
     ROLE_COLLECTIONS.map(async ({ role, collection }) => {
       try {
         const snap = await getDoc(doc(db, collection, lower));
-        return snap.exists() ? role : null;
+        return snap.exists() ? { role, data: snap.data() } : null;
       } catch (error) {
         console.warn(`Failed to check ${collection} status:`, error);
         return null;
       }
     })
   );
-  return results.find(Boolean) || 'student';
+  const hit = results.find(Boolean);
+  if (!hit) return { role: 'student', level: null };
+  return {
+    role: hit.role,
+    level: isLevelScopedRole(hit.role) ? normalizeStaffLevel(hit.data?.level) : null,
+  };
 }
 
 export function AuthProvider({ children }) {
@@ -99,7 +118,7 @@ export function AuthProvider({ children }) {
   // granted/revoked by a Super Admin reaches an already-open session
   // immediately — resolveStaffRole() below is only a ONE-SHOT lookup used
   // for the initial login/signup decision, it never re-fires on its own.
-  const [staffDocs, setStaffDocs] = useState({ admin: false, moderator: false, superadmin: false });
+  const [staffDocs, setStaffDocs] = useState(EMPTY_STAFF_DOCS);
   // Bumped on every onAuthStateChanged invocation so a slow-resolving
   // earlier call (e.g. the initial sign-in during an unverified login,
   // which login() then immediately signs back out) can detect it's been
@@ -120,7 +139,7 @@ export function AuthProvider({ children }) {
         try {
           const profile = await getUserProfile(user.uid);
           // Resolve staff role from Firestore (superadmins / admins / moderators)
-          const staffRole = await resolveStaffRole(user.email);
+          const { role: staffRole, level: staffLevel } = await resolveStaffAccess(user.email);
           // A newer auth event (e.g. login()'s forced sign-out of an
           // unverified account, or signup()'s forced sign-out after
           // account creation) has already fired and set the correct state
@@ -135,6 +154,8 @@ export function AuthProvider({ children }) {
             admin: staffRole === 'admin',
             moderator: staffRole === 'moderator',
             superadmin: staffRole === 'superadmin',
+            adminLevel: staffRole === 'admin' ? staffLevel : null,
+            moderatorLevel: staffRole === 'moderator' ? staffLevel : null,
           });
 
           if (profile) {
@@ -142,6 +163,7 @@ export function AuthProvider({ children }) {
               ...profile,
               role: staffRole !== 'student' ? staffRole : (profile.role || 'student'),
               isAdmin: isAdminRole,
+              staffLevel,
             });
           } else if (staffRole !== 'student') {
             // No `users/{uid}` profile doc (e.g. it was deleted, or this
@@ -152,6 +174,7 @@ export function AuthProvider({ children }) {
             setUserProfile({
               role: staffRole,
               isAdmin: isAdminRole,
+              staffLevel,
               email: user.email,
               name: user.displayName || '',
             });
@@ -196,14 +219,23 @@ export function AuthProvider({ children }) {
      already-open session immediately — no refresh/re-login required. */
   useEffect(() => {
     if (!db || !currentUser?.email) {
-      setStaffDocs({ admin: false, moderator: false, superadmin: false });
+      setStaffDocs(EMPTY_STAFF_DOCS);
       return;
     }
     const lower = currentUser.email.toLowerCase();
     const unsubs = ROLE_COLLECTIONS.map(({ role, collection: collectionName }) => {
       const key = role === 'superadmin' ? 'superadmin' : role === 'admin' ? 'admin' : 'moderator';
+      const levelKey = `${key}Level`;
       return onSnapshot(doc(db, collectionName, lower), (snap) => {
-        setStaffDocs((prev) => (prev[key] === snap.exists() ? prev : { ...prev, [key]: snap.exists() }));
+        const exists = snap.exists();
+        // Only admin/moderator docs carry a level; a change to it (Super
+        // Admin moving someone to another level) reaches this session live.
+        const level = exists && isLevelScopedRole(role) ? normalizeStaffLevel(snap.data()?.level) : null;
+        setStaffDocs((prev) => (
+          prev[key] === exists && (!isLevelScopedRole(role) || prev[levelKey] === level)
+            ? prev
+            : { ...prev, [key]: exists, ...(isLevelScopedRole(role) ? { [levelKey]: level } : {}) }
+        ));
       }, (error) => {
         console.warn(`Role listener failed for ${collectionName}:`, error);
       });
@@ -220,16 +252,17 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const role = staffDocs.superadmin ? 'superadmin' : staffDocs.admin ? 'admin' : staffDocs.moderator ? 'moderator' : 'student';
     const isAdminRole = role === 'admin' || role === 'superadmin';
+    const staffLevel = role === 'admin' ? staffDocs.adminLevel : role === 'moderator' ? staffDocs.moderatorLevel : null;
     setUserProfile((prev) => {
       if (prev) {
-        if (prev.role === role && prev.isAdmin === isAdminRole) return prev;
-        return { ...prev, role, isAdmin: isAdminRole };
+        if (prev.role === role && prev.isAdmin === isAdminRole && (prev.staffLevel ?? null) === staffLevel) return prev;
+        return { ...prev, role, isAdmin: isAdminRole, staffLevel };
       }
       // No profile loaded (yet, or ever) — only worth promoting to a
       // bare staff profile if there's actually a signed-in user and a
       // staff role to show, same fallback shape used above.
       if (role === 'student' || !currentUser) return prev;
-      return { role, isAdmin: isAdminRole, email: currentUser.email, name: currentUser.displayName || '' };
+      return { role, isAdmin: isAdminRole, staffLevel, email: currentUser.email, name: currentUser.displayName || '' };
     });
   }, [staffDocs, currentUser]);
 
@@ -391,6 +424,7 @@ export function AuthProvider({ children }) {
     userProfile,
     userRole: userProfile?.role ?? 'guest',
     isAdmin: userProfile?.isAdmin ?? false,
+    staffLevel: userProfile?.staffLevel ?? null,
     authLoading,
     login,
     signup,

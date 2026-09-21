@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useState } from 'react';
+import { createContext, useContext, useEffect, useMemo, useState } from 'react';
 import { subscribeScheduleRequests } from '../services/firestoreService';
 import { AuthContext } from './AuthContext';
 
@@ -25,16 +25,24 @@ export const ScheduleRequestsContext = createContext({
 export function ScheduleRequestsProvider({ children }) {
   const { userProfile } = useContext(AuthContext);
   const isStaff = userProfile?.isAdmin || userProfile?.role === 'moderator';
-  const [scheduleRequests, setScheduleRequests] = useState([]);
+  const [allRequests, setAllRequests] = useState([]);
+  const staffLevel = userProfile?.staffLevel || null;
 
   useEffect(() => {
     if (!isStaff) {
-      setScheduleRequests([]);
+      setAllRequests([]);
       return undefined;
     }
-    const unsubscribe = subscribeScheduleRequests(setScheduleRequests);
+    const unsubscribe = subscribeScheduleRequests(setAllRequests);
     return unsubscribe;
   }, [isStaff]);
+
+  // Level-scoped admins/moderators only see requests for their own level
+  // (Super Admin, staffLevel null, sees all).
+  const scheduleRequests = useMemo(
+    () => (staffLevel ? allRequests.filter((r) => r.level === staffLevel) : allRequests),
+    [allRequests, staffLevel]
+  );
 
   const pendingRequestCount = scheduleRequests.filter((r) => r.status === 'pending').length;
 

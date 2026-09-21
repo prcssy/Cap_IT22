@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useContext, useMemo, useState } from 'react';
 import {
   FaSearch, FaFilter, FaUndo, FaSync, FaChevronLeft, FaChevronRight,
   FaEllipsisV, FaUserShield, FaUserTie, FaUserCog, FaUserSlash,
@@ -6,7 +6,8 @@ import {
 } from 'react-icons/fa';
 import { auth } from '../shared/firebase';
 import { assignStaffRole, removeStaffRole, createStaffAccount } from '../shared/services/firestoreService';
-import { roleLabel } from '../shared/constants/roles';
+import { roleLabel, isLevelScopedRole, DEFAULT_STAFF_LEVEL, STAFF_LEVELS } from '../shared/constants/roles';
+import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './ActivityLogsAndRoles.css';
 
 const PAGE_SIZE = 10;
@@ -67,6 +68,8 @@ function parseLocalDate(yyyyMmDd) {
  * props (no duplicate reads); `onRefresh` re-pulls a fresh batch of logs.
  */
 export default function ActivityLogsAndRoles({ users, logs, loading, error, onRefresh, onUserRoleChanged, actorRole }) {
+  const levelLabels = useContext(LevelLabelsContext);
+  const levelLabel = (key) => levelLabels[key] || key;
   /* ── Filters (draft vs. applied — a Filter button commits them, like
      the reference design, rather than filtering live on every keystroke) ── */
   const [draftType, setDraftType] = useState('All Types');
@@ -150,6 +153,8 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
   const selectedUser = roster.find((u) => u.id === selectedId) || null;
   const [actionMsg, setActionMsg] = useState(null); // { tone: 'success'|'error', text }
   const [busyRole, setBusyRole] = useState(null); // which button is in flight
+  // School level applied when assigning Admin/Moderator (each is scoped to one level).
+  const [assignLevel, setAssignLevel] = useState(DEFAULT_STAFF_LEVEL);
 
   const userMatches = useMemo(() => {
     const q = userQuery.trim().toLowerCase();
@@ -170,6 +175,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
   const [createEmail, setCreateEmail] = useState('');
   const [createName, setCreateName] = useState('');
   const [createRole, setCreateRole] = useState('moderator');
+  const [createLevel, setCreateLevel] = useState(DEFAULT_STAFF_LEVEL);
   const [createBusy, setCreateBusy] = useState(false);
   const [createMsg, setCreateMsg] = useState(null); // { tone: 'success'|'error', text }
   const [createdAccount, setCreatedAccount] = useState(null); // { email, role, tempPassword }
@@ -187,12 +193,17 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
     setCreatedAccount(null);
     setCopied(false);
     try {
-      const result = await createStaffAccount({ email, role: createRole, name: createName.trim() });
+      const result = await createStaffAccount({
+        email,
+        role: createRole,
+        name: createName.trim(),
+        level: isLevelScopedRole(createRole) ? createLevel : null,
+      });
       setCreateMsg({
         tone: 'success',
         text: result.created
-          ? `Account created for ${email} as ${roleLabel(result.role)}.`
-          : `${email} already had an account — updated to ${roleLabel(result.role)}.`,
+          ? `Account created for ${email} as ${roleLabel(result.role)}${result.level ? ` (${levelLabel(result.level)})` : ''}.`
+          : `${email} already had an account — updated to ${roleLabel(result.role)}${result.level ? ` (${levelLabel(result.level)})` : ''}.`,
       });
       if (result.tempPassword) setCreatedAccount(result);
       setCreateEmail('');
@@ -231,13 +242,16 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
       await assignStaffRole(
         { id: selectedUser.id, email: selectedUser.email, name: selectedUser.name },
         role,
-        actorRole
+        isLevelScopedRole(role) ? assignLevel : null
       );
       setRoleOverrides((prev) => ({
         ...prev,
-        [selectedUser.id]: { role, isAdmin: role === 'admin' || role === 'superadmin' },
+        [selectedUser.id]: { role, isAdmin: role === 'admin' || role === 'superadmin', staffLevel: isLevelScopedRole(role) ? assignLevel : null },
       }));
-      setActionMsg({ tone: 'success', text: `${selectedUser.name || selectedUser.email} is now ${roleLabel(role)}.` });
+      setActionMsg({
+        tone: 'success',
+        text: `${selectedUser.name || selectedUser.email} is now ${roleLabel(role)}${isLevelScopedRole(role) ? ` (${levelLabel(assignLevel)})` : ''}.`,
+      });
       onRefresh();
       onUserRoleChanged?.();
     } catch (err) {
@@ -263,7 +277,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
       );
       setRoleOverrides((prev) => ({
         ...prev,
-        [selectedUser.id]: { role: 'student', isAdmin: false },
+        [selectedUser.id]: { role: 'student', isAdmin: false, staffLevel: null },
       }));
       setActionMsg({ tone: 'success', text: `${selectedUser.name || selectedUser.email}'s staff role was removed.` });
       onRefresh();
@@ -449,18 +463,27 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
           <>
             <p className="arl-selected-user">
               <strong>{selectedUser.name || selectedUser.email}</strong>
-              <span className={`sa-role sa-role--${selectedRole}`}>{roleLabel(selectedRole)}</span>
+              <span className={`sa-role sa-role--${selectedRole}`}>
+                {roleLabel(selectedRole)}{selectedUser.staffLevel ? ` · ${levelLabel(selectedUser.staffLevel)}` : ''}
+              </span>
             </p>
 
             {isSelf ? (
               <p className="arl-self-note">You can't change your own role here — ask another Super Admin.</p>
             ) : (
               <div className="arl-role-buttons">
+                <label className="arl-level-field">
+                  <span>School level (Admin / Moderator)</span>
+                  <select className="sa-select" value={assignLevel} onChange={(e) => setAssignLevel(e.target.value)}>
+                    {STAFF_LEVELS.map((key) => <option key={key} value={key}>{levelLabel(key)}</option>)}
+                  </select>
+                </label>
                 {ROLE_BUTTONS.map(({ role, label, icon: Icon }) => (
                   <button
                     key={role}
                     className="arl-role-btn"
-                    disabled={selectedRole === role || busyRole !== null}
+                    // Admin/Moderator stay clickable when already that role so their level can be changed.
+                    disabled={(selectedRole === role && !isLevelScopedRole(role)) || busyRole !== null}
                     onClick={() => handleAssign(role)}
                   >
                     <Icon /> {busyRole === role ? 'Working…' : label}
@@ -507,6 +530,11 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
             <option value="admin">Admin</option>
             <option value="superadmin">Super Admin</option>
           </select>
+          {isLevelScopedRole(createRole) && (
+            <select className="sa-select" value={createLevel} onChange={(e) => setCreateLevel(e.target.value)} aria-label="School level">
+              {STAFF_LEVELS.map((key) => <option key={key} value={key}>{levelLabel(key)} only</option>)}
+            </select>
+          )}
           <button type="submit" className="arl-role-btn" disabled={createBusy}>
             <FaUserPlus /> {createBusy ? 'Creating…' : 'Create account'}
           </button>
