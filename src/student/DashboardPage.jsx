@@ -6,6 +6,7 @@ import Contact from '../public/Landing/Contact/Contact';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import LevelTabs from '../shared/components/LevelTabs';
+import { useLockedLevel } from '../shared/utils/schoolLevel';
 import { subscribeMatchSchedules, getMatchRecords, getSportsTeamsConfig } from '../shared/services/firestoreService';
 
 /* ═══════════════════════════════════════════
@@ -586,7 +587,9 @@ export default function DashboardPage() {
     { key: 'college', label: levelLabels.college },
   ], [levelLabels]);
 
-  const [levelKey, setLevelKey] = useState('elementary');
+  const lockedLevel = useLockedLevel();
+  const [pickedLevel, setLevelKey] = useState('elementary');
+  const levelKey = lockedLevel || pickedLevel;
   const [matches, setMatches] = useState([]);
   const [records, setRecords] = useState([]);
   const [teamsByName, setTeamsByName] = useState({});
@@ -777,6 +780,7 @@ export default function DashboardPage() {
           <p className="profile-page-subtitle">Browse for matches informations</p>
         </div>
         <div className="dash-filters-row">
+          {!lockedLevel && (
           <LevelTabs
             levels={LEVELS}
             value={levelKey}
@@ -785,6 +789,7 @@ export default function DashboardPage() {
             tabClassName="dash-lvltab"
             activeClassName="dash-lvltab--active"
           />
+          )}
           <SportFilter sports={filterSports} value={sportFilter} onChange={setSportFilter} />
         </div>
       </div>

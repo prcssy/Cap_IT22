@@ -5,6 +5,7 @@ import './RankingPage.css';
 import { FaSearch, FaCrown, FaMedal, FaChevronDown } from 'react-icons/fa';
 import Contact from '../public/Landing/Contact/Contact';
 import LevelTabs from '../shared/components/LevelTabs';
+import { useLockedLevel } from '../shared/utils/schoolLevel';
 import { getSportsTeamsConfig, getTeamRankings, getMatchRecords } from '../shared/services/firestoreService';
 import { applyPointDifferentialTieBreakers } from '../shared/utils/tieBreakers';
 
@@ -380,7 +381,9 @@ export default function RankingPage() {
     { key: 'highSchool', label: levelLabels.highSchool },
     { key: 'college', label: levelLabels.college },
   ], [levelLabels]);
-  const [levelKey, setLevelKey] = useState('elementary');
+  const lockedLevel = useLockedLevel();
+  const [pickedLevel, setLevelKey] = useState('elementary');
+  const levelKey = lockedLevel || pickedLevel;
   const [championSport, setChampionSport] = useState('All Sports');
   const [medalSport, setMedalSport] = useState('All Sports');
   const [medalDivision, setMedalDivision] = useState('All Divisions');
@@ -779,6 +782,7 @@ export default function RankingPage() {
               row together on mobile (see .rk-controls-row), while the
               title above them still gets its own line. */}
           <div className="rk-controls-row">
+          {!lockedLevel && (
           <LevelTabs
             levels={LEVELS}
             value={levelKey}
@@ -787,6 +791,7 @@ export default function RankingPage() {
             tabClassName="rk-lvltab"
             activeClassName="rk-lvltab--active"
           />
+          )}
           <div className="rk-search-wrap">
             <FaSearch className="rk-search-icon" />
             <input

@@ -9,6 +9,7 @@ import Contact from '../public/Landing/Contact/Contact';
 import { FaSearch, FaTrophy } from 'react-icons/fa';
 import { getMatchSchedules, getMatchRecords } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
+import { useLockedLevel } from '../shared/utils/schoolLevel';
 
 /* ═══════════════════════════════════════════════════════════
    This page is fully data-driven: every match shown here comes
@@ -693,7 +694,9 @@ export default function MatchSchedulesPage() {
     { label: levelLabels.highSchool, key: 'highSchool' },
     { label: levelLabels.college, key: 'college' },
   ], [levelLabels]);
-  const [levelKey, setLevelKey] = useState(LEVELS[0].key);
+  const lockedLevel = useLockedLevel();
+  const [pickedLevel, setLevelKey] = useState(LEVELS[0].key);
+  const levelKey = lockedLevel || pickedLevel;
   const level = LEVELS.find(l => l.key === levelKey) || LEVELS[0];
   const [category, setCategory] = useState(null);
   const [search, setSearch] = useState('');
@@ -891,6 +894,7 @@ export default function MatchSchedulesPage() {
       <div className="ms-body">
 
         {/* Level filter */}
+        {!lockedLevel && (
         <LevelTabs
           levels={LEVELS}
           value={levelKey}
@@ -899,6 +903,7 @@ export default function MatchSchedulesPage() {
           tabClassName="ms-lvltab"
           activeClassName="ms-lvltab--active"
         />
+        )}
 
         {loading ? (
           <p className="ms-state-note">Loading schedules…</p>

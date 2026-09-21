@@ -5,6 +5,7 @@ import './TeamAndSportsPage.css';
 import Contact from '../public/Landing/Contact/Contact';
 import { getSportsTeamsConfig } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
+import { useLockedLevel } from '../shared/utils/schoolLevel';
 
 /* ── Team logo placeholder ── */
 function TeamLogo({ name, logo }) {
@@ -59,7 +60,9 @@ export default function TeamsAndSportsPage() {
     { label: levelLabels.highSchool, key: 'highSchool' },
     { label: levelLabels.college, key: 'college' },
   ], [levelLabels]);
-  const [levelKey, setLevelKey] = useState('elementary');
+  const lockedLevel = useLockedLevel();
+  const [pickedLevel, setLevelKey] = useState('elementary');
+  const levelKey = lockedLevel || pickedLevel;
   const level = LEVELS.find(l => l.key === levelKey) || LEVELS[0];
   const [loading, setLoading] = useState(true);
   const [teamsByLevel, setTeamsByLevel] = useState({ elementary: [], highSchool: [], college: [] });
@@ -138,6 +141,7 @@ export default function TeamsAndSportsPage() {
           </div>
 
           {/* Level filter */}
+          {!lockedLevel && (
           <LevelTabs
             levels={LEVELS}
             value={levelKey}
@@ -146,6 +150,7 @@ export default function TeamsAndSportsPage() {
             tabClassName="ts-lvltab"
             activeClassName="ts-lvltab--active"
           />
+          )}
         </div>
 
         {/* Section title */}
