@@ -309,6 +309,26 @@ function scopedCategory(schedule, sports) {
   return scheduleDivisionLabel(schedule, sports) || schedule.category || '';
 }
 
+/* A schedule's category (MEN) and division (Senior) as separate values, for
+   the Match schedules filters. division is '' when the group has just one. */
+function scheduleParts(schedule, sports) {
+  const sport = (sports || []).find((s) => norm(s.name) === norm(schedule.sport));
+  const group = (sport?.categoryGroups || []).find((g) => (g.divisions || []).some((d) => d.id === schedule.divisionId));
+  if (group) {
+    const div = group.divisions.find((d) => d.id === schedule.divisionId);
+    const category = displayCategory((group.label || '').trim());
+    const dName = (div?.name || '').trim();
+    return {
+      category,
+      division: group.divisions.length > 1 && norm(dName) !== norm(category) ? dName : '',
+    };
+  }
+  const m = String(schedule.category || '').match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  return m
+    ? { category: displayCategory(m[1]), division: m[2].trim() }
+    : { category: displayCategory(schedule.category), division: '' };
+}
+
 /* One row per sport (no division baked in) — feeds the "Select sport" dropdown. */
 function buildSportOnlyOptions(sports) {
   return (sports || []).map((sport) => ({
@@ -1908,6 +1928,31 @@ export default function ModeratorPage() {
   }, [scheduledMatches, isMatchRecorded]);
   const recordableMatches = useMemo(() => listedMatches.filter((s) => s.canRecord), [listedMatches]);
 
+  /* Sport / Category / Division filters for the Match schedules panel, so a
+     match can be found without scrolling the whole list. Purely a view
+     filter — it never changes which match is selected or recorded. */
+  const [fSport, setFSport] = useState('');
+  const [fCategory, setFCategory] = useState('');
+  const [fDivision, setFDivision] = useState('');
+  const partsOf = useCallback((s) => scheduleParts(s, sports), [sports]);
+  const filterOptions = useMemo(() => {
+    const uniq = (arr) => [...new Map(arr.filter(Boolean).map((v) => [norm(v), v])).values()];
+    const rows = listedMatches.map((s) => ({ sport: s.sport, ...partsOf(s) }));
+    const inSport = rows.filter((r) => !fSport || norm(r.sport) === norm(fSport));
+    const inCat = inSport.filter((r) => !fCategory || norm(r.category) === norm(fCategory));
+    return {
+      sports: uniq(rows.map((r) => r.sport)),
+      categories: uniq(inSport.map((r) => r.category)),
+      divisions: uniq(inCat.map((r) => r.division)),
+    };
+  }, [listedMatches, partsOf, fSport, fCategory]);
+  const shownMatches = useMemo(() => listedMatches.filter((s) => {
+    const p = partsOf(s);
+    return (!fSport || norm(s.sport) === norm(fSport))
+      && (!fCategory || norm(p.category) === norm(fCategory))
+      && (!fDivision || norm(p.division) === norm(fDivision));
+  }), [listedMatches, partsOf, fSport, fCategory, fDivision]);
+
   const [markingId, setMarkingId] = useState(null);
   async function handleMarkFinished(s) {
     if (markingId) return;
@@ -2442,8 +2487,31 @@ export default function ModeratorPage() {
                 </div>
               )}
             </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, margin: '4px 0 12px' }}>
+              {[
+                ['Sport', fSport, (v) => { setFSport(v); setFCategory(''); setFDivision(''); }, filterOptions.sports, 'All Sports'],
+                ['Category', fCategory, (v) => { setFCategory(v); setFDivision(''); }, filterOptions.categories, 'All Categories'],
+                ['Division', fDivision, setFDivision, filterOptions.divisions, 'All Divisions'],
+              ].map(([label, value, onChange, options, allLabel]) => (
+                <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', opacity: 0.9 }}>
+                  {label}
+                  <select
+                    value={value}
+                    onChange={(e) => onChange(e.target.value)}
+                    disabled={options.length === 0}
+                    style={{ background: '#0b1f3a', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem', fontWeight: 600 }}
+                  >
+                    <option value="">{allLabel}</option>
+                    {options.map((o) => <option key={o} value={o}>{o}</option>)}
+                  </select>
+                </label>
+              ))}
+            </div>
+            {shownMatches.length === 0 && (
+              <p className="mp-schedule-hint mp-schedule-hint--empty">No matches for this filter.</p>
+            )}
             <div className="mp-finished-panel__list">
-              {listedMatches.map((s) => {
+              {shownMatches.map((s) => {
                 const active = lockedMatch?.id === s.id;
                 const done = isMatchRecorded(s);
                 return (
