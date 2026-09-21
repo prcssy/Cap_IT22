@@ -13,6 +13,7 @@ import {
   getMatchRecords,
   submitMatchRecord,
   editMatchRecord,
+  recalculateRatings,
   getTeamRankings,
   createScheduleRequest,
   markMatchScheduleFinished,
@@ -1946,7 +1947,14 @@ export default function ModeratorPage() {
         if (aDone !== bDone) return aDone - bDone;
         const byStatus = MATCH_STATUS_ORDER[a.status] - MATCH_STATUS_ORDER[b.status];
         if (byStatus !== 0) return byStatus;
-        return startOf(b) - startOf(a);
+        // Same sport + division: Round 1 first (leftmost), then Round 2, …
+        // Otherwise keep the newest-first order between different sports.
+        const aScope = `${norm(a.sport)}::${norm(a.divisionId || a.category)}`;
+        const bScope = `${norm(b.sport)}::${norm(b.divisionId || b.category)}`;
+        if (aScope !== bScope) return startOf(b) - startOf(a);
+        const byRound = (a.round ?? Infinity) - (b.round ?? Infinity);
+        if (byRound !== 0 && Number.isFinite(byRound)) return byRound;
+        return startOf(a) - startOf(b);
       });
   }, [scheduledMatches, isMatchRecorded]);
   const recordableMatches = useMemo(() => listedMatches.filter((s) => s.canRecord), [listedMatches]);
@@ -1976,6 +1984,25 @@ export default function ModeratorPage() {
       && (!fDivision || norm(p.division) === norm(fDivision));
   }), [listedMatches, partsOf, fSport, fCategory, fDivision]);
 
+  /* Rebuilds every rating from the saved records (each sport + division from
+     1200), so a record saved on a stale baseline is fixed without re-entering
+     its scores, and orphaned ratings are dropped. */
+  const [recalculating, setRecalculating] = useState(false);
+  async function handleRecalculate() {
+    if (recalculating) return;
+    setRecalculating(true);
+    try {
+      const data = await recalculateRatings(level);
+      setRecords(data.records || []);
+      setRankings(data.rankings || {});
+    } catch (err) {
+      console.error('Failed to recalculate ratings:', err);
+      setLoadError('Could not recalculate the ratings. Please try again.');
+    } finally {
+      setRecalculating(false);
+    }
+  }
+
   const [markingId, setMarkingId] = useState(null);
   async function handleMarkFinished(s) {
     if (markingId) return;
@@ -1994,7 +2021,21 @@ export default function ModeratorPage() {
 
   /* ── ratings & live computation ── */
   const scopeKey = activeSport ? rankingScopeKey(activeSport.sportName, activeSport.category) : null;
-  const scopedRankings = scopeKey ? (rankings[scopeKey] || {}) : {};
+  /* A scope's saved ratings only count while records exist for it — after an
+     admin reset deletes the records, leftover ratings must not carry on. */
+  const scopedRankings = useMemo(() => {
+    if (!scopeKey) return {};
+    const names = new Set();
+    records.forEach((r) => {
+      if (rankingScopeKey(r.sportName, r.category) !== scopeKey) return;
+      (r.participants?.length ? r.participants : [r.teamA, r.teamB])
+        .forEach((p) => { if (p?.name) names.add(norm(p.name)); });
+    });
+    // Only teams that still have a record in this scope keep their points.
+    return Object.fromEntries(
+      Object.entries(rankings[scopeKey] || {}).filter(([name]) => names.has(norm(name))),
+    );
+  }, [scopeKey, records, rankings]);
 
   const prevPointsFor = useCallback((teamName) => {
     if (!teamName) return DEFAULT_POINTS;
@@ -2019,7 +2060,10 @@ export default function ModeratorPage() {
       }
       return rec?.createdAt || 0;
     };
-    const target = snapshot || lockedMatch;
+    /* A brand-new (unrecorded) game starts from each team's CURRENT rating in
+       this sport + division — the same number the Ranking page shows. Only a
+       reopened saved record uses the chronological baseline below. */
+    const target = snapshot;
     if (target) {
       const targetKey = snapshot
         ? rankingScopeKey(snapshot.sportName, snapshot.category)
@@ -2043,14 +2087,9 @@ export default function ModeratorPage() {
       /* Nothing earlier: start from the team's baseline going into its very
          first recorded game here (not the live rating, which already includes
          later games). */
-      const firstRecorded = [...sameScope, ...(snapshot ? [snapshot] : [])]
-        .filter((r) => sideOf(r))
-        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
-      if (firstRecorded) {
-        const side = sideOf(firstRecorded);
-        const base = side.basePoints ?? side.prevPoints;
-        if (base != null) return base;
-      }
+      // A team's first game in a scope always starts at the baseline (the
+      // server replays it the same way), never a stored leftover value.
+      return DEFAULT_POINTS;
     }
 
     /* This exact sport + division is the first choice: a rating only means
@@ -2755,6 +2794,15 @@ export default function ModeratorPage() {
         <div className="mp-summary" ref={summaryRef}>
           <div className="mp-summary__head">
             <h3 className="mp-summary__title"><FaUsers className="mp-summary__title-icon" /> Updated match summary</h3>
+            <button
+              type="button"
+              className="mp-summary__recalc"
+              onClick={handleRecalculate}
+              disabled={recalculating || records.length === 0}
+              title="Rebuild every team's rating from the saved match records, starting from 1200"
+            >
+              <FaSync className={recalculating ? 'mp-spin' : ''} /> {recalculating ? 'Recalculating…' : 'Recalculate ratings'}
+            </button>
             <div className="mp-summary__count">
               <div className="mp-summary__count-label">Total match complete</div>
               <div className="mp-summary__count-num">{records.length}</div>

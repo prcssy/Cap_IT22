@@ -654,6 +654,56 @@ exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
 });
 
 /**
+ * Rebuilds every rating of one level from its match records: each sport +
+ * division is replayed in game order from the 1200 baseline, the records get
+ * their prevPoints/finalPoints rewritten, and teamRankings is replaced with
+ * exactly what the records produce — so leftover ratings (from deleted
+ * records or an older baseline) disappear. Used by the Moderator page's
+ * "Recalculate ratings" button.
+ */
+exports.recalculateRatings = onCall({ enforceAppCheck: true }, async (request) => {
+  const { level } = request.data || {};
+  const actor = await requireStaffForLevel(request, level);
+
+  const recordsRef = db.collection("matchRecords").doc(level);
+  const rankingsRef = db.collection("teamRankings").doc(level);
+  const schedulesRef = db.collection("matchSchedules").doc(level);
+
+  const { records, rankings } = await db.runTransaction(async (tx) => {
+    const [recordsSnap, schedulesSnap] = await Promise.all([tx.get(recordsRef), tx.get(schedulesRef)]);
+    const orderOf = matchMath.scheduleOrder(schedulesSnap.exists ? (schedulesSnap.data().matches || []) : []);
+    let next = recordsSnap.exists ? (recordsSnap.data().records || []) : [];
+
+    const rankingsOut = {};
+    const scopeKeys = new Set(next.map((r) => matchMath.rankingScopeKey(r.sportName, r.category)));
+    scopeKeys.forEach((scopeKey) => {
+      const replay = matchMath.replayScope(next, scopeKey, orderOf);
+      next = replay.records;
+      rankingsOut[scopeKey] = replay.latest;
+    });
+
+    tx.set(recordsRef, { records: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
+    // No merge: the whole `points` map is replaced so orphaned scopes vanish.
+    tx.set(rankingsRef, { points: rankingsOut, updatedAt: FieldValue.serverTimestamp() });
+    return { records: next, rankings: rankingsOut };
+  });
+
+  await logActivity({
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    actorName: actor.name,
+    actorRole: actor.role,
+    type: "Ratings Recalculated",
+    details: `Recalculated all ratings for ${level} from ${records.length} match record${records.length === 1 ? "" : "s"}`,
+    targetType: "teamRankings",
+    targetId: level,
+    targetLabel: level,
+  });
+
+  return { records, rankings };
+});
+
+/**
  * Cascade-delete used by AdminSchedulePage when a fixture or a whole
  * generated schedule set is removed, so a deleted fixture doesn't leave a
  * stale confirmed record behind (deleteMatchSchedule / deleteScheduleSet in
@@ -673,14 +723,45 @@ exports.removeScheduledMatchRecords = onCall({ enforceAppCheck: true }, async (r
 
   const ids = new Set(scheduleIds.map(String));
   const recordsRef = db.collection("matchRecords").doc(level);
+  const rankingsRef = db.collection("teamRankings").doc(level);
+  const schedulesRef = db.collection("matchSchedules").doc(level);
 
-  const records = await db.runTransaction(async (tx) => {
-    const snap = await tx.get(recordsRef);
+  const { records, rankings } = await db.runTransaction(async (tx) => {
+    const [snap, rankingsSnap, schedulesSnap] = await Promise.all([
+      tx.get(recordsRef), tx.get(rankingsRef), tx.get(schedulesRef),
+    ]);
     const existing = snap.exists ? (snap.data().records || []) : [];
-    const next = existing.filter((r) => !r.scheduleId || !ids.has(String(r.scheduleId)));
+    const rankingsAll = rankingsSnap.exists ? (rankingsSnap.data().points || {}) : {};
+    const orderOf = matchMath.scheduleOrder(schedulesSnap.exists ? (schedulesSnap.data().matches || []) : []);
+
+    const isRemoved = (r) => r.scheduleId && ids.has(String(r.scheduleId));
+    const removed = existing.filter(isRemoved);
+    let next = existing.filter((r) => !isRemoved(r));
+
+    // Ratings are derived from records, so deleting records must also roll
+    // the ratings back: replay each affected scope from what is left, or
+    // drop the scope entirely when nothing remains (teams return to baseline).
+    const nextRankings = { ...rankingsAll };
+    const affected = new Set(removed.map((r) => matchMath.rankingScopeKey(r.sportName, r.category)));
+    affected.forEach((scopeKey) => {
+      const stillThere = next.some((r) => matchMath.rankingScopeKey(r.sportName, r.category) === scopeKey);
+      if (!stillThere) {
+        delete nextRankings[scopeKey];
+        return;
+      }
+      const replay = matchMath.replayScope(next, scopeKey, orderOf);
+      next = replay.records;
+      nextRankings[scopeKey] = replay.latest;
+    });
+
     tx.set(recordsRef, { records: next, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
-    return next;
+    if (affected.size && rankingsSnap.exists) {
+      // update() replaces the whole `points` field. set(..., { merge: true })
+      // would deep-merge the nested maps and keep a deleted scope's old ratings.
+      tx.update(rankingsRef, { points: nextRankings, updatedAt: FieldValue.serverTimestamp() });
+    }
+    return { records: next, rankings: nextRankings };
   });
 
-  return { records };
+  return { records, rankings };
 });

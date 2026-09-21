@@ -3609,3 +3609,32 @@ input.mp-text-input:disabled {
   .mp-fs__btn { padding: 4px 9px; font-size: 10px; }
   .mp-fs__chevron { font-size: 8px; }
 }
+
+/* "Recalculate ratings" button in the Updated match summary header. */
+.mp-summary__recalc {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: auto;
+  background: #0b2447;
+  color: #fff;
+  border: none;
+  border-radius: 999px;
+  padding: 8px 16px;
+  font-size: 0.75rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mp-summary__recalc:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.mp-spin {
+  animation: mp-spin 0.9s linear infinite;
+}
+
+@keyframes mp-spin {
+  to { transform: rotate(360deg); }
+}

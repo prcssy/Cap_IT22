@@ -223,7 +223,10 @@ function replayScope(records, scopeKey, orderOf) {
       const list = rec.participants && rec.participants.length ? rec.participants : [rec.teamA, rec.teamB];
       list.forEach((p) => {
         if (!p || seeds.has(norm(p.name))) return;
-        seeds.set(norm(p.name), p.basePoints ?? p.prevPoints ?? DEFAULT_POINTS);
+        // Ratings are per sport + division and nothing carries over from other
+        // scopes, so a team's first game here always starts at the baseline —
+        // never a stored value, which could be a leftover from deleted records.
+        seeds.set(norm(p.name), DEFAULT_POINTS);
       });
     });
 
