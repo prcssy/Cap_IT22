@@ -32,7 +32,7 @@
   border: none;
   cursor: pointer;
   text-align: left;
-  color: #001529;
+  color: var(--c-dark, #001529);
   font-family: 'Inter', sans-serif;
 }
 
@@ -44,15 +44,15 @@
   height: 26px;
   flex-shrink: 0;
   border-radius: 50%;
-  background: #16337a;
+  background: var(--c-navy-3, #16337a);
   color: #fff;
   font-size: 12px;
   font-weight: 800;
 }
 
 .lp-section--open .lp-section__badge {
-  background: #f5a623;
-  color: #001529;
+  background: var(--c-gold-2, #f5a623);
+  color: var(--c-dark, #001529);
 }
 
 .lp-section__headtext {
@@ -94,14 +94,14 @@
   border-radius: 8px;
   font-family: 'Inter', sans-serif;
   font-size: 12px;
-  color: #001529;
+  color: var(--c-dark, #001529);
   box-sizing: border-box;
   outline: none;
   resize: vertical;
 }
 
 .lp-section__body textarea:focus {
-  border-color: #16337a;
+  border-color: var(--c-navy-3, #16337a);
 }
 
 /* ── Hero background image ── */
@@ -169,13 +169,13 @@
   border-radius: 7px;
   font-family: 'Inter', sans-serif;
   font-size: 12px;
-  color: #001529;
+  color: var(--c-dark, #001529);
   box-sizing: border-box;
   outline: none;
 }
 
 .lp-mini-card input:focus {
-  border-color: #16337a;
+  border-color: var(--c-navy-3, #16337a);
 }
 
 /* ── Highlights gallery ── */
@@ -212,7 +212,7 @@
   justify-content: center;
   border: none;
   border-radius: 50%;
-  background: rgba(0, 21, 41, 0.75);
+  background: rgba(var(--c-dark-rgb, 0, 21, 41), 0.75);
   color: #fff;
   font-size: 10px;
   cursor: pointer;
@@ -243,7 +243,7 @@
   gap: 6px;
   padding: 22px 16px;
   border-radius: 10px;
-  background: linear-gradient(180deg, #001529 0%, #16337a 100%);
+  background: linear-gradient(180deg, var(--c-dark, #001529) 0%, var(--c-navy-3, #16337a) 100%);
   background-size: cover;
   background-position: center;
 }
@@ -270,7 +270,7 @@
 .lp-preview-card strong {
   display: block;
   font-size: 11px;
-  color: #001529;
+  color: var(--c-dark, #001529);
   margin-bottom: 3px;
 }
 
@@ -300,11 +300,11 @@
 
 .lp-preview-step strong {
   font-size: 11px;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .lp-preview-step__icon {
-  color: #16337a;
+  color: var(--c-navy-3, #16337a);
   font-size: 13px;
 }
 
@@ -318,7 +318,7 @@
   font-size: 10.5px;
   font-weight: 800;
   letter-spacing: 0.04em;
-  color: #16337a;
+  color: var(--c-navy-3, #16337a);
   text-align: center;
 }
 
@@ -343,13 +343,13 @@
   gap: 6px;
   padding: 16px;
   border-radius: 10px;
-  background: #001529;
+  background: var(--c-dark, #001529);
 }
 
 .lp-preview-bottom__title {
   font-family: 'Lalezar', sans-serif;
   font-size: 1rem;
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
 }
 
 .lp-preview-bottom p {
@@ -363,8 +363,8 @@
   margin-top: 4px;
   padding: 6px 14px;
   border-radius: 20px;
-  background: #f5a623;
-  color: #001529;
+  background: var(--c-gold-2, #f5a623);
+  color: var(--c-dark, #001529);
   font-size: 10.5px;
   font-weight: 800;
 }

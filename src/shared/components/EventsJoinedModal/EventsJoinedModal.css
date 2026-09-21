@@ -65,7 +65,7 @@
 
 .ej-header-icon {
   font-size: 26px;
-  color: #1a3a7c;
+  color: var(--c-navy-4, #1a3a7c);
 }
 
 .ej-header-text {
@@ -76,7 +76,7 @@
 .ej-header-title {
   font-size: 15px;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   letter-spacing: 0.06em;
   margin: 0 0 3px;
 }
@@ -106,7 +106,7 @@
 @media (hover: hover) and (pointer: fine) {
 .ej-close-btn:hover {
   background: #f0f4fa;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 }
 
@@ -162,7 +162,7 @@
 .ej-item-name {
   font-size: 13px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   margin: 0 0 6px;
 }
 
@@ -224,11 +224,11 @@
 .ej-footer-label {
   font-size: 13px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .ej-footer-count {
   font-size: 15px;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }

@@ -5,6 +5,7 @@ import {
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { updateBrandingInfo, saveSchoolEvents } from '../shared/services/firestoreService';
 import { resizeImageToDataUrl } from '../shared/utils/resizeImage';
+import { THEMES, DEFAULT_THEME_KEY, getTheme, themeToCssVars } from '../shared/constants/themes';
 import './BrandingSettings.css';
 
 // Source-file gate before resizing — generous, since the canvas resize
@@ -50,6 +51,7 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
     branding.events.map((e) => ({ _id: uid(), key: e.key, label: e.label })),
   );
   const [draftContact, setDraftContact] = useState(branding.contact);
+  const [draftTheme, setDraftTheme] = useState(branding.themeKey || DEFAULT_THEME_KEY);
 
   // Seed the draft exactly once, the first time real data arrives —
   // never again afterward, so a Firestore push (including the one this
@@ -65,7 +67,8 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
     });
     setDraftEvents(branding.events.map((e) => ({ _id: uid(), key: e.key, label: e.label })));
     setDraftContact(branding.contact);
-  }, [branding.loading, branding.schoolName, branding.tagline, branding.motto, branding.copyrightText, branding.events, branding.contact]);
+    setDraftTheme(branding.themeKey || DEFAULT_THEME_KEY);
+  }, [branding.loading, branding.schoolName, branding.tagline, branding.motto, branding.copyrightText, branding.events, branding.contact, branding.themeKey]);
 
   /* ── Logo ── */
   const fileInputRef = useRef(null);
@@ -221,6 +224,25 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
     }
   };
 
+  /* ── Color Theme ── */
+  const [themeBusy, setThemeBusy] = useState(false);
+  const [themeMsg, setThemeMsg] = useState(null);
+  const savedTheme = branding.themeKey || DEFAULT_THEME_KEY;
+
+  const handleSaveTheme = async () => {
+    setThemeBusy(true);
+    setThemeMsg(null);
+    try {
+      await updateBrandingInfo({ themeKey: draftTheme }, actorEmail, actorRole);
+      setThemeMsg({ tone: 'success', text: `“${getTheme(draftTheme).name}” applied to the whole site.` });
+    } catch (err) {
+      console.error('Failed to save color theme:', err);
+      setThemeMsg({ tone: 'error', text: friendlyBrandingError(err, 'Could not save the color theme') });
+    } finally {
+      setThemeBusy(false);
+    }
+  };
+
   return (
     <div className="ws-wrap">
       <div className="sa-panel__head">
@@ -263,6 +285,48 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
               </div>
             </div>
             {logoMsg && <p className={`ws-msg ws-msg--${logoMsg.tone}`}>{logoMsg.text}</p>}
+          </div>
+
+          {/* ── Color Theme ── */}
+          <div className="sa-card">
+            <h3 className="ws-card-title">Color Theme</h3>
+            <p className="ws-card-hint">Pick a matched color set for the entire site. Selecting one previews it on the right; it goes live for everyone when you save.</p>
+
+            <div className="ws-theme-grid" role="radiogroup" aria-label="Color theme">
+              {THEMES.map((t) => {
+                const c = t.colors;
+                const active = draftTheme === t.key;
+                return (
+                  <button
+                    type="button"
+                    key={t.key}
+                    role="radio"
+                    aria-checked={active}
+                    className={`ws-theme${active ? ' ws-theme--active' : ''}`}
+                    onClick={() => setDraftTheme(t.key)}
+                  >
+                    <span className="ws-theme__swatch" aria-hidden="true">
+                      <span style={{ background: c.dark }} />
+                      <span style={{ background: c.navy }} />
+                      <span style={{ background: c['navy-3'] }} />
+                      <span style={{ background: c.gold }} />
+                      <span style={{ background: c['gold-2'] }} />
+                    </span>
+                    <span className="ws-theme__name">{t.name}</span>
+                    <span className="ws-theme__tag">
+                      {t.tagline}{savedTheme === t.key ? ' · Current' : ''}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+
+            <div className="ws-card-actions">
+              {themeMsg && <p className={`ws-msg ws-msg--${themeMsg.tone}`}>{themeMsg.text}</p>}
+              <button type="button" className="sa-export" onClick={handleSaveTheme} disabled={themeBusy || draftTheme === savedTheme}>
+                {themeBusy && <FaSync className="sa-spin" />} Apply Theme
+              </button>
+            </div>
           </div>
 
           {/* ── School Information ── */}
@@ -439,7 +503,7 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
 
         {/* ── Preview ── */}
         <div className="ws-col ws-col--preview">
-          <div className="sa-card ws-preview-card">
+          <div className="sa-card ws-preview-card" style={themeToCssVars(getTheme(draftTheme).colors)}>
             <h3 className="ws-card-title">Preview</h3>
             <div className="ws-preview-hero">
               <img src={branding.logo} alt="Logo preview" className="ws-preview-logo" />

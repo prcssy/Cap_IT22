@@ -33,14 +33,14 @@
   background: #fff;
   border-radius: 12px;
   padding: 2.5rem 3rem 3rem;
-  box-shadow: 0 4px 24px rgba(10, 29, 82, 0.08);
+  box-shadow: 0 4px 24px rgba(var(--c-navy-rgb, 10, 29, 82), 0.08);
 }
 
 .pp-back-link {
   display: inline-flex;
   align-items: center;
   gap: 0.5rem;
-  color: #0A1D52;
+  color: var(--c-navy, #0a1d52);
   text-decoration: none;
   font-family: "Inter";
   font-size: 0.9rem;
@@ -50,17 +50,17 @@
 }
 
 .pp-back-link:hover {
-  color: #FCBF19;
+  color: var(--c-gold, #fcbf19);
 }
 
 .pp-header {
-  border-bottom: 1px solid rgba(10, 29, 82, 0.1);
+  border-bottom: 1px solid rgba(var(--c-navy-rgb, 10, 29, 82), 0.1);
   padding-bottom: 1.25rem;
   margin-bottom: 1.5rem;
 }
 
 .pp-header h1 {
-  color: #0A1D52;
+  color: var(--c-navy, #0a1d52);
   font-family: "Inter";
   font-size: 2rem;
   font-weight: 800;
@@ -68,7 +68,7 @@
 }
 
 .pp-updated {
-  color: rgba(10, 29, 82, 0.55);
+  color: rgba(var(--c-navy-rgb, 10, 29, 82), 0.55);
   font-family: "Inter";
   font-size: 0.85rem;
   margin: 0;
@@ -87,7 +87,7 @@
 }
 
 .pp-section h2 {
-  color: #0A1D52;
+  color: var(--c-navy, #0a1d52);
   font-family: "Inter";
   font-size: 1.15rem;
   font-weight: 700;
@@ -95,7 +95,7 @@
 }
 
 .pp-section h3 {
-  color: #0A1D52;
+  color: var(--c-navy, #0a1d52);
   font-family: "Inter";
   font-size: 0.98rem;
   font-weight: 700;
@@ -124,13 +124,13 @@
 }
 
 .pp-section a {
-  color: #0A1D52;
+  color: var(--c-navy, #0a1d52);
   font-weight: 600;
   text-decoration: underline;
 }
 
 .pp-section a:hover {
-  color: #FCBF19;
+  color: var(--c-gold, #fcbf19);
 }
 
 @media (max-width: 640px) {

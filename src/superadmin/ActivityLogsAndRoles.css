@@ -76,7 +76,7 @@
 .arl-count {
   font-size: 1rem;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   margin: 0;
   margin-right: auto;
 }
@@ -108,7 +108,7 @@
 }
 
 .arl-search-input:focus {
-  border-color: #16337a;
+  border-color: var(--c-navy-3, #16337a);
 }
 
 /* ── Table extras ── */
@@ -130,7 +130,7 @@
 @media (hover: hover) and (pointer: fine) {
   .arl-row-menu:hover {
     background: #f1f5f9;
-    color: #16337a;
+    color: var(--c-navy-3, #16337a);
   }
 }
 
@@ -195,8 +195,8 @@
 }
 
 .arl-page-btn--active {
-  background: #16337a;
-  border-color: #16337a;
+  background: var(--c-navy-3, #16337a);
+  border-color: var(--c-navy-3, #16337a);
   color: #fff;
 }
 
@@ -222,7 +222,7 @@
 .arl-role-panel__title {
   font-size: 0.85rem;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   margin: 0;
 }
 
@@ -250,7 +250,7 @@
 }
 
 .arl-user-picker input:focus {
-  border-color: #16337a;
+  border-color: var(--c-navy-3, #16337a);
 }
 
 .arl-user-suggestions {
@@ -293,7 +293,7 @@
 .arl-user-suggestions__name {
   font-size: 12px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .arl-user-suggestions__email {
@@ -308,7 +308,7 @@
   gap: 8px;
   margin: 0;
   font-size: 12.5px;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .arl-self-note {
@@ -348,7 +348,7 @@
   border: 1.5px solid #dbe3ee;
   border-radius: 8px;
   background: #fff;
-  color: #16337a;
+  color: var(--c-navy-3, #16337a);
   font-family: 'Inter', sans-serif;
   font-size: 12px;
   font-weight: 700;
@@ -359,7 +359,7 @@
 @media (hover: hover) and (pointer: fine) {
   .arl-role-btn:hover:not(:disabled) {
     background: #eef2f8;
-    border-color: #16337a;
+    border-color: var(--c-navy-3, #16337a);
   }
 }
 
@@ -418,7 +418,7 @@
 }
 
 .arl-create-form input:focus {
-  border-color: #16337a;
+  border-color: var(--c-navy-3, #16337a);
 }
 
 .arl-create-form .sa-select {
@@ -428,13 +428,13 @@
 .arl-create-form .arl-role-btn {
   justify-content: center;
   color: #fff;
-  background: #16337a;
-  border-color: #16337a;
+  background: var(--c-navy-3, #16337a);
+  border-color: var(--c-navy-3, #16337a);
 }
 
 @media (hover: hover) and (pointer: fine) {
   .arl-create-form .arl-role-btn:hover:not(:disabled) {
-    background: #0f2559;
+    background: var(--c-navy-2, #0f2559);
   }
 }
 
@@ -459,7 +459,7 @@
   overflow-wrap: break-word;
   font-size: 12px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   background: #fff;
   border: 1.5px solid #dbe3ee;
   border-radius: 6px;

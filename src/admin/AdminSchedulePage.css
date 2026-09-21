@@ -13,7 +13,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
   color: #fff;
   font-family: 'Inter', sans-serif;
   box-sizing: border-box;
@@ -29,7 +29,7 @@
   padding: 0 25px;
   height: 48px;
   flex-shrink: 0;
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
   border-bottom: 3px solid #fff;
   margin-top: 3.6px;
   box-sizing: border-box;
@@ -67,7 +67,7 @@
   font-size: 1.6rem;
   font-family: 'Lalezar', sans-serif;
   font-weight: 800;
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
   margin: 0 0 4px;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -120,7 +120,7 @@
 
 .asp-tab--active {
   background: #fff;
-  color: #001529;
+  color: var(--c-dark, #001529);
   border-color: #fff;
 }
 
@@ -149,7 +149,7 @@
   background: #ffffff;
   border-radius: 12px;
   padding: 22px 24px;
-  color: #001529;
+  color: var(--c-dark, #001529);
   box-sizing: border-box;
   width: 100%;
 }
@@ -183,21 +183,21 @@
   gap: 8px;
   font-size: 0.9rem;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
   letter-spacing: 0.08em;
 }
 
 .asp-card__icon {
   font-size: 1.1rem;
-  color: #001529;
+  color: var(--c-dark, #001529);
   flex-shrink: 0;
 }
 
 .asp-card__subtitle {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   margin: 0 0 14px;
   border-bottom: 2px solid #e8ecf3;
   padding-bottom: 10px;
@@ -219,7 +219,7 @@
 .asp-total-label {
   font-size: 0.72rem;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   letter-spacing: 0.04em;
 }
 
@@ -258,13 +258,13 @@
 .asp-total-seg__label {
   font-size: 0.66rem;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   letter-spacing: 0.03em;
   white-space: nowrap;
 }
 
 .asp-total-seg--grand .asp-total-seg__num {
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
 }
 
 .asp-total-div {
@@ -289,7 +289,7 @@
 @media (hover: hover) and (pointer: fine) {
 .asp-refresh-btn:hover:not(:disabled) {
   background: #e2e8f0;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 }
 
@@ -335,7 +335,7 @@
   border-radius: 20px;
   font-family: 'Inter', sans-serif;
   font-size: 0.8rem;
-  color: #001529;
+  color: var(--c-dark, #001529);
   width: 210px;
   outline: none;
   transition: border-color 0.2s;
@@ -343,7 +343,7 @@
 }
 
 .asp-search-input:focus {
-  border-color: #001529;
+  border-color: var(--c-dark, #001529);
 }
 
 /* ══════════════════════════════════════════
@@ -374,12 +374,12 @@
 }
 
 .asp-filter-pill:focus {
-  border-color: #001529;
+  border-color: var(--c-dark, #001529);
 }
 
 @media (hover: hover) and (pointer: fine) {
 .asp-filter-pill:hover {
-  border-color: #001529;
+  border-color: var(--c-dark, #001529);
 }
 }
 
@@ -396,9 +396,9 @@
 }
 
 .asp-filter-pill--active {
-  border-color: #001529;
+  border-color: var(--c-dark, #001529);
   background-color: #eef2f8;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .asp-dropdown__menu {
@@ -448,14 +448,14 @@
 }
 
 .asp-dropdown__item--active {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   font-weight: 700;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .asp-dropdown__item--active:hover {
-    background: #001529;
+    background: var(--c-dark, #001529);
   }
 }
 
@@ -505,7 +505,7 @@
 }
 
 .asp-table thead tr {
-  background: #001529;
+  background: var(--c-dark, #001529);
 }
 
 .asp-table th {
@@ -550,7 +550,7 @@
 
 .asp-td--sport {
   font-weight: 700 !important;
-  color: #001529 !important;
+  color: var(--c-dark, #001529) !important;
   letter-spacing: 0.02em;
 }
 
@@ -632,8 +632,8 @@
   width: 28px;
   height: 28px;
   border-radius: 50%;
-  background: #001529;
-  color: #fcbf19;
+  background: var(--c-dark, #001529);
+  color: var(--c-gold, #fcbf19);
   font-size: 0.78rem;
   font-weight: 800;
   display: flex;
@@ -645,7 +645,7 @@
 
 .asp-name-text {
   font-weight: 600;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .asp-placeholder {
@@ -790,7 +790,7 @@
 .asp-sched-title {
   font-size: 0.95rem;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
   letter-spacing: 0.08em;
   margin: 0;
@@ -801,7 +801,7 @@
   align-items: center;
   gap: 6px;
   padding: 8px 18px;
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   border: none;
   border-radius: 20px;
@@ -815,7 +815,7 @@
 
 @media (hover: hover) and (pointer: fine) {
 .asp-btn-create:hover {
-  background: #0a2a50;
+  background: var(--c-navy-2, #0a2a50);
   transform: translateY(-1px);
 }
 }
@@ -1035,7 +1035,7 @@
   display: flex;
   flex-direction: column;
   animation: asp-slideup 0.25s ease;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 @keyframes asp-slideup {
@@ -1065,7 +1065,7 @@
   font-family: 'Inter', sans-serif;
   font-size: 1.1rem;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
@@ -1086,7 +1086,7 @@
 @media (hover: hover) and (pointer: fine) {
 .asp-modal__close:hover {
   background: #e2e8f0;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 }
 
@@ -1150,7 +1150,7 @@
   border-radius: 6px;
   font-family: 'Inter', sans-serif;
   font-size: 0.875rem;
-  color: #001529;
+  color: var(--c-dark, #001529);
   background: #fff;
   outline: none;
   transition: border-color 0.2s;
@@ -1158,14 +1158,14 @@
 
 .asp-form-group input:focus,
 .asp-form-group select:focus {
-  border-color: #001529;
+  border-color: var(--c-dark, #001529);
 }
 
 .asp-form-group p {
   margin: 0;
   padding: 9px 0 2px;
   font-size: 0.875rem;
-  color: #001529;
+  color: var(--c-dark, #001529);
   word-break: break-word;
 }
 
@@ -1254,7 +1254,7 @@
 .asp-attach-file__name {
   font-size: 0.8rem;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1320,13 +1320,13 @@
 }
 
 .asp-btn-submit {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
 }
 
 @media (hover: hover) and (pointer: fine) {
 .asp-btn-submit:hover {
-  background: #0a2a50;
+  background: var(--c-navy-2, #0a2a50);
   transform: translateY(-1px);
 }
 }
@@ -1360,12 +1360,12 @@
 }
 
 .asp-btn--primary {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
 }
 
 @media (hover: hover) and (pointer: fine) {
-  .asp-btn--primary:hover { background: #0a2a50; }
+  .asp-btn--primary:hover { background: var(--c-navy-2, #0a2a50); }
 }
 
 .asp-btn--danger {
@@ -1640,8 +1640,8 @@
 }
 
 .asp-lvltab--active {
-  color: #001529;
-  background: #f5a623;
+  color: var(--c-dark, #001529);
+  background: var(--c-gold-2, #f5a623);
 }
 
 /* This mobile override used to live in the big @media block up near the
@@ -1683,14 +1683,14 @@
   font-family: 'Lalezar', sans-serif;
   font-size: 1.5rem;
   letter-spacing: 0.08em;
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
   margin: 0 0 8px;
 }
 
 .asp-level-banner__bar {
   width: 90px;
   height: 3px;
-  background: #f5a623;
+  background: var(--c-gold-2, #f5a623);
   margin: 0 auto;
   border-radius: 2px;
 }
@@ -1702,7 +1702,7 @@
 ═══════════════════════════════════════════════════════════════════════ */
 
 .msf-wrap {
-  background: #001529;
+  background: var(--c-dark, #001529);
   border-radius: 14px;
   padding: 4px 4px 20px;
   gap: 12px;
@@ -1717,14 +1717,14 @@
   font-family: 'Lalezar', sans-serif;
   font-size: 1.5rem;
   letter-spacing: 0.08em;
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
   margin: 0 0 8px;
 }
 
 .msf-level-banner__bar {
   width: 90px;
   height: 3px;
-  background: #f5a623;
+  background: var(--c-gold-2, #f5a623);
   margin: 0 auto;
   border-radius: 2px;
   margin-bottom: 15px;
@@ -1785,13 +1785,13 @@
   padding: 0 12px;
   background: #fff;
   box-sizing: border-box;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  box-shadow: 0 1px 4px rgba(var(--c-dark-rgb, 0, 21, 41), 0.08);
 }
 
 .msf-bracket-team span {
   font-size: 12px;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
   letter-spacing: 0.2px;
   text-transform: uppercase;
   overflow: hidden;
@@ -1843,7 +1843,7 @@
 }
 
 .msf-bracket-champion svg {
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
   font-size: 26px;
 }
 
@@ -1851,7 +1851,7 @@
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.4px;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -1880,7 +1880,7 @@
   border-radius: 8px;
   padding: 4px 10px;
   box-sizing: border-box;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  box-shadow: 0 1px 4px rgba(var(--c-dark-rgb, 0, 21, 41), 0.08);
 }
 
 .msf-savedtree-node--done {
@@ -1893,7 +1893,7 @@
   gap: 6px;
   font-size: 11px;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
   letter-spacing: 0.1px;
   text-transform: uppercase;
   overflow: hidden;
@@ -1993,13 +1993,13 @@
   padding: 0 12px;
   background: #fff;
   box-sizing: border-box;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  box-shadow: 0 1px 4px rgba(var(--c-dark-rgb, 0, 21, 41), 0.08);
 }
 
 .msf-lbracket-leaf span:last-child {
   font-size: 12px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -2034,7 +2034,7 @@
 }
 
 .msf-bsummary thead th {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   text-align: left;
   padding: 8px 16px;
@@ -2048,7 +2048,7 @@
   padding: 9px 16px;
   border-top: 1px solid #f1f2f6;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .msf-bsummary__stage {
@@ -2079,7 +2079,7 @@
 }
 
 .msf-bsummary__vs {
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
   font-weight: 800;
   text-transform: uppercase;
 }
@@ -2088,8 +2088,8 @@
   background: #fff;
   border-radius: 12px;
   padding: 26px 30px;
-  color: #001529;
-  box-shadow: 0 6px 24px rgba(0, 21, 41, 0.08);
+  color: var(--c-dark, #001529);
+  box-shadow: 0 6px 24px rgba(var(--c-dark-rgb, 0, 21, 41), 0.08);
 }
 
 .msf-loading,
@@ -2135,7 +2135,7 @@
 
 .msf-select__btn {
   width: 100%;
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -2169,7 +2169,7 @@
   top: calc(100% + 6px);
   left: 0;
   right: 0;
-  background: #001529;
+  background: var(--c-dark, #001529);
   border-radius: 10px;
   padding: 10px;
   z-index: 20;
@@ -2192,7 +2192,7 @@
 
 .msf-select__opt {
   width: 100%;
-  background: #022240;
+  background: var(--c-dark-2, #022240);
   color: #fff;
   border: 1px solid rgba(255, 255, 255, 0.15);
   border-radius: 8px;
@@ -2210,12 +2210,12 @@
 
 @media (hover: hover) and (pointer: fine) {
 .msf-select__opt:hover {
-  background: #06346a;
+  background: var(--c-navy-4, #06346a);
 }
 }
 
 .msf-select__opt--active {
-  border-color: #f5a623;
+  border-color: var(--c-gold-2, #f5a623);
 }
 
 .msf-reset-btn {
@@ -2225,7 +2225,7 @@
   padding: 11px 16px;
   font-size: 13px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   cursor: pointer;
   height: 42px;
   display: flex;
@@ -2258,7 +2258,7 @@
 }
 
 .msf-stat {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   border-radius: 8px;
   padding: 9px 16px;
@@ -2271,7 +2271,7 @@
 
 .msf-stat b {
   font-size: 15px;
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
 }
 
 /* ── "Select round" heading ── */
@@ -2280,14 +2280,14 @@
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.4px;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
 }
 
 /* ── Round buttons — white, outlined, navy fill when active ── */
 .msf-roundtab {
   background: #fff;
-  color: #001529;
+  color: var(--c-dark, #001529);
   border: 1px solid #d8dceb;
   border-radius: 8px;
   padding: 10px 12px;
@@ -2300,9 +2300,9 @@
 }
 
 .msf-roundtab--active {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
-  border-color: #001529;
+  border-color: var(--c-dark, #001529);
 }
 
 /* ── Leg-grouped round selector (First leg / Second leg, grid of round buttons) ── */
@@ -2339,7 +2339,7 @@
 
 /* ── Dark panel that holds the header bar + match grid ── */
 .msf-matchpanel {
-  background: #001529;
+  background: var(--c-dark, #001529);
   border-radius: 12px;
   padding: 4px;
 }
@@ -2457,7 +2457,7 @@
 }
 
 .msf-matchcard__num {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   font-size: 10px;
   font-weight: 800;
@@ -2483,7 +2483,7 @@
 }
 
 .msf-teamblock span {
-  color: #001529;
+  color: var(--c-dark, #001529);
   font-size: 10px;
   font-weight: 800;
   text-align: center;
@@ -2507,7 +2507,7 @@
 }
 
 .msf-vs {
-  color: #001529;
+  color: var(--c-dark, #001529);
   font-weight: 800;
   font-size: 13px;
 }
@@ -2519,7 +2519,7 @@
 
 /* ── Shared buttons ── */
 .msf-btn-primary {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -2534,7 +2534,7 @@
 
 @media (hover: hover) and (pointer: fine) {
 .msf-btn-primary:hover {
-  background: #022240;
+  background: var(--c-dark-2, #022240);
 }
 }
 
@@ -2550,7 +2550,7 @@
 
 .msf-btn-ghost {
   background: #f0f1f5;
-  color: #001529;
+  color: var(--c-dark, #001529);
   border: none;
   border-radius: 8px;
   padding: 11px 18px;
@@ -2598,7 +2598,7 @@
   font-size: 12px;
   font-weight: 800;
   letter-spacing: 0.3px;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .msf-tsummary__row {
@@ -2622,7 +2622,7 @@
 
 .msf-tsummary__row b {
   font-size: 12px;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .msf-tsummary__total {
@@ -2644,7 +2644,7 @@
 .msf-tsummary__total b {
   font-size: 24px;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .msf-tsummary__total em {
@@ -2684,7 +2684,7 @@
   margin: 14px 16px 10px;
   font-size: 14px;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .msf-summary__table {
@@ -2695,7 +2695,7 @@
 
 .msf-summary__leg {
   background: #dbe2f5;
-  color: #001529;
+  color: var(--c-dark, #001529);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.4px;
@@ -2703,8 +2703,8 @@
 }
 
 .msf-summary__round-label {
-  background: #001529;
-  color: #f5a623;
+  background: var(--c-dark, #001529);
+  color: var(--c-gold-2, #f5a623);
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.4px;
@@ -2728,11 +2728,11 @@
 
 .msf-summary__team {
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .msf-summary__vs {
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
   font-weight: 800;
   font-size: 10px;
   text-align: center;
@@ -2744,7 +2744,7 @@
   bottom: 24px;
   left: 50%;
   transform: translateX(-50%);
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   border: 1px solid #22c55e;
   border-radius: 10px;
@@ -2786,7 +2786,7 @@
      that doesn't set its own color (the h2 title, the stat numbers below)
      silently inherits that white-on-dark default and becomes invisible on
      this white card. */
-  color: #001529;
+  color: var(--c-dark, #001529);
   border-radius: 16px;
   padding: 30px 34px;
   max-width: 380px;
@@ -3001,7 +3001,7 @@
   margin: 0;
   font-size: 19px;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .msf-add-card__divider {
@@ -3078,7 +3078,7 @@
 }
 
 .msf-addteam-btn {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   border: none;
   border-radius: 8px;
@@ -3245,7 +3245,7 @@
 }
 
 .msf-daygroup__head {
-  background: #001529;
+  background: var(--c-dark, #001529);
   color: #fff;
   font-size: 12px;
   font-weight: 800;
@@ -3311,7 +3311,7 @@
 .msf-matchrow__cat {
   font-size: 11px;
   font-weight: 700;
-  color: #2f4a9a;
+  color: var(--c-navy-3, #2f4a9a);
   margin-top: 1px;
 }
 
@@ -3377,7 +3377,7 @@
   border-radius: 8px;
   font-size: 12px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-decoration: none;
   transition: background 0.15s ease;
 }
@@ -3430,7 +3430,7 @@
   font-size: 14px;
   font-weight: 800;
   letter-spacing: 0.4px;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
   scroll-margin-top: 18px;
 }
@@ -3491,7 +3491,7 @@
   margin: 0 0 10px;
   font-size: 17px;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .msf-confirm-delete p {
@@ -3580,12 +3580,12 @@
 
 @media (hover: hover) and (pointer: fine) {
 .asp-event-chip:hover {
-  border-color: #001529;
+  border-color: var(--c-dark, #001529);
 }
 }
 
 .asp-event-chip--active {
-  border-color: #f5a623;
+  border-color: var(--c-gold-2, #f5a623);
   background: #fff8e9;
 }
 
@@ -3598,13 +3598,13 @@
 }
 
 .asp-event-chip--active .asp-event-chip__num {
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
 }
 
 .asp-event-chip__label {
   font-size: 0.66rem;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   letter-spacing: 0.03em;
   white-space: nowrap;
 }

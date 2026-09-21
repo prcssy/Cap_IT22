@@ -8,7 +8,7 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
   color: #fff;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
   overflow: hidden;
@@ -25,7 +25,7 @@
   height: 48px;
   flex-shrink: 0;
   width: 100%;
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
   border-bottom: 3px solid #fff;
   margin-top: 3.6px;
   box-sizing: border-box;
@@ -65,7 +65,7 @@
 .profile-page-title {
   font-size: 26px;
   font-weight: 900;
-  color: #FCBF19;
+  color: var(--c-gold, #fcbf19);
   margin: 0 0 4px;
   font-family: 'Inter', system-ui, sans-serif;
 }
@@ -124,7 +124,7 @@
 .profile-full-name {
   font-size: 22px;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   margin: 0;
   letter-spacing: 0.02em;
   font-family: 'Inter', system-ui, sans-serif;
@@ -154,8 +154,8 @@
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  background: #001529;
-  color: #FCBF19;
+  background: var(--c-dark, #001529);
+  color: var(--c-gold, #fcbf19);
   font-size: 11px;
   font-weight: 700;
   padding: 4px 14px;
@@ -191,7 +191,7 @@
 }
 
 .profile-detail-icon {
-  color: #FCBF19;
+  color: var(--c-gold, #fcbf19);
   font-size: 16px;
   flex-shrink: 0;
 }
@@ -214,7 +214,7 @@
   min-width: 0;
   font-size: 13px;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 /* Below this width there's no longer room for the name column, the
@@ -321,12 +321,12 @@
 
 .stat-icon-trophy {
   font-size: 22px;
-  color: #FCBF19;
+  color: var(--c-gold, #fcbf19);
 }
 
 .stat-icon-medal {
   font-size: 22px;
-  color: #FCBF19;
+  color: var(--c-gold, #fcbf19);
 }
 
 .stat-icon-reg {
@@ -353,7 +353,7 @@
 .profile-stat-count {
   font-size: 28px;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   line-height: 1;
   font-family: 'Inter', system-ui, sans-serif;
 }
@@ -371,7 +371,7 @@
   transform: translateY(-50%);
   background: transparent;
   border: none;
-  color: #001529;
+  color: var(--c-dark, #001529);
   font-size: 13px;
   cursor: pointer;
   padding: 4px;
@@ -490,7 +490,7 @@
   font-family: "Inter", sans-serif;
   font-size: 13px;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -516,8 +516,8 @@
 }
 
 .profile-card-action--change {
-  background: #001529;
-  color: #FCBF19;
+  background: var(--c-dark, #001529);
+  color: var(--c-gold, #fcbf19);
 }
 
 .profile-card-body {
@@ -566,7 +566,7 @@
 .profile-info-value {
   font-size: 12px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   flex: 1;
   min-width: 0;
   overflow: hidden;
@@ -589,12 +589,12 @@
 
 /* Adjust header text color to navy (matches Image 3 – white bg contact section) */
 .profile-contact-footer .header-with-lines .header-text {
-  color: #0A1D52;
+  color: var(--c-navy, #0a1d52);
   font-size: 1.6rem;
 }
 
 .profile-contact-footer .header-with-lines .header-line {
-  background-color: #FCBF19;
+  background-color: var(--c-gold, #fcbf19);
   height: 0.2rem;
   max-width: 80px;
 }
@@ -610,7 +610,7 @@
 @media (hover: hover) and (pointer: fine) {
 .profile-stat-card--clickable:hover {
   transform: translateY(-2px);
-  box-shadow: 0 6px 20px rgba(0, 21, 41, 0.12);
+  box-shadow: 0 6px 20px rgba(var(--c-dark-rgb, 0, 21, 41), 0.12);
 }
 }
 

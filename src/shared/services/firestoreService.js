@@ -1463,6 +1463,8 @@ export const DEFAULT_BRANDING = {
   motto: 'PERFORMANCE. TALENTS. SKILLS.',
   copyrightText: `© ${new Date().getFullYear()} Santa Rita College of Pampanga, Inc. All Rights Reserved.`,
   logoURL: null,
+  // Site-wide color theme key (see src/shared/constants/themes.js).
+  themeKey: 'santa-rita',
   events: EVENT_TYPES,
   // Contact footer shown on the public landing page (Contact.jsx). Icons
   // for these 4 fixed rows (address/phone/email/facebook) are chosen by

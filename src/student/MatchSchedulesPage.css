@@ -17,7 +17,7 @@
   flex: 1;
   min-height: 0;
   overflow: hidden;
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
   color: #fff;
   font-family: system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
 }
@@ -31,7 +31,7 @@
   height: 48px;
   flex-shrink: 0;
   width: 100%;
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
   border-bottom: 3px solid #fff;
   margin-top: 3.6px;
   box-sizing: border-box;
@@ -57,7 +57,7 @@
 .ms-page-title {
   font-size: 26px;
   font-weight: 900;
-  color: #FCBF19;
+  color: var(--c-gold, #fcbf19);
   margin: 0 0 4px;
   font-family: 'Inter', system-ui, sans-serif;
 }
@@ -124,8 +124,8 @@
 }
 
 .ms-lvltab--active {
-  color: #001529;
-  background: #FCBF19;
+  color: var(--c-dark, #001529);
+  background: var(--c-gold, #fcbf19);
 }
 
 /* ── Page-level empty / loading state ── */
@@ -179,9 +179,9 @@
 }
 
 .ms-category-tab--active {
-  background: #FCBF19;
-  border-color: #FCBF19;
-  color: #001529;
+  background: var(--c-gold, #fcbf19);
+  border-color: var(--c-gold, #fcbf19);
+  color: var(--c-dark, #001529);
 }
 
 .ms-search-wrap {
@@ -222,8 +222,8 @@
 
 /* ── Highlights the matched substring inside a team/venue cell ── */
 .ms-search-highlight {
-  background: #FCBF19;
-  color: #001529;
+  background: var(--c-gold, #fcbf19);
+  color: var(--c-dark, #001529);
   padding: 0 2px;
   border-radius: 3px;
   font-weight: 800;
@@ -257,7 +257,7 @@
 .ms-bracket-title {
   font-size: 16px;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-align: center;
   margin: 0 0 18px;
   text-transform: uppercase;
@@ -266,7 +266,7 @@
 
 .ms-bracket-empty {
   font-size: 13px;
-  color: rgba(0, 21, 41, 0.6);
+  color: rgba(var(--c-dark-rgb, 0, 21, 41), 0.6);
   text-align: center;
   margin: 0;
   padding: 12px 0;
@@ -342,7 +342,7 @@
 }
 
 .ms-bracket-team-row--winner {
-  border-color: #001529;
+  border-color: var(--c-dark, #001529);
   background: #f8f9fa;
 }
 
@@ -373,7 +373,7 @@
 .ms-bracket-team-name {
   font-size: 12px;
   font-weight: 600;
-  color: #001529;
+  color: var(--c-dark, #001529);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -395,7 +395,7 @@
 }
 
 .ms-bracket-team-status--winner {
-  background: #001529;
+  background: var(--c-dark, #001529);
 }
 
 .ms-bracket-team-status--pending {
@@ -524,7 +524,7 @@
 }
 
 .ms-bracket-trophy {
-  color: #FCBF19;
+  color: var(--c-gold, #fcbf19);
   font-size: 36px;
   margin-bottom: 6px;
 }
@@ -532,7 +532,7 @@
 .ms-bracket-champion-label {
   font-size: 12px;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
   letter-spacing: 0.1em;
   margin-bottom: 12px;
@@ -540,7 +540,7 @@
 
 .ms-bracket-champion-box {
   background: #fff;
-  border: 2px solid #FCBF19;
+  border: 2px solid var(--c-gold, #fcbf19);
   border-radius: 10px;
   padding: 12px 20px;
   min-width: 120px;
@@ -550,7 +550,7 @@
 .ms-bracket-champion-name {
   font-size: 14px;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .ms-bracket-champion-placeholder {
@@ -606,11 +606,11 @@
 }
 
 .ms-day-header {
-  background: #1a3a6e;
+  background: var(--c-navy-4, #1a3a6e);
   padding: 16px 18px;
   font-size: 12px;
   font-weight: 900;
-  color: #FCBF19;
+  color: var(--c-gold, #fcbf19);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -627,7 +627,7 @@
   column-gap: 18px;
   align-items: center;
   padding: 18px 18px;
-  border-top: 1px solid rgba(0, 21, 41, 0.1);
+  border-top: 1px solid rgba(var(--c-dark-rgb, 0, 21, 41), 0.1);
 }
 
 .ms-row--head {
@@ -648,7 +648,7 @@
 .ms-cell {
   font-size: 0.9rem;
   font-weight: 700;
-  color: #0A1D52;
+  color: var(--c-navy, #0a1d52);
   overflow-wrap: break-word;
   min-width: 0;
 }
@@ -657,7 +657,7 @@
   font-family: "Poppins", sans-serif;
   font-size: 1rem;
   font-weight: bold;
-  color: #0A1D52;
+  color: var(--c-navy, #0a1d52);
   text-transform: uppercase;
   letter-spacing: 0.06em;
 }
@@ -771,7 +771,7 @@
   font-size: 11px;
   font-weight: 900;
   letter-spacing: 0.08em;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
   text-align: center;
   margin-bottom: 2px;
@@ -841,7 +841,7 @@
 .ms-team-pill__name {
   font-size: 12px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 
 .ms-team-pill__name--tbd {
@@ -910,7 +910,7 @@
   border-radius: 8px;
   padding: 4px 10px;
   box-sizing: border-box;
-  box-shadow: 0 1px 4px rgba(0, 21, 41, 0.08);
+  box-shadow: 0 1px 4px rgba(var(--c-dark-rgb, 0, 21, 41), 0.08);
 }
 
 .ms-btree-node--done {
@@ -923,7 +923,7 @@
   gap: 6px;
   font-size: 11px;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
   letter-spacing: 0.1px;
   text-transform: uppercase;
   overflow: hidden;
@@ -965,7 +965,7 @@
 }
 
 .ms-btree-champion svg {
-  color: #f5a623;
+  color: var(--c-gold-2, #f5a623);
   font-size: 26px;
 }
 
@@ -990,7 +990,7 @@
   font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.4px;
-  color: #001529;
+  color: var(--c-dark, #001529);
   text-transform: uppercase;
   white-space: nowrap;
 }
@@ -1104,7 +1104,7 @@
     justify-content: space-between;
     gap: 4px;
     padding-top: 10px;
-    border-top: 1.5px solid rgba(0, 21, 41, 0.18);
+    border-top: 1.5px solid rgba(var(--c-dark-rgb, 0, 21, 41), 0.18);
   }
 
   .ms-cell-time,

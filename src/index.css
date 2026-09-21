@@ -10,7 +10,7 @@
 }
 
 body {
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
   overflow: hidden;
 }
 
@@ -20,7 +20,7 @@ body {
   height: 100dvh;
   width: 100vw;
   overflow: hidden;
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
 }
 
 /* ── Critical: main column must consume remaining width after sidebar ── */

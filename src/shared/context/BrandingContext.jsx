@@ -1,5 +1,6 @@
 import { createContext, useEffect, useState } from 'react';
 import { subscribeBrandingConfig, DEFAULT_BRANDING } from '../services/firestoreService';
+import { DEFAULT_THEME_KEY, getTheme, themeToCssVars } from '../constants/themes';
 import defaultLogo from '../img/SRCLogo.png';
 
 /* ════════════════════════════════════════════════════════════════════
@@ -46,6 +47,19 @@ export function BrandingProvider({ children }) {
     const link = document.querySelector('link[rel="icon"]');
     if (link) link.href = logo;
   }, [logo]);
+
+  // Apply the chosen color theme site-wide by setting the --c-* variables
+  // every stylesheet reads. Removing them (default theme) falls back to the
+  // original colors baked into each var(--c-x, #fallback).
+  useEffect(() => {
+    const root = document.documentElement;
+    const vars = themeToCssVars(getTheme(branding.themeKey).colors);
+    const isDefault = !branding.themeKey || branding.themeKey === DEFAULT_THEME_KEY;
+    Object.entries(vars).forEach(([name, value]) => {
+      if (isDefault) root.style.removeProperty(name);
+      else root.style.setProperty(name, value);
+    });
+  }, [branding.themeKey]);
 
   return (
     <BrandingContext.Provider value={{ ...branding, logo, loading }}>

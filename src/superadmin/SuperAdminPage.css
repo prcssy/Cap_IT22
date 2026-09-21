@@ -9,7 +9,7 @@
   flex-direction: column;
   width: 100%;
   height: 100%;
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
   font-family: 'Inter', sans-serif;
   color: #fff;
   overflow: hidden;
@@ -25,7 +25,7 @@
   height: 48px;
   flex-shrink: 0;
   width: 100%;
-  background-color: #001529;
+  background-color: var(--c-dark, #001529);
   border-bottom: 3px solid #fff;
   margin-top: 3.6px;
   box-sizing: border-box;
@@ -97,14 +97,14 @@
 
 @media (hover: hover) and (pointer: fine) {
 .sa-lvltab:hover {
-  color: #16337a;
+  color: var(--c-navy-3, #16337a);
   background: #e2e8f0;
 }
 }
 
 .sa-lvltab--active {
   color: #fff;
-  background: #16337a;
+  background: var(--c-navy-3, #16337a);
 }
 
 /* .sa-lvltab's own base rule (above) sits after the earlier mobile
@@ -163,7 +163,7 @@
 .sa-panel__title {
   font-size: 21px;
   font-weight: 900;
-  color: #16337a;
+  color: var(--c-navy-3, #16337a);
   margin: 0 0 3px;
 }
 
@@ -228,12 +228,12 @@
 
 .sa-select:focus,
 .sa-select--open {
-  border-color: #16337a;
+  border-color: var(--c-navy-3, #16337a);
 }
 
 @media (hover: hover) and (pointer: fine) {
 .sa-select:hover {
-  border-color: #16337a;
+  border-color: var(--c-navy-3, #16337a);
 }
 }
 
@@ -244,7 +244,7 @@
 }
 
 .sa-select--open .sa-select__chevron {
-  color: #16337a;
+  color: var(--c-navy-3, #16337a);
   transform: rotate(180deg);
 }
 
@@ -296,13 +296,13 @@
 }
 
 .sa-dropdown__item--active {
-  background: #16337a;
+  background: var(--c-navy-3, #16337a);
   color: #fff;
 }
 
 @media (hover: hover) and (pointer: fine) {
   .sa-dropdown__item--active:hover {
-    background: #16337a;
+    background: var(--c-navy-3, #16337a);
   }
 }
 
@@ -328,8 +328,8 @@
 
 @media (hover: hover) and (pointer: fine) {
 .sa-icon-btn:hover:not(:disabled) {
-  border-color: #16337a;
-  color: #16337a;
+  border-color: var(--c-navy-3, #16337a);
+  color: var(--c-navy-3, #16337a);
 }
 }
 
@@ -346,7 +346,7 @@
   padding: 0 15px;
   border: none;
   border-radius: 7px;
-  background: #16337a;
+  background: var(--c-navy-3, #16337a);
   color: #fff;
   font-family: 'Inter', sans-serif;
   font-size: 11.5px;
@@ -438,7 +438,7 @@
   font-family: 'Lalezar', sans-serif;
   font-size: 1.4rem;
   font-weight: 900;
-  color: #16337a;
+  color: var(--c-navy-3, #16337a);
   line-height: 1.05;
 }
 
@@ -476,7 +476,7 @@
 .sa-card__head h3 {
   font-size: 0.76rem;
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
   margin: 0;
 }
 
@@ -600,7 +600,7 @@
 
 .sa-legend__value {
   font-weight: 800;
-  color: #001529;
+  color: var(--c-dark, #001529);
   white-space: nowrap;
 }
 
@@ -619,7 +619,7 @@
 .sa-table-title {
   font-size: 1rem;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   margin: 0 0 12px;
 }
 
@@ -655,7 +655,7 @@
 }
 
 .sa-td--name {
-  color: #001529 !important;
+  color: var(--c-dark, #001529) !important;
   font-weight: 700 !important;
 }
 

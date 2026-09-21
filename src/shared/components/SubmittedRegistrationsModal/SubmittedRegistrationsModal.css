@@ -74,7 +74,7 @@
 .sr-header-title {
   font-size: 15px;
   font-weight: 900;
-  color: #001529;
+  color: var(--c-dark, #001529);
   letter-spacing: 0.06em;
   margin: 0 0 3px;
 }
@@ -104,7 +104,7 @@
 @media (hover: hover) and (pointer: fine) {
 .sr-close-btn:hover {
   background: #f0f4fa;
-  color: #001529;
+  color: var(--c-dark, #001529);
 }
 }
 
@@ -158,7 +158,7 @@
 .sr-item-name {
   font-size: 13px;
   font-weight: 700;
-  color: #001529;
+  color: var(--c-dark, #001529);
   margin: 0 0 5px;
 }
 

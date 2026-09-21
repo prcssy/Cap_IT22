@@ -5,7 +5,7 @@
   width: 60px;
   height: 100vh;
   height: 100dvh;
-  background-color: #0A1D52;
+  background-color: var(--c-navy, #0a1d52);
   flex-shrink: 0;
   position: relative;
   z-index: 300;
@@ -116,7 +116,7 @@
   visibility: hidden;
   white-space: nowrap;
   background: rgba(255, 255, 255, 0.98);
-  color: #001a3a;
+  color: var(--c-dark-2, #001a3a);
   border: solid 2px #e0e0e0;
   padding: 6px 10px;
   border-radius: 999px;
@@ -137,7 +137,7 @@
 }
 
 .sidebar-btn.active {
-  background: #1a3a6e;
+  background: var(--c-navy-4, #1a3a6e);
   color: #fff;
 }
 
@@ -180,13 +180,13 @@
 
 .panel-avatar {
   font-size: 4rem;
-  color: #001a3a;
+  color: var(--c-dark-2, #001a3a);
 }
 
 .panel-login-btn {
   width: 100%;
   padding: 0.5rem 1rem;
-  background: #001a3a;
+  background: var(--c-dark-2, #001a3a);
   color: #fff;
   border: none;
   border-radius: 999px;
@@ -198,7 +198,7 @@
 
 @media (hover: hover) and (pointer: fine) {
 .panel-login-btn:hover {
-  background: #1a3a6e;
+  background: var(--c-navy-4, #1a3a6e);
 }
 }
 
@@ -215,7 +215,7 @@
   gap: 0.75rem;
   padding: 0.6rem 0.75rem;
   border-radius: 8px;
-  color: #001a3a;
+  color: var(--c-dark-2, #001a3a);
   text-decoration: none;
   font-size: 0.95rem;
   font-weight: 500;
@@ -235,7 +235,7 @@
 
 .panel-nav-icon {
   font-size: 1.1rem;
-  color: #001a3a;
+  color: var(--c-dark-2, #001a3a);
 }
 
 .sidebar-backdrop {
@@ -287,7 +287,7 @@
      it needs to switch to a dark color right when it opens, or it
      just disappears into the white panel. */
   .sidebar-btn.menu-btn:has(.menu-icon.open) {
-    color: #0A1D52;
+    color: var(--c-navy, #0a1d52);
   }
 
   .sidebar-panel {
@@ -311,9 +311,9 @@
 }
 
 .sidebar-profile-top.active {
-  color: #001529;
-  background: #FCBF19;
-  border-color: #FCBF19;
+  color: var(--c-dark, #001529);
+  background: var(--c-gold, #fcbf19);
+  border-color: var(--c-gold, #fcbf19);
 }
 
 /* Tooltip opens downward-left so it stays on screen at the right edge */
