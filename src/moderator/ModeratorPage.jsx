@@ -1434,7 +1434,15 @@ export default function ModeratorPage() {
         : '';
       return { sportId: selectedSport.id, sportName: selectedSport.name, category: fromFixture, logo: selectedSport.logo || null, format: '' };
     }
-    if (!selectedDivision) return null;
+    if (!selectedDivision) {
+      /* A fixture whose category matches none of the configured divisions
+         (naming drift between Schedules and Sports & Teams) still knows its
+         own division — use it rather than demanding a manual pick. */
+      if (lockedMatch && lockedMatch.category && norm(lockedMatch.sport) === norm(selectedSport.name)) {
+        return { sportId: selectedSport.id, sportName: selectedSport.name, category: lockedMatch.category, logo: selectedSport.logo || null, format: '' };
+      }
+      return null;
+    }
     return {
       sportId: selectedSport.id, sportName: selectedSport.name,
       category: selectedDivision.category, logo: selectedSport.logo || null, format: selectedDivision.format,
@@ -1827,13 +1835,51 @@ export default function ModeratorPage() {
     // Re-opening a saved record: its own stored "previous points" are the
     // right baseline, since live rankings already include this match.
     const snapshot = editingRecord || lockedRecord;
-    if (snapshot) {
-      const all = snapshot.participants && snapshot.participants.length
-        ? snapshot.participants
-        : [snapshot.teamA, snapshot.teamB];
-      const hit = all.find((p) => norm(p.name) === norm(teamName));
-      if (hit && hit.prevPoints != null) return hit.prevPoints;
+
+    /* Game order = the fixture's scheduled date/time (falls back to when it
+       was recorded). A team's rating going into a game is the final rating of
+       its previous game in the same sport/division, so the first round is
+       always followed by the next — regardless of the order they were saved. */
+    const schedById = new Map(schedules.map((x) => [x.id, x]));
+    const orderOf = (rec) => {
+      const sc = rec?.scheduleId ? schedById.get(rec.scheduleId) : null;
+      if (sc?.date) {
+        const t = new Date(`${sc.date}T${sc.time || '00:00'}`).getTime();
+        if (!Number.isNaN(t)) return t;
+      }
+      return rec?.createdAt || 0;
+    };
+    const target = snapshot || lockedMatch;
+    if (target) {
+      const targetKey = snapshot
+        ? rankingScopeKey(snapshot.sportName, snapshot.category)
+        : scopeKey;
+      const targetOrder = orderOf(target);
+      const sideOf = (r) => (r.participants && r.participants.length ? r.participants : [r.teamA, r.teamB])
+        .find((pp) => pp && norm(pp.name) === norm(teamName));
+      const sameScope = records.filter((r) => r.id !== snapshot?.id
+        && rankingScopeKey(r.sportName, r.category) === targetKey && sideOf(r));
+      const earlier = sameScope
+        .filter((r) => orderOf(r) < targetOrder
+          || (orderOf(r) === targetOrder && (r.createdAt || 0) <= (snapshot?.createdAt || 0)))
+        .sort((a, b) => orderOf(a) - orderOf(b) || (a.createdAt || 0) - (b.createdAt || 0));
+      if (earlier.length) {
+        const fp = sideOf(earlier[earlier.length - 1]).finalPoints;
+        if (fp != null) return fp;
+      }
+      /* Nothing earlier: start from the team's baseline going into its very
+         first recorded game here (not the live rating, which already includes
+         later games). */
+      const firstRecorded = [...sameScope, ...(snapshot ? [snapshot] : [])]
+        .filter((r) => sideOf(r))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))[0];
+      if (firstRecorded) {
+        const side = sideOf(firstRecorded);
+        const base = side.basePoints ?? side.prevPoints;
+        if (base != null) return base;
+      }
     }
+
     /* This exact sport + division is the first choice: a rating only means
        something against the teams it was earned from. */
     const inScope = pointsInScope(scopedRankings, teamName);
@@ -1848,7 +1894,7 @@ export default function ModeratorPage() {
     if (carried != null) return round4(carried);
 
     return DEFAULT_POINTS;
-  }, [scopedRankings, rankings, editingRecord, lockedRecord]);
+  }, [scopedRankings, rankings, records, schedules, scopeKey, lockedMatch, editingRecord, lockedRecord]);
 
   const entryScore = useCallback((entry) => {
     if (mode === 'points') return entry.points === '' ? null : Number(entry.points);
@@ -2008,7 +2054,7 @@ export default function ModeratorPage() {
     const reasons = [];
     if (!formatChoice) reasons.push('Choose a sports format first.');
     if (!selectedSport) reasons.push('Select a sport.');
-    if (selectedSport && divisionRequired && !selectedDivision) reasons.push('Select a division.');
+    if (selectedSport && divisionRequired && !selectedDivision && !activeSport) reasons.push('Select a division.');
     if (isManualEntry && !yearLevel) reasons.push('Select a year level.');
 
     entries.forEach((e, i) => {

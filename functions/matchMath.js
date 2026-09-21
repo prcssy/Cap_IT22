@@ -166,7 +166,116 @@ function computeEditFinalPoints({ ratingA, ratingB, violA, violB, comebackA, com
   };
 }
 
+/* Builds the "which game came first" ordering used by replayScope: the
+   fixture's scheduled date/time when the record came from the Match
+   Schedule, else the moment it was recorded. */
+function scheduleOrder(schedules) {
+  const byId = new Map((schedules || []).map((s) => [s.id, s]));
+  return (rec) => {
+    const s = rec.scheduleId ? byId.get(rec.scheduleId) : null;
+    if (s && s.date) {
+      const t = new Date(`${s.date}T${s.time || '00:00'}`).getTime();
+      if (!Number.isNaN(t)) return t;
+    }
+    return rec.createdAt || 0;
+  };
+}
+
+/* Re-runs every record of ONE ranking scope (sport + division) in game order (oldest → newest)
+   so a team's rating flows from one game into the next. A saved record keeps
+   its own frozen prevPoints, so editing/saving an earlier game would otherwise
+   leave later games on a stale baseline (e.g. still 1200) and overwrite the
+   live ranking with the earlier game's result. A team's first appearance in
+   the scope keeps its stored prevPoints (this preserves ratings carried over
+   from other divisions). Returns the refreshed records plus each team's
+   latest rating. */
+function replayScope(records, scopeKey, orderOf) {
+  const inScope = records
+    .map((rec, index) => ({ rec, index }))
+    .filter(({ rec }) => rankingScopeKey(rec.sportName, rec.category) === scopeKey)
+    .sort((a, b) => {
+      const oa = orderOf ? orderOf(a.rec) : (a.rec.createdAt || 0);
+      const ob = orderOf ? orderOf(b.rec) : (b.rec.createdAt || 0);
+      return oa - ob || (a.rec.createdAt || 0) - (b.rec.createdAt || 0) || a.index - b.index;
+    });
+
+  /* Each team's starting rating in this scope = what it held going into the
+     FIRST game ever recorded for it here (by recording time, not game order),
+     so recording a later fixture before an earlier one can't make the live
+     rating the earlier game's baseline. Remembered as basePoints so later
+     replays keep the same anchor even after prevPoints get rewritten. */
+  const seeds = new Map();
+  [...inScope]
+    .sort((a, b) => (a.rec.createdAt || 0) - (b.rec.createdAt || 0) || a.index - b.index)
+    .forEach(({ rec }) => {
+      const list = rec.participants && rec.participants.length ? rec.participants : [rec.teamA, rec.teamB];
+      list.forEach((p) => {
+        if (!p || seeds.has(norm(p.name))) return;
+        seeds.set(norm(p.name), p.basePoints ?? p.prevPoints ?? DEFAULT_POINTS);
+      });
+    });
+
+  const running = new Map(); // norm(name) -> latest rating
+  const latest = {};         // name -> latest rating
+  const replaced = new Map(); // record id -> refreshed record
+
+  inScope.forEach(({ rec }) => {
+    const multi = !!(rec.participants && rec.participants.length);
+    const list = multi ? rec.participants : [rec.teamA, rec.teamB];
+    const mode = rec.mode || (rec.teamA && rec.teamA.points != null ? 'points' : 'time');
+    const rows = list.map((p, i) => ({
+      id: p.id || `t${i}`,
+      name: p.name,
+      score: mode === 'time' ? p.minutes : p.points,
+      totalViolations: Number(p.totalViolations) || 0,
+      comeback: !!p.comeback,
+      prevPoints: running.has(norm(p.name)) ? running.get(norm(p.name)) : seeds.get(norm(p.name)),
+    }));
+    if (rows.some((r) => r.score == null || Number.isNaN(r.score))) return;
+
+    let winnerOverrideId = null;
+    if (multi) {
+      const first = list.find((p) => p.place === 1);
+      winnerOverrideId = first ? (first.id || null) : null;
+    } else if (rec.winner === 'A' || rec.winner === 'B') {
+      winnerOverrideId = rows[rec.winner === 'A' ? 0 : 1].id;
+    }
+
+    const comp = buildComputation({ rows, mode, winnerOverrideId });
+    const refreshed = comp.teams.map((t, i) => ({
+      ...list[i],
+      basePoints: seeds.get(norm(list[i].name)),
+      prevPoints: round4(t.prevPoints),
+      expected: round4(t.expected),
+      f1: round4(t.totalF1),
+      change: round4(t.change),
+      finalPoints: round4(t.finalPoints),
+      place: t.place,
+    }));
+    refreshed.forEach((p) => {
+      running.set(norm(p.name), p.finalPoints);
+      latest[p.name] = p.finalPoints;
+    });
+
+    const next = { ...rec };
+    if (multi) {
+      // teamA/teamB are the first two entries, participants are by place.
+      const pick = (side) => refreshed.find((p) => norm(p.name) === norm(side.name)) || side;
+      next.teamA = { ...rec.teamA, ...pick(rec.teamA) };
+      next.teamB = { ...rec.teamB, ...pick(rec.teamB) };
+      next.participants = [...refreshed].sort((a, b) => a.place - b.place);
+    } else {
+      next.teamA = refreshed[0];
+      next.teamB = refreshed[1];
+    }
+    replaced.set(rec.id, next);
+  });
+
+  return { records: records.map((r) => replaced.get(r.id) || r), latest };
+}
+
 module.exports = {
+  replayScope, scheduleOrder,
   K_FACTOR, PPU, COMEBACK_BONUS, DEFAULT_POINTS, LEVEL_LABELS,
   norm, displayCategory, rankingScopeKey, round4,
   pointsInScope, overallRating, expectedScore, signedPerformance, isBetter,

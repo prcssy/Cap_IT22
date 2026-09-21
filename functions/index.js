@@ -354,9 +354,11 @@ exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) =>
 
   const recordsRef = db.collection("matchRecords").doc(level);
   const rankingsRef = db.collection("teamRankings").doc(level);
+  const schedulesRef = db.collection("matchSchedules").doc(level);
 
   const { record, records, rankings } = await db.runTransaction(async (tx) => {
-    const [recordsSnap, rankingsSnap] = await Promise.all([tx.get(recordsRef), tx.get(rankingsRef)]);
+    const [recordsSnap, rankingsSnap, schedulesSnap] = await Promise.all([tx.get(recordsRef), tx.get(rankingsRef), tx.get(schedulesRef)]);
+    const orderOf = matchMath.scheduleOrder(schedulesSnap.exists ? (schedulesSnap.data().matches || []) : []);
     const existingRecords = recordsSnap.exists ? (recordsSnap.data().records || []) : [];
     const rankingsAll = rankingsSnap.exists ? (rankingsSnap.data().points || {}) : {};
 
@@ -454,18 +456,24 @@ exports.submitMatchRecord = onCall({ enforceAppCheck: true }, async (request) =>
     };
 
     const idx = existingRecords.findIndex((r) => r.id === newRecord.id);
-    const nextRecords = idx >= 0
+    const withNew = idx >= 0
       ? existingRecords.map((r) => (r.id === newRecord.id ? newRecord : r))
       : [...existingRecords, newRecord];
 
-    const nextScope = { ...scoped };
-    cTeams.forEach((t) => { nextScope[t.name] = matchMath.round4(t.finalPoints); });
+    // Replay the whole scope so every later game of these teams picks up the
+    // rating this save produced (and this game picks up earlier ones).
+    const replay = matchMath.replayScope(withNew, scopeKey, orderOf);
+    const nextRecords = replay.records;
+    const savedRecord = nextRecords.find((r) => r.id === newRecord.id) || newRecord;
+
+    const nextScope = { ...scoped, ...replay.latest };
+    cTeams.forEach((t) => { if (!(t.name in replay.latest)) nextScope[t.name] = matchMath.round4(t.finalPoints); });
     const nextRankings = { ...rankingsAll, [scopeKey]: nextScope };
 
     tx.set(recordsRef, { records: nextRecords, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.set(rankingsRef, { points: nextRankings, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
-    return { record: newRecord, records: nextRecords, rankings: nextRankings };
+    return { record: savedRecord, records: nextRecords, rankings: nextRankings };
   });
 
   await logActivity({
@@ -503,9 +511,11 @@ exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
 
   const recordsRef = db.collection("matchRecords").doc(level);
   const rankingsRef = db.collection("teamRankings").doc(level);
+  const schedulesRef = db.collection("matchSchedules").doc(level);
 
   const { updated, records, rankings } = await db.runTransaction(async (tx) => {
-    const [recordsSnap, rankingsSnap] = await Promise.all([tx.get(recordsRef), tx.get(rankingsRef)]);
+    const [recordsSnap, rankingsSnap, schedulesSnap] = await Promise.all([tx.get(recordsRef), tx.get(rankingsRef), tx.get(schedulesRef)]);
+    const orderOf = matchMath.scheduleOrder(schedulesSnap.exists ? (schedulesSnap.data().matches || []) : []);
     const existingRecords = recordsSnap.exists ? (recordsSnap.data().records || []) : [];
     const rankingsAll = rankingsSnap.exists ? (rankingsSnap.data().points || {}) : {};
 
@@ -559,18 +569,23 @@ exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
       updatedAt: Date.now(),
     };
 
-    const nextRecords = existingRecords.map((r) => (r.id === recordId ? nextRecord : r));
+    const withEdit = existingRecords.map((r) => (r.id === recordId ? nextRecord : r));
 
+    // Replay the scope so later games of these teams follow the edited result.
     const scopeKey = matchMath.rankingScopeKey(nextRecord.sportName, nextRecord.category);
-    const nextScope = { ...(rankingsAll[scopeKey] || {}) };
-    nextScope[nextRecord.teamA.name] = finalPointsA;
-    nextScope[nextRecord.teamB.name] = finalPointsB;
+    const replay = matchMath.replayScope(withEdit, scopeKey, orderOf);
+    const nextRecords = replay.records;
+    const savedRecord = nextRecords.find((r) => r.id === recordId) || nextRecord;
+
+    const nextScope = { ...(rankingsAll[scopeKey] || {}), ...replay.latest };
+    if (!(nextRecord.teamA.name in replay.latest)) nextScope[nextRecord.teamA.name] = finalPointsA;
+    if (!(nextRecord.teamB.name in replay.latest)) nextScope[nextRecord.teamB.name] = finalPointsB;
     const nextRankings = { ...rankingsAll, [scopeKey]: nextScope };
 
     tx.set(recordsRef, { records: nextRecords, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
     tx.set(rankingsRef, { points: nextRankings, updatedAt: FieldValue.serverTimestamp() }, { merge: true });
 
-    return { updated: nextRecord, records: nextRecords, rankings: nextRankings };
+    return { updated: savedRecord, records: nextRecords, rankings: nextRankings };
   });
 
   await logActivity({

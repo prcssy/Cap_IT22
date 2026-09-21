@@ -2,6 +2,8 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const {
   round4,
+  replayScope,
+  scheduleOrder,
   norm,
   displayCategory,
   rankingScopeKey,
@@ -141,4 +143,46 @@ test('computeEditFinalPoints: falls back to fallbackWinner on a tie', () => {
     fallbackWinner: 'B',
   });
   assert.equal(result.winner, 'B');
+});
+
+test('replayScope carries a team rating from one game into the next', () => {
+  const mk = (id, createdAt, a, b, pa, pb, winner) => ({
+    id, createdAt, sportName: 'Basketball', category: 'Men', mode: 'points', winner,
+    teamA: { id: a, name: a, points: pa, prevPoints: 1200 },
+    teamB: { id: b, name: b, points: pb, prevPoints: 1200 },
+    participants: [],
+  });
+  const recs = [
+    mk('r1', 1, 'Fox', 'Blue', 33, 22, 'A'),
+    mk('r2', 2, 'Fox', 'Eagles', 33, 43, 'B'), // stored stale: Fox prev 1200
+  ];
+  const key = rankingScopeKey('Basketball', 'Men');
+  const { records, latest } = replayScope(recs, key);
+  assert.ok(records[0].teamA.finalPoints > 1200);
+  assert.equal(records[1].teamA.prevPoints, records[0].teamA.finalPoints);
+  assert.equal(latest.Fox, records[1].teamA.finalPoints);
+});
+
+test('replayScope orders by schedule, even when recorded out of order', () => {
+  const mk = (id, createdAt, sid, a, b, pa, pb, winner, prevA, prevB) => ({
+    id, createdAt, scheduleId: sid, sportName: 'Basketball', category: 'Women', mode: 'points', winner,
+    teamA: { id: a, name: a, points: pa, prevPoints: prevA },
+    teamB: { id: b, name: b, points: pb, prevPoints: prevB },
+    participants: [],
+  });
+  const schedules = [
+    { id: 's1', date: '2026-09-21', time: '06:16' },
+    { id: 's2', date: '2026-09-21', time: '08:16' },
+  ];
+  // s2 (Fox vs Blue, later game) was recorded first at 1200; s1 (Fox vs Eagles, earlier game) recorded second.
+  const recs = [
+    mk('r2', 1, 's2', 'Fox', 'Blue', 33, 22, 'A', 1200, 1200),
+    mk('r1', 2, 's1', 'Fox', 'Eagles', 40, 30, 'A', 1221.5, 1200),
+  ];
+  const key = rankingScopeKey('Basketball', 'Women');
+  const { records } = replayScope(recs, key, scheduleOrder(schedules));
+  const r1 = records.find((r) => r.id === 'r1');
+  const r2 = records.find((r) => r.id === 'r2');
+  assert.equal(r1.teamA.prevPoints, 1200);                    // earlier game starts at the base
+  assert.equal(r2.teamA.prevPoints, r1.teamA.finalPoints);    // later game adopts it
 });
