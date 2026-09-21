@@ -534,6 +534,50 @@ function placeLabel(place) {
   return `${place}th Placer`;
 }
 
+/* Pill dropdown for the Match schedules filters — same look as the Ranking
+   page's Sport/Division selects (a native <select>'s open list can't be
+   themed). value '' means "all". */
+function FilterSelect({ value, onChange, options, allLabel, disabled }) {
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onClickOutside = (e) => {
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener('mousedown', onClickOutside);
+    return () => document.removeEventListener('mousedown', onClickOutside);
+  }, [open]);
+
+  const items = [{ value: '', label: allLabel }, ...options.map((o) => ({ value: o, label: o }))];
+
+  return (
+    <div className="mp-fs" ref={wrapRef}>
+      <button
+        type="button"
+        className="mp-fs__btn"
+        disabled={disabled}
+        onClick={() => setOpen((prev) => !prev)}
+      >
+        {value || allLabel}
+        <FaChevronDown className={`mp-fs__chevron ${open ? 'mp-fs__chevron--open' : ''}`} />
+      </button>
+      <ul className={`mp-fs__menu ${open ? 'mp-fs__menu--open' : ''}`}>
+        {items.map((item) => (
+          <li
+            key={item.value || '__all'}
+            className={`mp-fs__item ${value === item.value ? 'mp-fs__item--active' : ''}`}
+            onClick={() => { onChange(item.value); setOpen(false); }}
+          >
+            {item.label}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function initials(name) {
   return (name || '?').split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
 }
@@ -2460,24 +2504,22 @@ export default function ModeratorPage() {
                 </div>
               )}
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 12, margin: '4px 0 12px' }}>
+            <div className="mp-fs-row">
               {[
                 ['Sport', fSport, (v) => { setFSport(v); setFCategory(''); setFDivision(''); }, filterOptions.sports, 'All Sports'],
                 ['Category', fCategory, (v) => { setFCategory(v); setFDivision(''); }, filterOptions.categories, 'All Categories'],
                 ['Division', fDivision, setFDivision, filterOptions.divisions, 'All Divisions'],
               ].map(([label, value, onChange, options, allLabel]) => (
-                <label key={label} style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: '0.7rem', fontWeight: 700, letterSpacing: '0.06em', textTransform: 'uppercase', opacity: 0.9 }}>
-                  {label}
-                  <select
+                <div className="mp-fs-group" key={label}>
+                  <span className="mp-fs-label">{label}</span>
+                  <FilterSelect
                     value={value}
-                    onChange={(e) => onChange(e.target.value)}
+                    onChange={onChange}
+                    options={options}
+                    allLabel={allLabel}
                     disabled={options.length === 0}
-                    style={{ background: '#0b1f3a', color: '#fff', border: '1px solid rgba(255,255,255,0.25)', borderRadius: 8, padding: '6px 10px', fontSize: '0.8rem', fontWeight: 600 }}
-                  >
-                    <option value="">{allLabel}</option>
-                    {options.map((o) => <option key={o} value={o}>{o}</option>)}
-                  </select>
-                </label>
+                  />
+                </div>
               ))}
             </div>
             {shownMatches.length === 0 && (
@@ -2516,6 +2558,11 @@ export default function ModeratorPage() {
                         {s.teamBLogo ? <img src={s.teamBLogo} alt="" /> : initials(s.teamB)}
                       </span>
                     </div>
+                    {(s.stage || s.round != null) && (
+                      <div className="mp-finished-card__label-pill">
+                        {s.stage || `Round ${s.round}`}
+                      </div>
+                    )}
                     {s.matchLabel && (
                       <div className="mp-finished-card__label-pill">
                         {s.matchLabel}
