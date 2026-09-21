@@ -1,6 +1,7 @@
 import { useContext } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { FaBars, FaTimes, FaUserCircle, FaHome, FaFlag, FaCalendarAlt, FaMedal, FaShieldAlt, FaUserShield, FaChartPie } from "react-icons/fa";
+import { FaBars, FaTimes, FaUserCircle, FaHome, FaFlag, FaCalendarAlt, FaMedal, FaUserEdit, FaUserLock } from "react-icons/fa";
+import { FaUserGear } from "react-icons/fa6";
 import { SidebarContext } from "./SidebarContext";
 import { AuthContext } from "../../context/AuthContext";
 import { ScheduleRequestsContext } from "../../context/ScheduleRequestsContext";
@@ -84,12 +85,12 @@ function Sidebar() {
             {userProfile?.isAdmin && (
               <button
                 className={`sidebar-btn ${location.pathname === "/schedule-admin" ? "active" : ""}`}
-                aria-label="Admin Panel"
+                aria-label="Administrator"
                 data-label="Admin"
                 onClick={() => navigate('/schedule-admin')}
                 style={{ position: 'relative' }}
               >
-                <FaShieldAlt />
+                <FaUserLock />
                 {pendingRequestCount > 0 && (
                   <span style={{
                     position: 'absolute', top: 2, right: 2, width: 9, height: 9, borderRadius: '50%',
@@ -107,7 +108,7 @@ function Sidebar() {
                 data-label="Moderator"
                 onClick={() => navigate('/moderator')}
               >
-                <FaUserShield />
+                <FaUserEdit />
               </button>
             )}
 
@@ -118,11 +119,11 @@ function Sidebar() {
             {userProfile?.role === 'superadmin' && (
               <button
                 className={`sidebar-btn ${location.pathname === "/superadmin" ? "active" : ""}`}
-                aria-label="SuperAdmin"
+                aria-label="Super Administrator"
                 data-label="SuperAdmin"
                 onClick={() => navigate('/superadmin')}
               >
-                <FaChartPie />
+                <FaUserGear />
               </button>
             )}
           </div>
@@ -165,8 +166,8 @@ function Sidebar() {
           {/* Admin Panel link — only visible to admins */}
           {userProfile?.isAdmin && (
             <Link to="/schedule-admin" className={`panel-nav-item ${location.pathname === "/schedule-admin" ? "active" : ""}`}>
-              <FaShieldAlt className="panel-nav-icon" />
-              <span>Admin Panel</span>
+              <FaUserLock className="panel-nav-icon" />
+              <span>Administrator</span>
               {pendingRequestCount > 0 && (
                 <span style={{
                   marginLeft: 'auto', minWidth: 18, height: 18, padding: '0 4px', borderRadius: 999,
@@ -182,15 +183,15 @@ function Sidebar() {
           {/* Moderator — visible to moderators and super admins only (not regular admins) */}
           {(userProfile?.role === 'moderator' || userProfile?.role === 'superadmin') && (
             <Link to="/moderator" className={`panel-nav-item ${location.pathname === "/moderator" ? "active" : ""}`}>
-              <FaUserShield className="panel-nav-icon" />
+              <FaUserEdit className="panel-nav-icon" />
               <span>Moderator</span>
             </Link>
           )}
           {/* Super Admin — visible to super admins only */}
           {userProfile?.role === 'superadmin' && (
             <Link to="/superadmin" className={`panel-nav-item ${location.pathname === "/superadmin" ? "active" : ""}`}>
-              <FaChartPie className="panel-nav-icon" />
-              <span>SuperAdmin</span>
+              <FaUserGear className="panel-nav-icon" />
+              <span>Super Administrator</span>
             </Link>
           )}
         </nav>
