@@ -3302,6 +3302,27 @@
   font-weight: 700;
 }
 
+.msf-matchrow__cat {
+  font-size: 11px;
+  font-weight: 700;
+  color: #2f4a9a;
+  margin-top: 1px;
+}
+
+.msf-matchrow__tbd {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  align-self: flex-start;
+  margin-top: 3px;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: #fff3d6;
+  color: #8a5f04;
+  font-size: 10.5px;
+  font-weight: 800;
+}
+
 .msf-matchrow__loc {
   font-size: 11px;
   color: #5b678a;

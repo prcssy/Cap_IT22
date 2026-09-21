@@ -335,6 +335,7 @@
    inline (that part is genuinely dynamic). */
 .mp-finished-card__sport {
   display: flex;
+  flex-wrap: wrap; /* long "Sport · Division · Format" captions wrap instead of squeezing the status pill */
   align-items: center;
   justify-content: space-between;
   gap: 6px;
@@ -459,6 +460,70 @@
 
 .mp-finished-card--done {
   opacity: 0.6;
+}
+
+/* Card + its "Mark as finished" button. The button can't live inside the
+   card (a <button> inside a <button> is invalid), so both sit in this wrapper,
+   which takes over the card's role as the flex item of the scrolling list. */
+.mp-finished-item {
+  flex: 0 0 auto;
+  min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mp-finished-item .mp-finished-card {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Not finished yet: visible, but not recordable until marked. */
+.mp-finished-card--pending:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.mp-finished-item__mark {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid #f5a623;
+  background: #f5a623;
+  color: #0e1f3d;
+  font-size: 0.74rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: filter 0.15s, opacity 0.15s;
+}
+
+.mp-finished-item__mark:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mp-finished-item__mark:not(:disabled):hover {
+    filter: brightness(1.08);
+  }
+}
+
+@media (max-width: 480px) {
+  .mp-finished-item {
+    flex: 0 0 100%;
+    min-width: 0;
+    scroll-snap-align: start;
+  }
+
+  .mp-finished-item__mark {
+    padding: 5px 8px;
+    font-size: 0.6rem;
+  }
 }
 
 .mp-finished-card__teams {

@@ -15,6 +15,7 @@ import {
   editMatchRecord,
   getTeamRankings,
   createScheduleRequest,
+  markMatchScheduleFinished,
 } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
 import { AuthContext } from '../shared/context/AuthContext';
@@ -274,6 +275,19 @@ function flatDivisions(sport) {
   });
 }
 
+/* Full division name for a schedule row, e.g. "MEN (Senior)". Two divisions
+   can share a category label ("MEN"), so this resolves via the saved
+   divisionId; matches saved before that existed keep their plain category. */
+function scheduleDivisionLabel(schedule, sports) {
+  const sport = (sports || []).find((s) => norm(s.name) === norm(schedule.sport));
+  const group = (sport?.categoryGroups || []).find((g) => (g.divisions || []).some((d) => d.id === schedule.divisionId));
+  const div = group?.divisions.find((d) => d.id === schedule.divisionId);
+  if (!div) return schedule.category || '';
+  const label = (group.label || div.name || '').trim();
+  const dName = (div.name || '').trim();
+  return dName && dName.toLowerCase() !== label.toLowerCase() ? `${label} (${dName})` : label;
+}
+
 /* One row per sport (no division baked in) — feeds the "Select sport" dropdown. */
 function buildSportOnlyOptions(sports) {
   return (sports || []).map((sport) => ({
@@ -364,6 +378,7 @@ const MATCH_STATUS_COLOR = {
 };
 
 function matchStatus(schedule) {
+  if (schedule.finished) return 'finished';
   if (!schedule.date || !schedule.time) return 'undated';
   const start = new Date(`${schedule.date}T${schedule.time}`);
   if (Number.isNaN(start.getTime())) return 'undated';
@@ -375,10 +390,11 @@ function matchStatus(schedule) {
 }
 
 function matchHasFinished(schedule) {
-  // Admin-generated schedules intentionally start without date/time. They are
-  // still valid schedule rows and must be selectable by the moderator; dated
-  // manual schedules continue to use the normal elapsed-time check.
-  if (!schedule?.date || !schedule?.time) return schedule?.source === 'generated';
+  // Every scheduled match is visible to the moderator, but only a finished
+  // one can be recorded: either the moderator pressed "Mark as finished"
+  // (schedule.finished) or a dated match's assumed duration has elapsed.
+  if (schedule?.finished) return true;
+  if (!schedule?.date || !schedule?.time) return false;
   const start = new Date(`${schedule.date}T${schedule.time}`);
   if (Number.isNaN(start.getTime())) return false;
   const end = new Date(start.getTime() + ASSUMED_MATCH_MINUTES * 60000);
@@ -1805,17 +1821,15 @@ export default function ModeratorPage() {
     [schedules],
   );
 
-  // The moderator's job is to input finished games, so only those are
-  // pickable here — matchHasFinished already treats admin-generated
-  // bracket rows (no fixed date/time) as always eligible.
-  const recordableMatches = useMemo(() => {
+  // Every scheduled match is listed for the moderator, but only finished
+  // ones (marked by the moderator, or elapsed) can be picked for recording.
+  const listedMatches = useMemo(() => {
     const startOf = (s) => {
       const d = new Date(`${s.date}T${s.time || '00:00'}`);
       return Number.isNaN(d.getTime()) ? 0 : d.getTime();
     };
     return scheduledMatches
-      .filter((s) => matchHasFinished(s))
-      .map((s) => ({ ...s, status: matchStatus(s) }))
+      .map((s) => ({ ...s, status: matchStatus(s), canRecord: matchHasFinished(s) }))
       .sort((a, b) => {
         const aDone = isMatchRecorded(a) ? 1 : 0;
         const bDone = isMatchRecorded(b) ? 1 : 0;
@@ -1825,6 +1839,23 @@ export default function ModeratorPage() {
         return startOf(b) - startOf(a);
       });
   }, [scheduledMatches, isMatchRecorded]);
+  const recordableMatches = useMemo(() => listedMatches.filter((s) => s.canRecord), [listedMatches]);
+
+  const [markingId, setMarkingId] = useState(null);
+  async function handleMarkFinished(s) {
+    if (markingId) return;
+    setMarkingId(s.id);
+    try {
+      // The schedule subscription pushes the updated row back, so the card
+      // flips to "Finished" without any local state change here.
+      await markMatchScheduleFinished(level, s.id, userProfile?.role);
+    } catch (err) {
+      console.error('Failed to mark match as finished:', err);
+      setLoadError('Could not mark that match as finished. Please try again.');
+    } finally {
+      setMarkingId(null);
+    }
+  }
 
   /* ── ratings & live computation ── */
   const scopeKey = activeSport ? rankingScopeKey(activeSport.sportName, activeSport.category) : null;
@@ -2299,7 +2330,7 @@ export default function ModeratorPage() {
           </p>
         )}
 
-        {recordableMatches.length > 0 && (
+        {listedMatches.length > 0 && (
           <div className="mp-finished-panel">
             <div className="mp-finished-panel__head">
               <div>
@@ -2308,7 +2339,7 @@ export default function ModeratorPage() {
                   className="mp-finished-panel__sub"
                   style={{ margin: '2px 0 0', fontSize: '0.72rem', opacity: 0.7, fontWeight: 500 }}
                 >
-                  Every finished matchup, in any sport or division. Pick one and its sport, division, and both teams fill in automatically.
+                  Every scheduled matchup, in any sport or division. Mark a match as finished, then pick it and its sport, division, and both teams fill in automatically.
                 </p>
               </div>
               {lockedMatch && (
@@ -2320,18 +2351,19 @@ export default function ModeratorPage() {
               )}
             </div>
             <div className="mp-finished-panel__list">
-              {recordableMatches.map((s) => {
+              {listedMatches.map((s) => {
                 const active = lockedMatch?.id === s.id;
                 const done = isMatchRecorded(s);
                 return (
+                  <div className="mp-finished-item" key={s.id}>
                   <button
                     type="button"
-                    key={s.id}
-                    className={`mp-finished-card ${active ? 'mp-finished-card--active' : ''} ${done ? 'mp-finished-card--done' : ''}`}
+                    className={`mp-finished-card ${active ? 'mp-finished-card--active' : ''} ${done ? 'mp-finished-card--done' : ''} ${s.canRecord ? '' : 'mp-finished-card--pending'}`}
                     onClick={() => handlePickFinishedMatch(s)}
+                    disabled={!s.canRecord}
                   >
                     <div className="mp-finished-card__sport">
-                      <span style={{ opacity: 0.65 }}>{s.sport}{s.category ? ` · ${s.category}` : ''}</span>
+                      <span style={{ opacity: 0.65 }}>{s.sport}{scheduleDivisionLabel(s, sports) ? ` · ${scheduleDivisionLabel(s, sports)}` : ''}{s.format ? ` · ${s.format}` : ''}</span>
                       <span
                         className="mp-finished-card__status-pill"
                         style={{
@@ -2368,6 +2400,17 @@ export default function ModeratorPage() {
                       <div className="mp-finished-card__status mp-finished-card__status--active"><FaLock /> Selected</div>
                     ) : null}
                   </button>
+                  {!s.canRecord && (
+                    <button
+                      type="button"
+                      className="mp-finished-item__mark"
+                      onClick={() => handleMarkFinished(s)}
+                      disabled={markingId === s.id}
+                    >
+                      <FaCheck /> {markingId === s.id ? 'Saving…' : 'Mark as finished'}
+                    </button>
+                  )}
+                  </div>
                 );
               })}
             </div>
@@ -2395,21 +2438,15 @@ export default function ModeratorPage() {
             no finished matches of its own — the moderator records what the
             admin scheduled and finished, nothing more. */}
         {!(formatChoice && recordableMatches.length > 0) ? (
-          recordableMatches.length === 0 && (
+          scheduledMatches.length === 0 && (
             <div className="mp-card mp-card--empty">
-              <h3 className="mp-card__title">
-                {scheduledMatches.length === 0 ? 'No matches scheduled yet' : 'No finished matches yet'}
-              </h3>
+              <h3 className="mp-card__title">No matches scheduled yet</h3>
               <p className="mp-card__sub">
-                {scheduledMatches.length === 0
-                  ? "Once an admin saves a schedule for this level it appears here, ready to record — or ask them to arrange one."
-                  : "Matches on the schedule show up here once they're finished."}
+                Once an admin saves a schedule for this level it appears here, ready to record — or ask them to arrange one.
               </p>
-              {scheduledMatches.length === 0 && (
-                <button type="button" className="mp-btn mp-btn--update" onClick={openRequestModal}>
-                  <FaPaperPlane /> Request a schedule
-                </button>
-              )}
+              <button type="button" className="mp-btn mp-btn--update" onClick={openRequestModal}>
+                <FaPaperPlane /> Request a schedule
+              </button>
             </div>
           )
         ) : (

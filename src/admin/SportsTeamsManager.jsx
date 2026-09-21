@@ -613,7 +613,26 @@ function EditTeamModal({ team, sportsList, saving, onClose, onSave }) {
   const [name,     setName]     = useState(team.name || '');
   const [logo,     setLogo]     = useState(team.logo || null);
   const [sportIds, setSportIds] = useState(team.sportIds || []);
+  const [divisionMap, setDivisionMap] = useState(team.divisionMap || {});
   const [showPicker, setShowPicker] = useState(false);
+
+  /* Divisions a sport offers — same ids the schedule generator uses for its
+     category picker (division.id). A team with no entry for a sport (or an
+     empty one) plays every division of it. */
+  const divisionsOf = (sportName) => {
+    const sport = sportsList.find(s => norm(s.name) === norm(sportName));
+    return (sport?.categoryGroups || []).flatMap(g => (g.divisions || []).map(d => {
+      const group = (g.label || d.name || '').trim();
+      const dName = (d.name || '').trim();
+      return { id: d.id, label: dName && dName.toLowerCase() !== group.toLowerCase() ? `${group} (${dName})` : group };
+    }));
+  };
+  const toggleDivision = (sportName, divId, allIds) => setDivisionMap(prev => {
+    const cur = prev[sportName]?.length ? prev[sportName] : allIds;
+    const next = cur.includes(divId) ? cur.filter(id => id !== divId) : [...cur, divId];
+    // Every division ticked == no restriction; store nothing rather than a full list.
+    return { ...prev, [sportName]: next.length === allIds.length ? [] : next };
+  });
 
   const renamed = !!name.trim() && norm(name) !== norm(team.name);
 
@@ -663,6 +682,33 @@ function EditTeamModal({ team, sportsList, saving, onClose, onSave }) {
                 </ul>
               )}
             </div>
+
+            {sportIds.map(sportName => {
+              const divs = divisionsOf(sportName);
+              if (divs.length < 2) return null; // nothing to choose between
+              const allIds = divs.map(d => d.id);
+              const chosen = divisionMap[sportName]?.length ? divisionMap[sportName] : allIds;
+              return (
+                <div className="stm-edit-sport-cats" key={sportName}>
+                  <div className="stm-edit-sport-cats__head">
+                    <span className="stm-preview-label">{sportName.toUpperCase()} DIVISIONS</span>
+                  </div>
+                  <div className="stm-picker-list">
+                    {divs.map(d => (
+                      <button
+                        key={d.id}
+                        type="button"
+                        className={`stm-picker-item ${chosen.includes(d.id) ? 'stm-picker-item--on' : ''}`}
+                        onClick={() => toggleDivision(sportName, d.id, allIds)}
+                      >
+                        <span>{d.label}</span>
+                        <span className="stm-picker-check">{chosen.includes(d.id) && <FaCheck />}</span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </div>
           </div>
 
@@ -672,7 +718,7 @@ function EditTeamModal({ team, sportsList, saving, onClose, onSave }) {
               type="button"
               className="stm-btn-primary"
               disabled={saving || !name.trim()}
-              onClick={() => onSave({ ...team, name: name.trim(), logo, sportIds })}
+              onClick={() => onSave({ ...team, name: name.trim(), logo, sportIds, divisionMap })}
             >
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
@@ -1021,6 +1067,7 @@ export default function SportsTeamsManager({ level }) {
           ...ensureId(t),
           logo: t.logo || null,
           sportIds: t.sportIds || [],
+          divisionMap: t.divisionMap || {},
           color: t.color || TEAM_COLORS[0],
         }));
         if (cancelled) return;
@@ -1119,6 +1166,8 @@ export default function SportsTeamsManager({ level }) {
           ...t,
           sportIds: (t.sportIds || []).map(sportName =>
             norm(sportName) === norm(previous.name) ? updatedSport.name : sportName),
+          divisionMap: Object.fromEntries(Object.entries(t.divisionMap || {}).map(([k, v]) =>
+            [norm(k) === norm(previous.name) ? updatedSport.name : k, v])),
         }))
       : null;
     if (retargetedTeams) setTeamsList(retargetedTeams);

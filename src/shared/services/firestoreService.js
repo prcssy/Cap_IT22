@@ -732,14 +732,25 @@ export function subscribeMatchSchedules(level, callback) {
  * MatchScheduleFormatSection's `isLocked` — so this only ever collides
  * with itself when called twice for the exact same set.
  */
+/**
+ * Two divisions of one sport can share a category label (both "MEN" — e.g.
+ * MEN (Senior) / MEN (Junior)), so `divisionId` is what tells them apart.
+ * Matches saved before `divisionId` existed don't carry one; they fall back
+ * to the old sport + category match.
+ */
+export const inScheduleSet = (m, sport, category, divisionId) =>
+  m.sport === sport && m.category === category
+  && (!divisionId || !m.divisionId || m.divisionId === divisionId);
+
 export async function saveGeneratedSchedule(level, matches, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  const sport    = matches[0]?.sport;
-  const category = matches[0]?.category;
+  const sport      = matches[0]?.sport;
+  const category   = matches[0]?.category;
+  const divisionId = matches[0]?.divisionId;
 
   const merged = await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (existing) => [
-    ...existing.filter(m => !(m.sport === sport && m.category === category)),
+    ...existing.filter(m => !inScheduleSet(m, sport, category, divisionId)),
     ...matches,
   ]);
 
@@ -781,7 +792,7 @@ async function deleteMatchRecordsByScheduleIds(level, scheduleIds) {
  * "Reset Schedule" confirmation in Match Schedules Format once a set
  * is locked.
  */
-export async function deleteScheduleSet(level, sport, category, actorRole) {
+export async function deleteScheduleSet(level, sport, category, actorRole, divisionId) {
   if (!db) throw new Error('Firestore not initialized.');
 
   // Set (possibly more than once, if the transaction retries after a
@@ -789,8 +800,8 @@ export async function deleteScheduleSet(level, sport, category, actorRole) {
   // value matters once updateDocFieldViaTransaction resolves.
   let removed = [];
   const remaining = await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (existing) => {
-    removed = existing.filter(m => m.sport === sport && m.category === category);
-    return existing.filter(m => !(m.sport === sport && m.category === category));
+    removed = existing.filter(m => inScheduleSet(m, sport, category, divisionId));
+    return existing.filter(m => !inScheduleSet(m, sport, category, divisionId));
   });
 
   await deleteMatchRecordsByScheduleIds(level, removed.map(m => m.id));
@@ -832,6 +843,35 @@ export async function upsertMatchSchedule(level, match, actorRole) {
     targetType: 'schedule',
     targetId: match.id,
     targetLabel: match.sport,
+  });
+
+  return merged;
+}
+
+/**
+ * Flags one scheduled match as finished — the moderator's "Mark as finished"
+ * button. Only touches `finished` / `finishedAt` on that match, so nothing
+ * the admin set (teams, date, venue) can be overwritten. Once finished, the
+ * match becomes recordable on the Update Match Records screen.
+ */
+export async function markMatchScheduleFinished(level, matchId, actorRole) {
+  if (!db) throw new Error('Firestore not initialized.');
+
+  let target = null;
+  const merged = await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (existing) => {
+    target = existing.find(m => m.id === matchId) || null;
+    return existing.map(m => (m.id === matchId
+      ? { ...m, finished: true, finishedAt: new Date().toISOString() }
+      : m));
+  });
+
+  logActivity({
+    actorRole,
+    type: 'Schedule Updated',
+    details: `Marked a ${target?.sport || 'match'} fixture as finished${target?.category ? ` (${target.category})` : ''}`,
+    targetType: 'schedule',
+    targetId: matchId,
+    targetLabel: target?.sport,
   });
 
   return merged;

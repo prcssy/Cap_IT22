@@ -12,7 +12,7 @@ import { FaTimes, FaSync, FaUsers, FaChevronDown, FaCheck, FaEdit, FaPlus, FaMap
 // jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf /
 // handleDownloadBracketPdf below), not imported statically here.
 import { db } from '../shared/firebase';
-import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, EVENT_TYPES, getVenues, getAllMatchSchedules, updateScheduleRequest, deleteScheduleRequest } from '../shared/services/firestoreService';
+import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, inScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, EVENT_TYPES, getVenues, getAllMatchSchedules, updateScheduleRequest, deleteScheduleRequest } from '../shared/services/firestoreService';
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../shared/components/LevelTabs';
@@ -126,13 +126,16 @@ function friendlyFirestoreError(err, fallback) {
    AUTO-SCHEDULING — date/time assignment for a freshly generated schedule.
    All matches in the same round (round-robin) or stage (bracket/double
    bracket) share one time slot, since they're played on different courts
-   at once; the next round/stage starts SLOT_GAP_MINUTES later. Once a
+   at once; the next round/stage starts slotGapFor(sport) later. Once a
    slot would land at/after DAY_CUTOFF_MINUTES, scheduling rolls over to
    the next calendar day, restarting at the admin's chosen start time.
    Purely a starting point — every match stays editable afterward via the
    per-match Edit modal, same as before this existed.
 ═══════════════════════════════════════════ */
-const SLOT_GAP_MINUTES = 90;
+const DEFAULT_SLOT_GAP_MINUTES = 60;
+const SLOT_GAP_BY_SPORT = { basketball: 90, volleyball: 90 }; // 1:30 per game
+const slotGapFor = (sport) =>
+  SLOT_GAP_BY_SPORT[String(sport || '').trim().toLowerCase()] ?? DEFAULT_SLOT_GAP_MINUTES;
 const DAY_CUTOFF_MINUTES = 17 * 60; // 5:00 PM
 
 const scheduleGroupKey = (m) => m.stage ?? `round-${m.round}`;
@@ -159,10 +162,14 @@ function assignAutoSchedule(matches, startDate, startTime) {
   let isFirstGroup = true;
 
   return matches.map((m) => {
-    const key = scheduleGroupKey(m);
+    // Basketball/volleyball: every match gets its own 1:30 slot, even within
+    // the same round/stage. Other sports still share one slot per round.
+    const key = m.sport && SLOT_GAP_BY_SPORT[String(m.sport).trim().toLowerCase()]
+      ? m.id
+      : scheduleGroupKey(m);
     if (key !== prevKey) {
       if (!isFirstGroup) {
-        currentMinutes += SLOT_GAP_MINUTES;
+        currentMinutes += slotGapFor(m.sport);
         if (currentMinutes >= DAY_CUTOFF_MINUTES) {
           currentDate = addDaysToDateStr(currentDate, 1);
           currentMinutes = timeStrToMinutes(startTime);
@@ -574,11 +581,14 @@ function SavedBracketTree({ stages, matchRecords }) {
   const leafY = Array.from({ length: leafCount }, (_, i) => i * ROW_H + ROW_H / 2);
   const matchY = [];
   stages.forEach((stage, r) => {
-    matchY.push(stage.matches.map((_, m) => (
-      r === 0
-        ? (leafY[2 * m] + leafY[2 * m + 1]) / 2
-        : (matchY[r - 1][2 * m] + matchY[r - 1][2 * m + 1]) / 2
-    )));
+    // A round can have fewer matches than half the previous one when a team
+    // got a bye (byes are never saved as matches) — e.g. 5 teams: the bye team
+    // walks straight into the finals, so the finals node has only ONE child
+    // match. Average whichever children exist instead of reading undefined.
+    matchY.push(stage.matches.map((_, m) => {
+      const ys = (r === 0 ? leafY : matchY[r - 1]).slice(2 * m, 2 * m + 2);
+      return ys.reduce((s, y) => s + y, 0) / ys.length;
+    }));
   });
 
   const colX = (r) => r * COL_W; // left edge of round r's boxes
@@ -599,7 +609,9 @@ function SavedBracketTree({ stages, matchRecords }) {
     const childX = colX(r - 1) + NODE_W;
     const parentX = colX(r);
     stages[r].matches.forEach((_, m) => {
-      connectors.push(elbow(childX, matchY[r - 1][2 * m], matchY[r - 1][2 * m + 1], parentX, matchY[r][m]));
+      const y1 = matchY[r - 1][2 * m];
+      const y2 = matchY[r - 1][2 * m + 1] ?? y1; // bye: only one feeder match
+      connectors.push(elbow(childX, y1, y2, parentX, matchY[r][m]));
     });
   }
   connectors.push(`M ${colX(totalRounds - 1) + NODE_W} ${championY} H ${championX}`);
@@ -1208,6 +1220,15 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   };
   const categoryOptions = categoryOptionsFor(selSport);
 
+  /* Category/division caption for a schedule row, e.g. "MEN (Senior) · Single
+     Bracket". Resolves the division's full display name via its saved
+     divisionId; older matches without one fall back to the stored category. */
+  const matchCaption = (m) => {
+    const sportObj = sportsList.find(s => norm(s.name) === norm(m.sport));
+    const div = m.divisionId && categoryOptionsFor(sportObj).find(o => o.value === m.divisionId);
+    return [div?.display || m.category, m.format].filter(Boolean).join(' · ');
+  };
+
   /* ── Teams eligible for a given sport ──
      NOTE: despite the field name, SportsTeamsManager's TeamSportsPickerModal
      stores sport *names* in team.sportIds, not sport ids. Match on name,
@@ -1218,14 +1239,21 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
      a blank draft row that slipped through, would show up as a selectable
      "team" the admin never actually added. ── */
   const norm = (s) => (s || '').trim().toLowerCase();
-  const teamsForSport = useCallback((sportName) => {
+  const teamsForSport = useCallback((sportName, divisionId) => {
     if (!sportName) return [];
+    // team.divisionMap[sportName] = the divisions of that sport the team plays
+    // in (set in Sports & Teams). No entry / empty = plays every division.
+    const inDivision = (t) => {
+      const allowed = Object.entries(t.divisionMap || {}).find(([k]) => norm(k) === norm(sportName))?.[1];
+      return !divisionId || !allowed?.length || allowed.includes(divisionId);
+    };
     return Array.from(
       new Map(
         teamsList
           .filter(t =>
             (t.name || '').trim() &&
-            (t.sportIds || []).some(id => norm(id) === norm(sportName))
+            (t.sportIds || []).some(id => norm(id) === norm(sportName)) &&
+            inDivision(t)
           )
           .map(t => [t.id || t.name, t])
       ).values()
@@ -1233,8 +1261,8 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   }, [teamsList]);
 
   const eligibleTeams = useMemo(
-    () => teamsForSport(selSport?.name),
-    [teamsForSport, selSport]
+    () => teamsForSport(selSport?.name, selCategory?.value),
+    [teamsForSport, selSport, selCategory]
   );
 
   const handlePickSport = (opt) => {
@@ -1272,7 +1300,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
      document. */
   const lockedMatches = useMemo(() => (
     (selSport && selCategory)
-      ? savedSchedules.filter(m => m.sport === selSport.name && m.category === selCategory.label)
+      ? savedSchedules.filter(m => inScheduleSet(m, selSport.name, selCategory.label, selCategory.value))
       : []
   ), [selSport, selCategory, savedSchedules]);
   const isLocked = lockedMatches.length > 0;
@@ -1284,6 +1312,25 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   // math) every time it runs — only worth doing again when the underlying
   // matches actually change, not on every unrelated re-render of this page.
   const savedBracketStages = useMemo(() => buildSavedBracketStages(lockedMatches), [lockedMatches]);
+  // Rebuild the generator's full tree (all team boxes incl. byes) so a saved
+  // single bracket looks exactly like the preview shown at generation time.
+  // Only trusted if it still lines up with what was saved (same labels, and
+  // every saved real-team pairing matches); otherwise the caller falls back
+  // to SavedBracketTree, which reads straight off the saved matches.
+  const savedFullBracket = useMemo(() => {
+    if (!lockedMatches.length || !lockedMatches.every(m => isSingleBracketStage(m.stage))) return null;
+    const full = generateBracket(eligibleTeams.map(t => t.name));
+    const byLabel = new Map();
+    full.stages.forEach(s => s.matches.forEach(m => { if (!m.isBye) byLabel.set(m.label, m); }));
+    if (byLabel.size !== lockedMatches.length) return null;
+    const ok = lockedMatches.every((m) => {
+      const g = byLabel.get(m.matchLabel);
+      if (!g) return false;
+      const same = (saved, gen) => isPlaceholderTeam(saved) || isPlaceholderTeam(gen) || saved === gen;
+      return same(m.teamA, g.a) && same(m.teamB, g.b);
+    });
+    return ok ? full : null;
+  }, [lockedMatches, eligibleTeams]);
   const savedDoubleBracketStages = useMemo(() => buildSavedDoubleBracketStages(lockedMatches), [lockedMatches]);
 
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
@@ -1306,7 +1353,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     if (!selSport || !selCategory) return;
     setResettingSchedule(true);
     try {
-      const remaining = await deleteScheduleSet(level, selSport.name, selCategory.label, actorRole);
+      const remaining = await deleteScheduleSet(level, selSport.name, selCategory.label, actorRole, selCategory.value);
       setSavedSchedules(remaining);
       syncAllSchedulesForLevel(remaining);
       setResetConfirmOpen(false);
@@ -1347,6 +1394,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
       id: uid(),
       sport: selSport.name,
       category: selCategory.label,
+      divisionId: selCategory.value,
       format: selFormat.label,
       teamALogo: teamByName(extra.teamA)?.logo || null,
       teamBLogo: teamByName(extra.teamB)?.logo || null,
@@ -1855,7 +1903,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               <p className="msf-muted">
                 A schedule already exists for this sport and category ({lockedMatches[0]?.format || 'saved'}).
               </p>
-              <p className="msf-form-note" style={{ color: '#a83218', fontWeight: 700 }}>
+              <p className="msf-form-note" style={{ color: '#a83218', fontWeight: 700, margin: '4px 0 0' }}>
                 Click "Reset Schedule" above to delete it before generating a new one in a different format.
               </p>
             </div>
@@ -1873,10 +1921,14 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <FaDownload /> Download Bracket PDF
               </button>
             </div>
-            <SavedBracketTree
-              stages={savedBracketStages}
-              matchRecords={matchRecords}
-            />
+            {savedFullBracket ? (
+              <BracketTree stages={savedFullBracket.stages} leaves={savedFullBracket.leaves} teamByName={teamByName} />
+            ) : (
+              <SavedBracketTree
+                stages={savedBracketStages}
+                matchRecords={matchRecords}
+              />
+            )}
           </>
         )}
 
@@ -2324,6 +2376,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                           <div className="msf-matchrow__time msf-matchrow__time--muted">TBD</div>
                           <div className="msf-matchrow__mid">
                             <div className="msf-matchrow__teams">{m.teamA} vs {m.teamB}</div>
+                            {matchCaption(m) && <div className="msf-matchrow__cat">{matchCaption(m)}</div>}
                           </div>
                           <button className="msf-icon-edit" onClick={() => openEditModal(m)}><FaEdit /></button>
                         </div>
@@ -2343,7 +2396,10 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                             <div className="msf-matchrow__mid">
                               {m.matchLabel && <div className="msf-matchrow__label">{m.matchLabel}</div>}
                               <div className="msf-matchrow__teams">{m.teamA} vs {m.teamB}</div>
-                              {m.location && <div className="msf-matchrow__loc"><FaMapMarkerAlt /> {m.location}</div>}
+                              {matchCaption(m) && <div className="msf-matchrow__cat">{matchCaption(m)}</div>}
+                              {m.location
+                                ? <div className="msf-matchrow__loc"><FaMapMarkerAlt /> {m.location}</div>
+                                : <div className="msf-matchrow__tbd"><FaExclamationTriangle /> Venue to be determined</div>}
                               {record && (
                                 <div className="msf-matchrow__loc" style={{ color: '#14713a', fontWeight: 700 }}>
                                   <FaTrophy /> {winner ? `${winner} won — result recorded` : 'Draw — result recorded'}
