@@ -1886,3 +1886,19 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ── Bulk upload confirmation: warnings list ── */
+.stm-bulk-warnings {
+  margin-top: 16px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: #fff7e6;
+  border: 1px solid #f5d9a0;
+}
+
+.stm-bulk-detail {
+  margin-top: 14px;
+}
+.stm-modal--category .stm-modal__body > .stm-preview-list {
+  padding: 4px 4px 0 22px;
+}

@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef, useContext } from 'react';
 import {
   FaRunning, FaUsers, FaPlus, FaTimes,
-  FaEdit, FaCheck, FaSync,
+  FaEdit, FaCheck, FaSync, FaFileExcel, FaDownload,
 } from 'react-icons/fa';
 import './SportsTeamsManager.css';
+import { buildImport, readBulkWorkbook, downloadBulkTemplate } from './bulkImport';
 import { getSportsTeamsConfig, saveSportsConfig, saveTeamsConfig } from '../shared/services/firestoreService';
 import { AuthContext } from '../shared/context/AuthContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
@@ -886,6 +887,77 @@ function TeamsConfirmModal({ teams, saving, onClose, onSave }) {
 }
 
 /* ═══════════════════════════════════════════
+   BULK IMPORT CONFIRMATION MODAL
+   Shows what the uploaded workbook will add/update before anything is saved.
+═══════════════════════════════════════════ */
+function BulkImportModal({ plan, saving, onClose, onSave }) {
+  const { summary, warnings } = plan;
+  const lines = [
+    plan.hasSports && `Sports: ${summary.addedSports} new, ${summary.updatedSports} updated`,
+    plan.hasTeams  && `Teams: ${summary.addedTeams} new, ${summary.updatedTeams} updated`,
+  ].filter(Boolean);
+
+  return (
+    <div className="stm-overlay" onClick={saving ? undefined : onClose}>
+      <div className="stm-modal stm-modal--category" onClick={e => e.stopPropagation()}>
+        <div className="stm-catmod-head">
+          <button className="stm-icon-btn stm-catmod-close" onClick={onClose} disabled={saving} aria-label="Close"><FaTimes /></button>
+          <h3>BULK UPLOAD</h3>
+          <p>Review what will be saved from your Excel file.</p>
+        </div>
+
+        <div className="stm-modal__body">
+          <ul className="stm-preview-list">
+            {lines.map(l => <li key={l}>{l}</li>)}
+          </ul>
+          {plan.incomingSports.length > 0 && (
+            <div className="stm-bulk-detail">
+              <span className="stm-preview-label">SPORTS IN THIS FILE</span>
+              <ul className="stm-preview-list">
+                {plan.incomingSports.map(s => {
+                  const divs = s.categoryGroups.reduce((n, g) => n + g.divisions.length, 0);
+                  return (
+                    <li key={s.id}>
+                      <b>{s.name}</b> — {s.categoryGroups.length} categor{s.categoryGroups.length === 1 ? 'y' : 'ies'},{' '}
+                      {divs} division{divs === 1 ? '' : 's'}, {s.positions.length} position{s.positions.length === 1 ? '' : 's'},{' '}
+                      {s.violations.length} violation{s.violations.length === 1 ? '' : 's'}{s.logo ? ', logo ✓' : ''}
+                      {divs === 0 && ' ⚠ no categories/divisions found'}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+          )}
+          {plan.incomingTeams.length > 0 && (
+            <div className="stm-bulk-detail">
+              <span className="stm-preview-label">TEAMS IN THIS FILE</span>
+              <ul className="stm-preview-list">
+                {plan.incomingTeams.map(t => <li key={t.name}><b>{t.name}</b> — {t.sports.length ? t.sports.join(', ') : 'no sports'}{t.logo ? ' · logo ✓' : ''}</li>)}
+              </ul>
+            </div>
+          )}
+          {warnings.length > 0 && (
+            <div className="stm-bulk-warnings">
+              <span className="stm-preview-label">{warnings.length} NOTE{warnings.length === 1 ? '' : 'S'}</span>
+              <ul className="stm-preview-list">
+                {warnings.map((w, i) => <li key={i}>{w}</li>)}
+              </ul>
+            </div>
+          )}
+        </div>
+
+        <div className="stm-catmod-actions">
+          <button type="button" className="stm-btn-ghost" onClick={onClose} disabled={saving}>Cancel</button>
+          <button type="button" className="stm-btn-primary" onClick={onSave} disabled={saving}>
+            {saving ? 'Saving…' : 'Save'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
    MAIN COMPONENT
 ═══════════════════════════════════════════ */
 export default function SportsTeamsManager({ level }) {
@@ -916,6 +988,11 @@ export default function SportsTeamsManager({ level }) {
   const [saving,  setSaving]  = useState(false);
   const [loading, setLoading] = useState(false);
   const [toast,   setToast]   = useState('');
+
+  const [bulkPlan,   setBulkPlan]   = useState(null); // parsed workbook awaiting confirmation
+  const [bulkBusy,   setBulkBusy]   = useState(''); // '' | 'sports' | 'teams' — which card is reading a file
+  const bulkInputRef = useRef(null);
+  const bulkScope = useRef('both'); // which card opened the file picker: 'sports' | 'teams'
 
   /* ── Load from Firestore ──
      A stale, late-resolving fetch for a previously-viewed level must not
@@ -963,6 +1040,46 @@ export default function SportsTeamsManager({ level }) {
   }, [level]);
 
   const flash = (msg) => { setToast(msg); setTimeout(() => setToast(''), 2800); };
+
+  /* ── Bulk upload from Excel ── */
+  const openBulk = (scope) => { bulkScope.current = scope; bulkInputRef.current?.click(); };
+
+  const handleBulkFile = async (e) => {
+    const file = e.target.files[0];
+    e.target.value = ''; // allow re-selecting the same file
+    if (!file) return;
+    if (!/\.xlsx$/i.test(file.name)) { flash('Please upload an .xlsx Excel file.'); return; }
+    setBulkBusy(bulkScope.current);
+    try {
+      const { sportRows, teamRows } = await readBulkWorkbook(file, bulkScope.current);
+      const plan = buildImport({ sportRows, teamRows, existingSports: sportsList, existingTeams: teamsList });
+      if (!plan.hasSports && !plan.hasTeams) { flash(`No ${bulkScope.current === 'teams' ? 'teams' : bulkScope.current === 'sports' ? 'sports' : 'sports or teams'} found in that file. Check the template.`); return; }
+      setBulkPlan(plan);
+    } catch (err) {
+      console.error(err);
+      flash('Could not read that file. Use the template and save it as .xlsx.');
+    } finally {
+      setBulkBusy('');
+    }
+  };
+
+  const saveBulk = async () => {
+    const plan = bulkPlan;
+    setSaving(true);
+    try {
+      if (plan.hasSports) await saveSportsConfig(level, plan.sports, actorRole);
+      if (plan.hasTeams)  await saveTeamsConfig(level, plan.teams, actorRole);
+      if (plan.hasSports) setSportsList(plan.sports);
+      if (plan.hasTeams)  setTeamsList(plan.teams);
+      setBulkPlan(null);
+      flash('✓ Bulk upload saved!');
+    } catch (err) {
+      console.error(err);
+      flash('Bulk upload failed — nothing was saved. Please try again.');
+    } finally {
+      setSaving(false);
+    }
+  };
 
   /* ── Sport row helpers ── */
   const setSportsCount = (n) => setSportsRows(prev => {
@@ -1176,6 +1293,14 @@ export default function SportsTeamsManager({ level }) {
       {toast   && <div className="stm-toast">{toast}</div>}
       {loading && <div className="stm-loading">Loading…</div>}
 
+      <input
+        ref={bulkInputRef}
+        type="file"
+        accept=".xlsx,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        style={{ display: 'none' }}
+        onChange={handleBulkFile}
+      />
+
       {/* ════════ SPORTS FORM ════════ */}
       <div className="stm-card">
         <div className="stm-card__head">
@@ -1189,6 +1314,21 @@ export default function SportsTeamsManager({ level }) {
         <div className="stm-form-toprow">
           <button type="button" className="stm-link-btn" onClick={() => setSportsCount(sportsRows.length + 1)}>
             <FaPlus /> Add Row for Sports
+          </button>
+          <button
+            type="button"
+            className="stm-link-btn"
+            onClick={() => openBulk('sports')}
+            disabled={bulkBusy || saving || loading}
+          >
+            <FaFileExcel /> {bulkBusy === 'sports' ? 'Reading…' : 'Upload Excel File'}
+          </button>
+          <button
+            type="button"
+            className="stm-link-btn"
+            onClick={() => downloadBulkTemplate('sports').catch(() => flash('Could not create the template.'))}
+          >
+            <FaDownload /> Download template
           </button>
         </div>
 
@@ -1470,6 +1610,21 @@ export default function SportsTeamsManager({ level }) {
         <div className="stm-form-toprow">
           <button type="button" className="stm-link-btn" onClick={addTeamRow}>
             <FaPlus /> Add row for Teams
+          </button>
+          <button
+            type="button"
+            className="stm-link-btn"
+            onClick={() => openBulk('teams')}
+            disabled={bulkBusy || saving || loading}
+          >
+            <FaFileExcel /> {bulkBusy === 'teams' ? 'Reading…' : 'Upload Excel File'}
+          </button>
+          <button
+            type="button"
+            className="stm-link-btn"
+            onClick={() => downloadBulkTemplate('teams').catch(() => flash('Could not create the template.'))}
+          >
+            <FaDownload /> Download template
           </button>
         </div>
 
@@ -1755,6 +1910,15 @@ export default function SportsTeamsManager({ level }) {
           saving={saving}
           onClose={() => setShowTeamsConfirm(false)}
           onSave={saveTeams}
+        />
+      )}
+
+      {bulkPlan && (
+        <BulkImportModal
+          plan={bulkPlan}
+          saving={saving}
+          onClose={() => setBulkPlan(null)}
+          onSave={saveBulk}
         />
       )}
 

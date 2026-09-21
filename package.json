@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@aivangogh/ph-address": "^2026.2.3",
+    "exceljs": "^4.4.0",
     "firebase": "^11.10.0",
     "firebase-admin": "^14.2.0",
     "jspdf": "^4.2.1",
