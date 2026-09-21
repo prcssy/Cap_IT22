@@ -1257,6 +1257,20 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   };
   const categoryOptions = categoryOptionsFor(selSport);
 
+  /* A moderator's request stores the division as shown to them — e.g.
+     "MEN (Senior)" — while the Add Schedule select is keyed by the group
+     label ("MEN"). Map a requested category onto the matching option's label
+     so the select actually shows it. Unmatched values pass through. */
+  const resolveCategoryLabel = (sportObj, category) => {
+    const c = (category || '').trim().toLowerCase();
+    if (!c) return '';
+    const opts = categoryOptionsFor(sportObj);
+    const hit = opts.find(o => o.label.trim().toLowerCase() === c)
+      || opts.find(o => (o.display || o.label).trim().toLowerCase() === c)
+      || opts.find(o => stripFormatSuffix(o.label).toLowerCase() === stripFormatSuffix(c).toLowerCase());
+    return hit ? hit.label : category;
+  };
+
   /* Category/division caption for a schedule row, e.g. "MEN (Senior) · Single
      Bracket". Resolves the division's full display name via its saved
      divisionId; older matches without one fall back to the stored category. */
@@ -1555,7 +1569,8 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     }
     const pool = teamsList.filter(t => (t.sportIds || []).includes(addForm.sport));
     const addSportObj = sportsList.find(s => s.name === addForm.sport) || null;
-    const matchedDivision = categoryOptionsFor(addSportObj).find(o => o.label === addForm.category);
+    const addCategory = resolveCategoryLabel(addSportObj, addForm.category);
+    const matchedDivision = categoryOptionsFor(addSportObj).find(o => o.label === addCategory);
     const presetFormat = FORMATS.find(f => f.id === matchedDivision?.format);
 
     let merged = savedSchedules;
@@ -1563,7 +1578,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
       const match = {
         id: uid(),
         sport: addForm.sport,
-        category: addForm.category,
+        category: addCategory,
         format: presetFormat?.label || '',
         round: null,
         teamA: pair.teamA,
@@ -2586,7 +2601,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               <div className="msf-form-group">
                 <label>Category/Division</label>
                 <select
-                  value={addForm.category}
+                  value={resolveCategoryLabel(sportsList.find(s => s.name === addForm.sport) || null, addForm.category)}
                   onChange={e => setAddForm(f => ({ ...f, category: e.target.value }))}
                   disabled={!addForm.sport}
                 >
