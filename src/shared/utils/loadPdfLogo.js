@@ -76,3 +76,33 @@ export function drawLogoTitleRow(doc, {
 
   doc.addImage(logoInfo.dataUrl, 'PNG', logoX, logoY, w, h);
 }
+
+// Draws a "Signed by" block for the Super Admin at the bottom-right of the
+// document's LAST page: a signature line, then the signatory's name (when
+// known) and the "Super Admin" title beneath it. Call it once, right before
+// doc.save(). If the content already runs too close to the page's bottom
+// edge for the block to fit, it goes on a fresh page instead of overlapping.
+export function drawSignatureBlock(doc, { name = '', margin = 40, contentBottom = 0 } = {}) {
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
+  const blockHeight = 70;
+  const lineWidth = 180;
+
+  if (contentBottom > pageHeight - margin - blockHeight) doc.addPage();
+
+  const lineY = pageHeight - margin - 30;
+  const x = pageWidth - margin - lineWidth;
+
+  doc.setDrawColor(0);
+  doc.setLineWidth(0.7);
+  doc.line(x, lineY, x + lineWidth, lineY);
+
+  doc.setTextColor(0);
+  doc.setFontSize(10);
+  doc.setFont(undefined, 'bold');
+  if (name) doc.text(name, x + lineWidth / 2, lineY + 14, { align: 'center' });
+  doc.setFont(undefined, 'normal');
+  doc.setTextColor(90);
+  doc.text('Super Admin', x + lineWidth / 2, lineY + (name ? 27 : 14), { align: 'center' });
+  doc.setTextColor(0);
+}

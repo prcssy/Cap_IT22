@@ -995,7 +995,7 @@ export default function SuperAdminPage() {
   const handleExportPdf = async () => {
     const { jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
-    const { loadPdfLogo, drawLogoTitleRow } = await import('../shared/utils/loadPdfLogo');
+    const { loadPdfLogo, drawLogoTitleRow, drawSignatureBlock } = await import('../shared/utils/loadPdfLogo');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     const pageWidth  = doc.internal.pageSize.getWidth();
     const pageHeight = doc.internal.pageSize.getHeight();
@@ -1064,6 +1064,7 @@ export default function SuperAdminPage() {
       ]),
     );
 
+    drawSignatureBlock(doc, { name: userProfile?.name, contentBottom: doc.lastAutoTable?.finalY || 0 });
     doc.save(`data-analytics-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
