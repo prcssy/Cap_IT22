@@ -837,9 +837,16 @@ export default function SuperAdminPage() {
     () => users.filter(u => matchesFilters(u, getSchoolLevel(u.gradeLevel))),
     [users, matchesFilters],
   );
+  // Only registrations from student accounts count, matching the Users
+  // Registration Details table below (which drops staff and orphaned
+  // registrations) so Total Players/Pending Review/charts agree with it.
   const rangedRegs = useMemo(
-    () => registrations.filter(r => matchesFilters(r, levelOfRegistration(r))),
-    [registrations, matchesFilters, levelOfRegistration],
+    () => registrations.filter((r) => {
+      const owner = usersById.get(r.uid);
+      if (!owner || (owner.role || 'student').toLowerCase() !== 'student') return false;
+      return matchesFilters(r, levelOfRegistration(r));
+    }),
+    [registrations, usersById, matchesFilters, levelOfRegistration],
   );
 
   /* Staff (admin/moderator/superadmin) accounts often still carry a
