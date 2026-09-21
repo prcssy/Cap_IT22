@@ -24,6 +24,12 @@ import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel, getSchoolLevel } from '../shared/utils/schoolLevel';
 import { resizeImageToBlob } from '../shared/utils/resizeImage';
 import {
+  resolveGrade,
+  resolveRegistration,
+  readRegistrationWorkbook,
+  downloadRegistrationTemplate,
+} from './registrationImport';
+import {
   subscribeMatchSchedules,
   getMatchRecords,
   getSportsTeamsConfig,
@@ -893,6 +899,8 @@ const COUNTRY_OPTIONS = getCountries()
 
 const DEFAULT_PHONE_COUNTRY = 'PH';
 
+const SCHOOL_LEVEL_KEYS = ['elementary', 'highSchool', 'college'];
+
 // Per-country phone number rules (length, validity) come from
 // libphonenumber-js's own metadata via validatePhoneNumberLength — the
 // same Google libphonenumber data numvalidate.com's now-retired free API
@@ -1020,6 +1028,11 @@ function PlayerRegistration({ onBack }) {
   // check below. Shown as a banner on the success screen, since the
   // registration itself did save.
   const [uploadIssues, setUploadIssues] = useState([]);
+  // Excel template: which action is running ('download' | 'upload' | ''), and
+  // the outcome of the last upload ({ filled, warnings } or { error }).
+  const [excelBusy, setExcelBusy] = useState('');
+  const [excelResult, setExcelResult] = useState(null);
+  const excelInputRef = useRef(null);
 
   // Sport / Team options, sourced live from the admin's Sports & Teams
   // config for whichever school level the selected Grade/Year falls in.
@@ -1514,9 +1527,146 @@ function PlayerRegistration({ onBack }) {
     setErrors({});
     setShowNotice(false);
     setRestoredFileNames(null);
+    setExcelResult(null);
     if (photoRef.current)  photoRef.current.value  = '';
     if (waiverRef.current) waiverRef.current.value = '';
     if (currentUser?.uid) clearRegistrationDraft(currentUser.uid);
+  };
+
+  // ── Excel template: download a blank, upload a filled one ─────────────
+  // Uploading never submits — it only pre-fills the form above, so the
+  // student can review it, attach a photo/waiver, and press Save themselves
+  // (all the normal validation still runs).
+  const gradeOptions = useMemo(
+    () => GRADE_LEVELS.map(g => ({ value: g, label: gradeLevelDisplayLabel(g, levelLabels) })),
+    [levelLabels]
+  );
+
+  const sortedByName = (list) => (list || []).filter(x => x.name).slice().sort((a, b) => a.name.localeCompare(b.name));
+
+  const handleDownloadTemplate = async () => {
+    setExcelBusy('download');
+    setExcelResult(null);
+    try {
+      // Every level's teams/sports go on a reference tab, since which ones a
+      // player may pick depends on the grade they'll write in.
+      const levels = await Promise.all(SCHOOL_LEVEL_KEYS.map(async (level) => {
+        const label = levelLabels[level] || level;
+        try {
+          const { sports, teams } = await getSportsTeamsConfig(level);
+          return { key: level, label, sports: sortedByName(sports), teams: sortedByName(teams) };
+        } catch {
+          return { key: level, label, sports: [], teams: [] };
+        }
+      }));
+      await downloadRegistrationTemplate({
+        events: events.map(ev => ev.label),
+        grades: gradeOptions.map(g => ({ label: g.label, level: getSchoolLevel(g.value) })),
+        countries: COUNTRY_OPTIONS.map(c => `${c.name} (+${c.callingCode})`),
+        address: {
+          provinces: provinceOptions,
+          municipalitiesOf: getMunicipalitiesByProvince,
+          barangaysOf: getBarangaysByMunicipality,
+        },
+        levels,
+      });
+    } catch (error) {
+      console.error('Failed to build registration template:', error);
+      setExcelResult({ error: "Couldn't create the template. Please try again." });
+    } finally {
+      setExcelBusy('');
+    }
+  };
+
+  const handleExcelUpload = async (e) => {
+    const file = e.target.files?.[0];
+    e.target.value = ''; // lets the same file be picked again after fixing it
+    if (!file) return;
+    if (!/\.xlsx$/i.test(file.name)) {
+      setExcelResult({ error: 'Please upload the .xlsx template (Excel workbook).' });
+      return;
+    }
+
+    setExcelBusy('upload');
+    setExcelResult(null);
+    try {
+      const { raw, extraRows } = await readRegistrationWorkbook(file);
+
+      // Team / Sport / Position depend on the grade's school level, which the
+      // form may not have loaded yet — use what's loaded if the level matches,
+      // otherwise fetch that level's config.
+      const sheetGrade = raw.gradeLevel ? resolveGrade(raw.gradeLevel, gradeOptions) : '';
+      const grade = sheetGrade || form.gradeLevel;
+      const level = getSchoolLevel(grade);
+      let sports = [], teams = [];
+      if (level && level === schoolLevel) {
+        sports = sportsConfig; teams = teamsConfig;
+      } else if (level) {
+        const cfg = await getSportsTeamsConfig(level);
+        sports = sortedByName(cfg.sports); teams = sortedByName(cfg.teams);
+      }
+
+      const { form: f, addr: a, warnings } = resolveRegistration(raw, {
+        events,
+        gradeOptions,
+        countries: COUNTRY_OPTIONS,
+        address: {
+          provinces: provinceOptions,
+          municipalitiesOf: getMunicipalitiesByProvince,
+          barangaysOf: getBarangaysByMunicipality,
+        },
+        sports,
+        teams,
+        currentGrade: form.gradeLevel,
+        currentCountry: form.phoneCountry,
+      });
+
+      // The school-level effect above wipes team/sport/position whenever the
+      // level changes; it has to skip this one change or it would erase what
+      // was just imported. Anything the sheet didn't supply is cleared here
+      // instead, since it belonged to the old level.
+      const levelChanged = !!f.gradeLevel && getSchoolLevel(f.gradeLevel) !== schoolLevel;
+      if (levelChanged) restoringDraftRef.current = true;
+
+      setForm(prev => {
+        const next = { ...prev, ...f };
+        if (levelChanged) {
+          next.teamName = f.teamName || '';
+          next.sport = f.sport || '';
+          next.position = f.position || '';
+        } else if (f.sport && f.sport !== prev.sport && !f.position) {
+          next.position = '';
+        }
+        if (f.dob) next.age = calculateAge(f.dob);
+        return next;
+      });
+
+      // Same rule down the address chain: a new parent invalidates the old child.
+      setAddr(prev => {
+        const next = { ...prev };
+        if (a.provinceCode !== undefined) {
+          if (a.provinceCode !== prev.provinceCode) { next.municipalityCode = ''; next.barangayCode = ''; }
+          next.provinceCode = a.provinceCode;
+        }
+        if (a.municipalityCode !== undefined) {
+          if (a.municipalityCode !== next.municipalityCode) next.barangayCode = '';
+          next.municipalityCode = a.municipalityCode;
+        }
+        if (a.barangayCode !== undefined) next.barangayCode = a.barangayCode;
+        if (a.street !== undefined) next.street = a.street;
+        return next;
+      });
+
+      setErrors({});
+      setShowNotice(false);
+      if (extraRows) warnings.push(`Your file has ${extraRows} more filled row${extraRows === 1 ? '' : 's'} — only the first one is used (one player per file).`);
+      setExcelResult({ filled: Object.keys(f).length + Object.keys(a).length, warnings });
+    } catch (error) {
+      console.error('Failed to read registration workbook:', error);
+      setExcelResult({ error: error.message || "Couldn't read that file. Make sure it's the registration template saved as .xlsx." });
+    } finally {
+      setExcelBusy('');
+    }
   };
 
   const validate = () => {
@@ -1751,6 +1901,60 @@ function PlayerRegistration({ onBack }) {
                   restoredFileNames.photo && `your photo (${restoredFileNames.photo})`,
                   restoredFileNames.waiver && `your waiver (${restoredFileNames.waiver})`,
                 ].filter(Boolean).join(' and ')}.
+              </span>
+            </div>
+          )}
+
+          <div className="reg-import">
+            <div className="reg-import__text">
+              <strong>Prefer Excel?</strong>
+              <span>
+                Download the template, fill it in, then upload it — the form below fills itself in
+                for you to review. Your photo and waiver are still attached here.
+              </span>
+            </div>
+            <div className="reg-import__actions">
+              <button type="button" className="reg-btn-reset" onClick={handleDownloadTemplate} disabled={!!excelBusy}>
+                {excelBusy === 'download' ? 'Preparing…' : 'Download Template'}
+              </button>
+              <button type="button" className="reg-btn-save" onClick={() => excelInputRef.current?.click()} disabled={!!excelBusy}>
+                {excelBusy === 'upload' ? 'Reading…' : 'Upload Filled Template'}
+              </button>
+              <input
+                type="file"
+                accept=".xlsx"
+                ref={excelInputRef}
+                onChange={handleExcelUpload}
+                hidden
+              />
+            </div>
+          </div>
+
+          {excelResult?.error && (
+            <div className="reg-notice" role="alert">
+              <svg className="reg-notice__icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2 1 21h22L12 2zm0 5.5 6.9 12H5.1L12 7.5zM11 10v5h2v-5h-2zm0 6.5V18h2v-1.5h-2z"/>
+              </svg>
+              <span>{excelResult.error}</span>
+            </div>
+          )}
+
+          {excelResult && !excelResult.error && (
+            <div className="reg-notice reg-notice--ok" role="status">
+              <svg className="reg-notice__icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M9 16.2 4.8 12l-1.4 1.4L9 19 20.6 7.4 19.2 6z"/>
+              </svg>
+              <span>
+                Filled in {excelResult.filled} field{excelResult.filled === 1 ? '' : 's'} from your Excel file.
+                Please review everything below before saving.
+                {excelResult.warnings.length > 0 && (
+                  <>
+                    {' '}These need your attention:
+                    <ul className="reg-notice__list">
+                      {excelResult.warnings.map((w, i) => <li key={i}>{w}</li>)}
+                    </ul>
+                  </>
+                )}
               </span>
             </div>
           )}

@@ -205,7 +205,7 @@ export function buildImport({ sportRows = [], teamRows = [], existingSports = []
 }
 
 /* ── Excel I/O (exceljs is loaded on demand so it stays out of the main bundle) ── */
-function cellText(v) {
+export function cellText(v) {
   if (v == null) return '';
   if (typeof v === 'object') {
     if (v.richText) return v.richText.map(t => t.text).join('');
