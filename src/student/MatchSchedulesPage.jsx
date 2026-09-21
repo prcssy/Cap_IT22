@@ -856,23 +856,54 @@ export default function MatchSchedulesPage() {
     };
   }, [records]);
 
-  /* The champion is whoever won the last stage of this category's bracket
-     — filled in only once that final actually has a saved result. */
+  /* Champion.
+     - Elimination brackets: whoever won the final, once it has a result.
+     - Round-robin / rounds view: nobody until EVERY game in the category has
+       a saved result, then the team with the most wins. Games added later
+       (extra schedule / requested game) count too, so the champion reopens
+       until those are played. Ties on wins fall to point difference; a
+       still-tied top spot means no champion yet. */
   const champion = useMemo(() => {
     if (generatedMatches.length === 0) return null;
-    const finals = generatedMatches.filter((m) => {
-      const stage = (m.stage || '').toLowerCase();
-      return stage.includes('final') || stage.includes('champion');
-    });
-    const maxRound = Math.max(...generatedMatches.map(m => (m.round != null ? m.round : -1)));
-    const lastRound = maxRound >= 0 ? generatedMatches.filter(m => m.round === maxRound) : [];
-    const candidates = finals.length ? finals : lastRound;
-    for (const match of candidates) {
-      const winner = winnerNameOf(resultFor(match));
-      if (winner) return winner.toUpperCase();
+
+    if (isBracketShaped || isDoubleBracketShaped) {
+      const finals = generatedMatches.filter((m) => {
+        const stage = (m.stage || '').toLowerCase();
+        return stage.includes('final') || stage.includes('champion');
+      });
+      const maxRound = Math.max(...generatedMatches.map(m => (m.round != null ? m.round : -1)));
+      const lastRound = maxRound >= 0 ? generatedMatches.filter(m => m.round === maxRound) : [];
+      const candidates = finals.length ? finals : lastRound;
+      for (const match of candidates) {
+        const winner = winnerNameOf(resultFor(match));
+        if (winner) return winner.toUpperCase();
+      }
+      return null;
     }
-    return null;
-  }, [generatedMatches, resultFor]);
+
+    const standings = new Map(); // norm(name) -> { name, wins, diff }
+    const row = (name) => {
+      const k = norm(name);
+      if (!standings.has(k)) standings.set(k, { name, wins: 0, diff: 0 });
+      return standings.get(k);
+    };
+    for (const match of categoryMatches) {
+      const record = resultFor(match);
+      if (!record) return null; // a game is still unplayed
+      row(match.teamA); row(match.teamB);
+      const winner = winnerNameOf(record);
+      if (winner) row(winner).wins += 1;
+      const a = record.teamA, b = record.teamB;
+      if (a?.points != null && b?.points != null) {
+        row(a.name).diff += a.points - b.points;
+        row(b.name).diff += b.points - a.points;
+      }
+    }
+    const ranked = [...standings.values()].sort((x, y) => y.wins - x.wins || y.diff - x.diff);
+    if (!ranked.length) return null;
+    if (ranked[1] && ranked[0].wins === ranked[1].wins && ranked[0].diff === ranked[1].diff) return null;
+    return ranked[0].name.toUpperCase();
+  }, [generatedMatches, categoryMatches, isBracketShaped, isDoubleBracketShaped, resultFor]);
 
   const hasAnyData = categories.length > 0;
 
