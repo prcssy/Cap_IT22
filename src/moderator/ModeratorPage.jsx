@@ -296,6 +296,19 @@ function scheduleDivisionLabel(schedule, sports) {
   return dName && dName.toLowerCase() !== label.toLowerCase() ? `${label} (${dName})` : label;
 }
 
+/* Category a result is saved (and rated) under. A group with several
+   divisions — MEN → Senior / Junior — is a separate competition per division,
+   so it saves as "MEN (Senior)" and gets its own ranking scope; otherwise the
+   ratings of Senior and Junior games would chain into each other. A group with
+   a single division keeps its plain category, so existing scopes are untouched. */
+function scopedCategory(schedule, sports) {
+  if (!schedule?.divisionId) return schedule?.category || '';
+  const sport = (sports || []).find((s) => norm(s.name) === norm(schedule.sport));
+  const group = (sport?.categoryGroups || []).find((g) => (g.divisions || []).some((d) => d.id === schedule.divisionId));
+  if (!group || group.divisions.length < 2) return schedule.category || '';
+  return scheduleDivisionLabel(schedule, sports) || schedule.category || '';
+}
+
 /* One row per sport (no division baked in) — feeds the "Select sport" dropdown. */
 function buildSportOnlyOptions(sports) {
   return (sports || []).map((sport) => ({
@@ -1475,7 +1488,7 @@ export default function ModeratorPage() {
          (say) Volleyball WOMEN and Volleyball MEN still rank separately
          instead of collapsing into one nameless scope. */
       const fromFixture = lockedMatch && norm(lockedMatch.sport) === norm(selectedSport.name)
-        ? (lockedMatch.category || '')
+        ? scopedCategory(lockedMatch, sports)
         : '';
       return { sportId: selectedSport.id, sportName: selectedSport.name, category: fromFixture, logo: selectedSport.logo || null, format: '' };
     }
@@ -1484,15 +1497,17 @@ export default function ModeratorPage() {
          (naming drift between Schedules and Sports & Teams) still knows its
          own division — use it rather than demanding a manual pick. */
       if (lockedMatch && lockedMatch.category && norm(lockedMatch.sport) === norm(selectedSport.name)) {
-        return { sportId: selectedSport.id, sportName: selectedSport.name, category: lockedMatch.category, logo: selectedSport.logo || null, format: '' };
+        return { sportId: selectedSport.id, sportName: selectedSport.name, category: scopedCategory(lockedMatch, sports), logo: selectedSport.logo || null, format: '' };
       }
       return null;
     }
+    const fixtureHere = lockedMatch && norm(lockedMatch.sport) === norm(selectedSport.name) ? lockedMatch : null;
     return {
       sportId: selectedSport.id, sportName: selectedSport.name,
-      category: selectedDivision.category, logo: selectedSport.logo || null, format: selectedDivision.format,
+      category: fixtureHere?.divisionId ? scopedCategory(fixtureHere, sports) : selectedDivision.category,
+      logo: selectedSport.logo || null, format: selectedDivision.format,
     };
-  }, [selectedSport, divisionRequired, selectedDivision, lockedMatch]);
+  }, [selectedSport, divisionRequired, selectedDivision, lockedMatch, sports]);
 
   /* ── form state: one entry per participating team ── */
   const [entries, setEntries] = useState(() => [mkEntry(), mkEntry()]);

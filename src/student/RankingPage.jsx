@@ -55,39 +55,67 @@ function savedPointsForTeam(teamMap, team) {
   return match ? numericRankingValue(match[1]) : null;
 }
 
-/* Same flattening/labeling logic Admin's Sports & Teams and Moderator
-   use — one row per division, group label (e.g. "MEN") prefixed onto
-   the division name when they differ, so "MEN 5v5" / "WOMEN 5v5" stay
-   distinguishable here too, matching how they're actually scored. */
-function flatDivisions(sport) {
-  return (sport?.categoryGroups || []).flatMap((g) => {
+/* Medal Tally needs finer options than the ranking scope: a group with two
+   divisions (MEN → Senior / Junior) is two separate competitions, each with
+   its own gold/silver/bronze, so they're listed as "MEN (Senior)" and
+   "MEN (Junior)". A group with a single division stays a plain "MEN". */
+function medalDivisionLabel(group, division) {
+  const label = displayCategory((group.label || division?.name || '').trim());
+  const dName = (division?.name || '').trim();
+  const multi = (group.divisions || []).length > 1;
+  return multi && dName && norm(dName) !== norm(label) ? `${label} (${dName})` : label;
+}
+function medalOptionsForSport(sport) {
+  const byLabel = new Map();
+  (sport?.categoryGroups || []).forEach((g) => {
     const divs = g.divisions || [];
-    if (divs.length === 0) return [{ id: `${g.id}_lbl`, name: g.label, groupLabel: g.label }];
-    return divs.map((d) => ({ ...d, name: d.name || g.label, groupLabel: g.label }));
-  });
-}
-function divisionOptionsForSport(sport) {
-  if (!sport) return [];
-  /* One option per real division. Two formats under the same group (MEN
-     5v5 and MEN 3v3) collapse to a single "MEN", which is the level
-     rankings are actually scored at. */
-  const byLabel = new Map();
-  flatDivisions(sport).forEach((d) => {
-    const label = displayCategory((d.groupLabel || '').trim() || (d.name || '').trim());
-    if (label && !byLabel.has(norm(label))) byLabel.set(norm(label), { key: d.id, label });
-  });
-  return [...byLabel.values()];
-}
-
-function divisionOptionsForSports(sports) {
-  const byLabel = new Map();
-  (sports || []).forEach((sport) => {
-    divisionOptionsForSport(sport).forEach((division) => {
-      if (!byLabel.has(norm(division.label))) byLabel.set(norm(division.label), division);
+    (divs.length ? divs : [null]).forEach((d) => {
+      const label = medalDivisionLabel(g, d);
+      if (label && !byLabel.has(norm(label))) byLabel.set(norm(label), { key: d?.id || g.id, label });
     });
   });
   return [...byLabel.values()];
 }
+/* Under "All Sports" only the group ("MEN", "WOMEN") is offered — the
+   Senior/Junior/event divisions only mean something inside one sport. */
+function medalOptionsForSports(sports) {
+  const byLabel = new Map();
+  (sports || []).forEach((sport) => {
+    medalOptionsForSport(sport).forEach((o) => {
+      const label = baseDivision(o.label);
+      if (label && !byLabel.has(norm(label))) byLabel.set(norm(label), { key: o.key, label });
+    });
+  });
+  return [...byLabel.values()];
+}
+/* A plain pick ("MEN") covers every division of that group; a full pick
+   ("MEN (Senior)") covers only that one. */
+function matchesPick(label, pick) {
+  if (norm(label) === norm(pick)) return true;
+  return !/\(/.test(pick) && norm(baseDivision(label)) === norm(pick);
+}
+/* "MEN (Senior)" → "MEN" — the plain category that records/tie-breakers use. */
+function baseDivision(label) {
+  return (label || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
+}
+
+/* True when a saved record belongs to the picked division label
+   ("MEN (Senior)" or plain "MEN"). Uses the record's schedule divisionId when
+   it has one; records without it match on the plain group label. */
+function recordInDivision(record, pick, sports, schedules) {
+  const sched = record.scheduleId
+    ? schedules.find((s) => String(s.id) === String(record.scheduleId))
+    : null;
+  const divisionId = record.divisionId || sched?.divisionId;
+  const sport = sports.find((s) => norm(s.name) === norm(record.sportName));
+  const group = divisionId
+    ? (sport?.categoryGroups || []).find((g) => (g.divisions || []).some((d) => d.id === divisionId))
+    : null;
+  const div = group?.divisions.find((d) => d.id === divisionId);
+  if (group && div) return matchesPick(medalDivisionLabel(group, div), pick);
+  return matchesPick(displayCategory(record.category), pick) || categoriesMatch(record.category, baseDivision(pick));
+}
+
 /* Tolerant match for divisions saved before the group-label prefix
    existed (a bare old "5v5" is treated as matching "MEN 5v5" etc). */
 function categoriesMatch(a, b) {
@@ -451,15 +479,15 @@ export default function RankingPage() {
      sport changes, so you're never stuck on a division that doesn't
      exist for the newly selected sport. */
   const championDivisionOptions = useMemo(() => {
-    if (championSport === 'All Sports') return divisionOptionsForSports(sports);
+    if (championSport === 'All Sports') return medalOptionsForSports(sports);
     const sport = sports.find(s => norm(s.name) === norm(championSport));
-    return divisionOptionsForSport(sport);
+    return medalOptionsForSport(sport);
   }, [sports, championSport]);
 
   const medalDivisionOptions = useMemo(() => {
-    if (medalSport === 'All Sports') return divisionOptionsForSports(sports);
+    if (medalSport === 'All Sports') return medalOptionsForSports(sports);
     const sport = sports.find(s => norm(s.name) === norm(medalSport));
-    return divisionOptionsForSport(sport);
+    return medalOptionsForSport(sport);
   }, [sports, medalSport]);
 
   useEffect(() => {
@@ -475,6 +503,11 @@ export default function RankingPage() {
      configured display spelling from the first team that uses each sport. */
   const availableSports = useMemo(() => {
     const byName = new Map();
+    // Every sport the admin created, even one no team has been assigned to yet.
+    sports.forEach((sport) => {
+      const label = (sport?.name || '').trim();
+      if (label && !byName.has(norm(label))) byName.set(norm(label), label);
+    });
     teams.forEach((team) => {
       (team.sportIds || []).forEach((sportName) => {
         const label = (sportName || '').trim();
@@ -482,7 +515,7 @@ export default function RankingPage() {
       });
     });
     return ['All Sports', ...byName.values()];
-  }, [teams]);
+  }, [teams, sports]);
 
   useEffect(() => {
     if (!availableSports.includes(championSport)) setChampionSport('All Sports');
@@ -506,7 +539,10 @@ export default function RankingPage() {
       })
       .filter((scope) => {
         if (championSport !== 'All Sports' && norm(scope.sport) !== norm(championSport)) return false;
-        if (divisionPicked && !categoriesMatch(scope.category, championDivision)) return false;
+        // Moderator rates each division of a multi-division group in its own
+        // scope ("men (senior)"), so the full label matches the saved key.
+        if (divisionPicked && !matchesPick(scope.category, championDivision)
+          && !categoriesMatch(scope.category, championDivision)) return false;
         return true;
       });
 
@@ -522,7 +558,7 @@ export default function RankingPage() {
       });
       records.forEach((r) => {
         if (championSport !== 'All Sports' && norm(r.sportName) !== norm(championSport)) return;
-        if (!categoriesMatch(r.category, championDivision)) return;
+        if (!recordInDivision(r, championDivision, sports, schedules)) return;
         const roster = r.participants?.length ? r.participants : [r.teamA, r.teamB];
         roster.forEach((p) => { if (p?.name) namesInDivision.add(norm(p.name)); });
       });
@@ -610,7 +646,7 @@ export default function RankingPage() {
       let wins = 0, losses = 0;
       records.forEach((r) => {
         if (championSport !== 'All Sports' && norm(r.sportName) !== norm(championSport)) return;
-        if (divisionPicked && !categoriesMatch(r.category, championDivision)) return;
+        if (divisionPicked && !recordInDivision(r, championDivision, sports, schedules)) return;
 
         // 1-vs-many events save every participant with its finishing place,
         // so a 4-team race counts as one win for the placer and a loss for
@@ -636,7 +672,7 @@ export default function RankingPage() {
         color: colorForTeam(t.name), rating, wins, losses, played, carriedOver,
       };
     });
-  }, [teams, rankingPoints, records, championSport, championDivision]);
+  }, [teams, sports, schedules, rankingPoints, records, championSport, championDivision]);
 
   /* Medal tally is driven only by finalized records saved by Moderator.
      For a 1-vs-many record, the saved finishing place determines
@@ -679,6 +715,32 @@ export default function RankingPage() {
 
     const divisionPicked = medalDivision !== 'All Divisions';
 
+    /* Resolve the division a match belongs to ("MEN (Senior)" vs "MEN
+       (Junior)") from its divisionId; records point at their schedule via
+       scheduleId. Older data without a divisionId falls back to the plain
+       category, which matches any division sharing that group label. */
+    const schedById = new Map(schedules.map((s) => [String(s.id), s]));
+    const labelFor = (sportName, category, divisionId) => {
+      const sport = sports.find((s) => norm(s.name) === norm(sportName));
+      const groups = sport?.categoryGroups || [];
+      if (divisionId) {
+        const group = groups.find((g) => (g.divisions || []).some((d) => d.id === divisionId));
+        const div = group?.divisions.find((d) => d.id === divisionId);
+        if (group && div) return { label: medalDivisionLabel(group, div), exact: true };
+      }
+      return { label: displayCategory(category), exact: false };
+    };
+    const recordLabel = (record) => {
+      const sched = record.scheduleId ? schedById.get(String(record.scheduleId)) : null;
+      return labelFor(record.sportName, record.category, record.divisionId || sched?.divisionId);
+    };
+    const inPickedDivision = (record) => {
+      if (!divisionPicked) return true;
+      const { label, exact } = recordLabel(record);
+      if (matchesPick(label, medalDivision)) return true;
+      return !exact && norm(label) === norm(baseDivision(medalDivision));
+    };
+
     /* Same rule as the champion table: a division's roster is only knowable
        from what has been played there, so a picked division lists exactly
        those teams instead of padding the table with every registered team
@@ -687,7 +749,7 @@ export default function RankingPage() {
     if (divisionPicked) {
       records.forEach((record) => {
         if (medalSport !== 'All Sports' && norm(record.sportName) !== norm(medalSport)) return;
-        if (!categoriesMatch(record.category, medalDivision)) return;
+        if (!inPickedDivision(record)) return;
         const roster = record.participants?.length ? record.participants : [record.teamA, record.teamB];
         roster.forEach((p) => { if (p?.name) namesInDivision.add(norm(p.name)); });
       });
@@ -705,7 +767,7 @@ export default function RankingPage() {
 
     const relevantRecords = records.filter((record) => (
       (medalSport === 'All Sports' || norm(record.sportName) === norm(medalSport))
-      && (!divisionPicked || categoriesMatch(record.category, medalDivision))
+      && inPickedDivision(record)
     ));
 
     // 1-vs-many events (races): each record is its own event, so the saved
@@ -734,9 +796,12 @@ export default function RankingPage() {
       const loserTeam = record.winner === 'A' ? record.teamB : record.winner === 'B' ? record.teamA : null;
       if (!winnerTeam?.name || !loserTeam?.name) return;
 
-      const scopeKey = `${norm(record.sportName)}::${norm(displayCategory(record.category))}`;
+      const divLabel = recordLabel(record).label;
+      const scopeKey = `${norm(record.sportName)}::${norm(divLabel)}`;
       if (!scopes.has(scopeKey)) {
-        scopes.set(scopeKey, { sportName: record.sportName, category: record.category, standings: new Map() });
+        scopes.set(scopeKey, {
+          sportName: record.sportName, category: record.category, divLabel, standings: new Map(),
+        });
       }
       const { standings } = scopes.get(scopeKey);
       [winnerTeam, loserTeam].forEach((t) => {
@@ -751,9 +816,10 @@ export default function RankingPage() {
     // match in it has a saved record — before that the standings are still
     // moving, so nobody holds gold/silver/bronze yet. Scopes with no
     // schedule at all (manually entered records) count as complete.
-    const scopeIsComplete = (sportName, category) => {
+    const scopeIsComplete = (sportName, divLabel) => {
       const scopeSchedules = schedules.filter((s) => (
-        norm(s.sport) === norm(sportName) && categoriesMatch(s.category, displayCategory(category))
+        norm(s.sport) === norm(sportName)
+        && norm(labelFor(s.sport, s.category, s.divisionId).label) === norm(divLabel)
       ));
       if (!scopeSchedules.length) return true;
       return scopeSchedules.every((s) => records.some((r) => (
@@ -764,8 +830,8 @@ export default function RankingPage() {
       )));
     };
 
-    scopes.forEach(({ sportName, category, standings }) => {
-      if (!scopeIsComplete(sportName, category)) return;
+    scopes.forEach(({ sportName, category, divLabel, standings }) => {
+      if (!scopeIsComplete(sportName, divLabel)) return;
       const sorted = [...standings.values()]
         .map((s) => ({ ...s, team: s.name }))
         .sort((a, b) => b.wins - a.wins || a.losses - b.losses || a.team.localeCompare(b.team));
@@ -782,7 +848,7 @@ export default function RankingPage() {
     });
 
     return [...byTeam.values()];
-  }, [teams, records, schedules, medalSport, medalDivision]);
+  }, [teams, sports, records, schedules, medalSport, medalDivision]);
 
   return (
     <div className="rk-page">
@@ -862,7 +928,7 @@ export default function RankingPage() {
                 search={search}
                 records={records}
                 sportFilter={championSport}
-                divisionFilter={championDivision}
+                divisionFilter={championDivision === 'All Divisions' ? championDivision : baseDivision(championDivision)}
               />
             )}
           </div>
@@ -894,7 +960,7 @@ export default function RankingPage() {
               search={search}
               records={records}
               sportFilter={medalSport}
-              divisionFilter={medalDivision}
+              divisionFilter={medalDivision === 'All Divisions' ? medalDivision : baseDivision(medalDivision)}
             />
           </div>
         </section>
