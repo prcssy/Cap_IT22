@@ -2285,13 +2285,6 @@ export default function ModeratorPage() {
             {formatChoice && (
               <div className="mp-format-chip">
                 <span className="mp-format-chip__label">{formatHeadline(formatChoice)}</span>
-                <button
-                  type="button"
-                  className="mp-format-chip__btn"
-                  onClick={() => { setFormatPickerFor(lockedMatch); setFormatPickerOpen(true); }}
-                >
-                  <FaSync /> Change format
-                </button>
               </div>
             )}
           </div>

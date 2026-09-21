@@ -20,6 +20,16 @@ function Sidebar() {
 
   return (
     <>
+      {/* ── Profile: pinned to the upper-right corner of the page header ── */}
+      <button
+        className={`sidebar-btn sidebar-profile-top ${location.pathname === "/profile" ? "active" : ""}`}
+        aria-label="Profile"
+        data-label="Profile"
+        onClick={() => navigate("/profile")}
+      >
+        <FaUserCircle />
+      </button>
+
       {/* ── Fixed icon rail ── */}
       <aside className="sidebar">
         <div className="sidebar-top">
@@ -37,14 +47,6 @@ function Sidebar() {
 
           <div className={`sidebar-extra ${panelOpen ? "collapsed" : ""}`}>
             <div className="sidebar-divider" />
-            <button
-              className={`sidebar-btn ${location.pathname === "/profile" ? "active" : ""}`}
-              aria-label="Profile"
-              data-label="Profile"
-              onClick={() => navigate("/profile")}
-            >
-              <FaUserCircle />
-            </button>
             <button
               className={`sidebar-btn ${location.pathname === "/dashboard" ? "active" : ""}`}
               aria-label="Home"
@@ -143,10 +145,6 @@ function Sidebar() {
         </div>
 
         <nav className="panel-nav">
-          <Link to="/profile" className={`panel-nav-item ${location.pathname === "/profile" ? "active" : ""}`}>
-            <FaUserCircle className="panel-nav-icon" />
-            <span>Profile</span>
-          </Link>
           <Link to="/dashboard" className={`panel-nav-item ${location.pathname === "/dashboard" ? "active" : ""}`}>
             <FaHome className="panel-nav-icon" />
             <span>Home</span>
