@@ -124,7 +124,7 @@ function friendlyFirestoreError(err, fallback) {
   const isPermission = err?.code === 'permission-denied' || /permission/i.test(err?.message || '');
   return isPermission
     ? `${fallback} — your account doesn't have permission for this yet (check Firestore rules).`
-    : `${fallback} — check your connection and try again.`;
+    : `${fallback} — check your connection and try again.${err?.code ? ` (${err.code})` : ''}`;
 }
 
 /* Case/whitespace-insensitive compare — schedules & team.sportIds store
