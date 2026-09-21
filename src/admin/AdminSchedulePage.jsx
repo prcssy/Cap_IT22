@@ -275,7 +275,7 @@ function TeamNetwork({ teams }) {
 }
 
 /* ── Generic navy dropdown, shared shape for Sports / Category / Format ── */
-function FilterDropdown({ label, value, placeholder, options, onChange, disabled }) {
+function FilterDropdown({ label, value, valueKey, placeholder, options, onChange, disabled }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -295,7 +295,7 @@ function FilterDropdown({ label, value, placeholder, options, onChange, disabled
           disabled={disabled}
           onClick={() => setOpen(o => !o)}
         >
-          {value || placeholder}
+          {(valueKey != null && options.find(o => o.value === valueKey)?.display) || value || placeholder}
           <FaChevronDown className="msf-select__arrow" />
         </button>
         {open && (
@@ -306,10 +306,10 @@ function FilterDropdown({ label, value, placeholder, options, onChange, disabled
               <button
                 key={opt.value}
                 type="button"
-                className={`msf-select__opt ${value === opt.label ? 'msf-select__opt--active' : ''}`}
+                className={`msf-select__opt ${(valueKey != null ? valueKey === opt.value : value === opt.label) ? 'msf-select__opt--active' : ''}`}
                 onClick={() => { onChange(opt); setOpen(false); }}
               >
-                {opt.label}
+                {opt.display || opt.label}
               </button>
             ))}
           </div>
@@ -861,7 +861,7 @@ function buildSavedDoubleBracketStages(matches) {
    with real connector lines into a single "GC" node and Champion box —
    matching the double-elimination bracket look (two feeder trees
    merging into one final) instead of two disconnected mini-trees. ── */
-function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw }) {
+function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw, teamByName }) {
   const ROW_H = 56;
   const LEAF_W = 190;
   const LEAF_H = 40;
@@ -926,6 +926,9 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
         const bKnown = m.b != null ? known[m.b] : null;
         const a = aKnown ?? (m.a != null ? place(m.a, bKnown ? bKnown.y : null) : null);
         const b = bKnown ?? (m.b != null ? place(m.b, a ? a.y : null) : null);
+        // Both slots empty (e.g. 5 teams padded to 8: the 4th first-round
+        // match is Bye vs Bye) — nothing to draw or connect for this match.
+        if (!a && !b) return null;
         const y = a && b ? (a.y + b.y) / 2 : (a ?? b).y;
         if (a && b) connectors.push(mergeLines(a.lineX, a.y, b.lineX, b.y, colX(r), y));
         if (m.label) known[`Winner of ${m.label}`] = { y, lineX: colX(r) + LEAF_W };
@@ -988,7 +991,7 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
       {leaves.map((name, i) => (
         name ? (
           <div key={`ub-${i}`} className="msf-bracket-team" style={{ top: UB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
-            <span className="msf-lbracket-leaf__dot" />
+            <TeamBadge team={teamByName ? teamByName(name) : { name }} size={26} />
             <span>{name}</span>
           </div>
         ) : (
@@ -998,7 +1001,7 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
         )
       ))}
 
-      {ub.matchY.map((round, r) => round.map((node, i) => (
+      {ub.matchY.map((round, r) => round.map((node, i) => node && (
         <div key={`ub-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
           <span>{node.label}</span>
@@ -1028,7 +1031,7 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
         </div>
       ))}
 
-      {lb.matchY.map((round, r) => round.map((node, i) => (
+      {lb.matchY.map((round, r) => round.map((node, i) => node && (
         <div key={`lb-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
           <span>{node.label}</span>
@@ -1063,6 +1066,19 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   const [selCategory, setSelCategory] = useState(null); // { label, value, format }
   const [selFormat,   setSelFormat]   = useState(null); // { id, label }
   const [activeRound, setActiveRound] = useState(0);
+
+  // Sport/category/format picks belong to one level's own sports list, so
+  // clear them when the level changes (e.g. Track and Field exists in
+  // Elementary but not College). Same "adjust state when a prop changes"
+  // render-time pattern as the pendingRequest handling below.
+  const [pickedLevel, setPickedLevel] = useState(level);
+  if (pickedLevel !== level) {
+    setPickedLevel(level);
+    setSelSport(null);
+    setSelCategory(null);
+    setSelFormat(null);
+    setActiveRound(0);
+  }
 
   /* Start date/time for auto-scheduling a freshly generated set — the admin
      picks these before saving, and every match still stays editable
@@ -1177,7 +1193,11 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     const raw = (sportObj?.categoryGroups || []).flatMap(g =>
       (g.divisions || []).map(d => {
         const division = (g.label || d.name || '').trim();
-        return { value: d.id, label: division, format: d.format };
+        // `label` is what gets saved on matches; `display` adds the division
+        // (e.g. "MEN (Senior)") so same-category divisions are tellable apart.
+        const dName = (d.name || '').trim();
+        const display = dName && dName.toLowerCase() !== division.toLowerCase() ? `${division} (${dName})` : division;
+        return { value: d.id, label: division, display, format: d.format };
       })
     );
     return raw.length > 0
@@ -1809,8 +1829,9 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
           <FilterDropdown
             label="CATEGORY/DIVISION"
             value={selCategory?.label}
+            valueKey={selCategory?.value}
             placeholder="Select category"
-            options={categoryOptions.map(o => ({ value: o.value, label: o.label, raw: o }))}
+            options={categoryOptions.map(o => ({ value: o.value, label: o.label, display: o.display, raw: o }))}
             onChange={handlePickCategory}
             disabled={!selSport}
           />
@@ -1862,7 +1883,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
         {isLocked && lockedMatches[0]?.format === 'Double Bracket' && (
           <div className="msf-dbracket">
             <div className="msf-dbracket__scroll">
-              <DoubleBracketTree {...savedDoubleBracketStages} />
+              <DoubleBracketTree {...savedDoubleBracketStages} teamByName={teamByName} />
             </div>
           </div>
         )}
@@ -1902,6 +1923,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                     wbStages={doubleBracket.wbStages}
                     leaves={doubleBracket.leaves}
                     lbRounds={doubleBracket.lbRounds}
+                    teamByName={teamByName}
                   />
                 </div>
 
@@ -2083,8 +2105,9 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <FilterDropdown
                   label="SELECT CATEGORY/DIVISION"
                   value={selCategory?.label}
+                  valueKey={selCategory?.value}
                   placeholder="Select category"
-                  options={categoryOptions.map(o => ({ value: o.value, label: o.label, raw: o }))}
+                  options={categoryOptions.map(o => ({ value: o.value, label: o.label, display: o.display, raw: o }))}
                   onChange={handlePickCategory}
                 />
                 <button className="msf-reset-btn" onClick={handleReset}><FaSync /> Reset</button>
@@ -2473,7 +2496,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                   disabled={!addForm.sport}
                 >
                   <option value="">Select a category</option>
-                  {addCategoryOptions.map(o => <option key={o.value} value={o.label}>{o.label}</option>)}
+                  {addCategoryOptions.map(o => <option key={o.value} value={o.label}>{o.display || o.label}</option>)}
                 </select>
               </div>
 
@@ -2585,7 +2608,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                     onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
                   >
                     <option value="">Select a category</option>
-                    {editCategoryOptions.map(o => <option key={o.value} value={o.label}>{o.label}</option>)}
+                    {editCategoryOptions.map(o => <option key={o.value} value={o.label}>{o.display || o.label}</option>)}
                     {editForm.category && !editCategoryOptions.some(o => o.label === editForm.category) && (
                       <option value={editForm.category}>{editForm.category}</option>
                     )}
