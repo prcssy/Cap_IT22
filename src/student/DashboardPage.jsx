@@ -125,6 +125,7 @@ function finishedCardFrom(schedule, record, teamsByName) {
     id: `${schedule.id}-${record.id}`,
     sport: (schedule.sport || record.sportName || '').toUpperCase(),
     gender: displayCategory(schedule.category || record.category || '').toUpperCase(),
+    round: (schedule.stage || (schedule.round != null ? `Round ${schedule.round}` : '')).toUpperCase(),
     date: formatDatePill(schedule.date),
     time: formatTimePill(schedule.date, schedule.time),
     teamA: team(schedule.teamA, schedule.teamALogo, a),
@@ -297,6 +298,7 @@ function FinishedCard({ match, isActive, width }) {
           <span className="fc-status"><FiCheckCircle className="fc-status-icon" />Finished</span>
         </div>
         <div className="fc-datetime">{match.date}{hasTime ? ` · ${match.time}` : ''}</div>
+        {match.round && <div className="fc-round">{match.round}</div>}
 
         <div className="fc-match">
           <div className={`fc-team ${winnerA ? 'fc-team--winner' : !drawn ? 'fc-team--loser' : ''}`}>
@@ -755,7 +757,14 @@ function HomeView({ onOpenRegistration }) {
 
     const finishedList = finishedMatches
       .filter(({ record }) => !!record)
-      .sort((a, b) => b.w.start - a.w.start)
+      // Grouped by sport + division, each starting at Round 1 (the first
+      // card) and running in round order; games without a round follow by time.
+      .sort((a, b) => (
+        String(a.m.sport || '').localeCompare(String(b.m.sport || ''))
+        || String(a.m.category || '').localeCompare(String(b.m.category || ''))
+        || ((a.m.round ?? Infinity) === (b.m.round ?? Infinity) ? 0 : (a.m.round ?? Infinity) < (b.m.round ?? Infinity) ? -1 : 1)
+        || a.w.start - b.w.start
+      ))
       .map(({ m, record }) => finishedCardFrom(m, record, teamsByName));
 
     return { ongoing: ongoingList, upcoming: upcomingList, finished: finishedList };
