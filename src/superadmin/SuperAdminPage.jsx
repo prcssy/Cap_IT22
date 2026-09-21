@@ -178,6 +178,13 @@ function matchWindow(match) {
   return { start, end };
 }
 
+function recordIdentity(record) {
+  if (record?.id) return `id:${record.id}`;
+  const participants = record?.participants?.length ? record.participants : [record?.teamA, record?.teamB];
+  const teams = participants.map(p => normText(p?.name)).filter(Boolean).sort().join('|');
+  return [normText(record?.sportName), normText(record?.category), teams].join('::');
+}
+
 /* Same matching rule as DashboardPage.jsx's recordMatchesSchedule: prefer
    the explicit scheduleId link, falling back to sport/category/team-name
    matching for older records saved before that link existed. */
@@ -320,8 +327,10 @@ function BarChart({ bars }) {
   const plotW = width - padLeft - 10;
   const plotH = height - padTop - padBottom;
 
-  const maxValue = Math.max(1, ...bars.map(b => b.value));
   const ticks = 4;
+  // Round the axis top up to a multiple of the tick count so every gridline is a
+  // whole number (0 1 2 3 4, not 0 0 1 1 1 from rounding fractions).
+  const maxValue = Math.ceil(Math.max(1, ...bars.map(b => b.value)) / ticks) * ticks;
   const slotW = plotW / bars.length;
   const barW = Math.min(30, slotW * 0.5);
 
@@ -389,8 +398,10 @@ function LineChart({ points, seriesNames, colors }) {
   const plotW = width - padLeft - 10;
   const plotH = height - padTop - padBottom;
 
-  const maxValue = Math.max(1, ...points.flatMap(p => p.values));
   const ticks = 4;
+  // Round the axis top up to a multiple of the tick count so every gridline is a
+  // whole number (0 1 2 3 4, not 0 0 1 1 1 from rounding fractions).
+  const maxValue = Math.ceil(Math.max(1, ...points.flatMap(p => p.values)) / ticks) * ticks;
   const stepX = points.length > 1 ? plotW / (points.length - 1) : 0;
   const offsetX = points.length === 1 ? plotW / 2 : 0;
 
@@ -409,10 +420,13 @@ function LineChart({ points, seriesNames, colors }) {
       const p1 = coords[i];
       const p2 = coords[i + 1];
       const p3 = coords[i + 2] || p2;
+      // Control points are kept inside the plot so the smoothing can't
+      // overshoot below 0 (or above the top gridline) between points.
+      const clampY = (y) => Math.min(padTop + plotH, Math.max(padTop, y));
       const c1x = p1.x + (p2.x - p0.x) / 6;
-      const c1y = p1.y + (p2.y - p0.y) / 6;
+      const c1y = clampY(p1.y + (p2.y - p0.y) / 6);
       const c2x = p2.x - (p3.x - p1.x) / 6;
-      const c2y = p2.y - (p3.y - p1.y) / 6;
+      const c2y = clampY(p2.y - (p3.y - p1.y) / 6);
       d += ` C ${c1x} ${c1y}, ${c2x} ${c2y}, ${p2.x} ${p2.y}`;
     }
     return d;
@@ -521,10 +535,15 @@ function buildTimeSeries(seriesA, seriesB, days) {
     }
 
     if (mode === 'week') {
+      // Whole-day, back-to-back 7-day windows. The old start (end − 6 days,
+      // keeping the time of day) left a 1-day gap between consecutive
+      // weeks, so anything registered on those days was never counted.
       const end = new Date(now);
       end.setDate(end.getDate() - offset * 7);
+      end.setHours(23, 59, 59, 999);
       const start = new Date(end);
       start.setDate(start.getDate() - 6);
+      start.setHours(0, 0, 0, 0);
       return {
         start, end, values: [0, 0],
         label: `${start.toLocaleString(undefined, { month: 'short' })} ${start.getDate()}`,
@@ -532,7 +551,7 @@ function buildTimeSeries(seriesA, seriesB, days) {
     }
 
     const start = new Date(now.getFullYear(), now.getMonth() - offset, 1);
-    const end   = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0, 23, 59, 59);
+    const end   = new Date(now.getFullYear(), now.getMonth() - offset + 1, 0, 23, 59, 59, 999);
     return {
       start, end, values: [0, 0],
       label: start.toLocaleString(undefined, { month: 'short' }).toUpperCase(),
@@ -616,13 +635,16 @@ export default function SuperAdminPage() {
     return () => clearInterval(t);
   }, []);
 
-  const fetchAnalytics = useCallback(async () => {
+  // `silent` is used by the background refresh below: it re-reads every
+  // source without flashing the "Loading…" placeholders over the charts.
+  const fetchAnalytics = useCallback(async (opts) => {
+    const silent = opts?.silent === true;
     if (!db) {
       setError('Firestore not connected.');
       return;
     }
 
-    setLoading(true);
+    if (!silent) setLoading(true);
     setError('');
 
     try {
@@ -656,11 +678,26 @@ export default function SuperAdminPage() {
       console.error(err);
       setError('Failed to load analytics data.');
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => { fetchAnalytics(); }, [fetchAnalytics]);
+
+  // Keep the tiles and charts in step with the rest of the system: sports,
+  // teams, schedules, match records, users and registrations are all read
+  // once per fetch, so without this they only changed on a manual refresh
+  // (or a full reload). Re-read every 30s and whenever the tab regains focus.
+  useEffect(() => {
+    const refresh = () => fetchAnalytics({ silent: true });
+    const timer = setInterval(refresh, 30000);
+    const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', onVisible);
+    };
+  }, [fetchAnalytics]);
 
   /* Sports / teams / matches are per-level config docs, so the level tabs
      filter them by selecting which level(s) to read from rather than by
@@ -678,10 +715,20 @@ export default function SuperAdminPage() {
     return [...names];
   }, [configsByLevel, levelsForConfig]);
 
-  const teamCount = useMemo(
-    () => levelsForConfig.reduce((sum, l) => sum + (configsByLevel[l]?.teams || []).length, 0),
-    [configsByLevel, levelsForConfig],
-  );
+  // Unique, named teams — same rule as sportNames above. A team that is
+  // configured under more than one school level (or saved with a blank
+  // name) used to be counted once per entry, so this tile read higher
+  // than the number of teams actually listed on Sports & Teams.
+  const teamCount = useMemo(() => {
+    const names = new Set();
+    levelsForConfig.forEach((l) => {
+      (configsByLevel[l]?.teams || []).forEach(t => {
+        const name = normText(t?.name);
+        if (name) names.add(name);
+      });
+    });
+    return names.size;
+  }, [configsByLevel, levelsForConfig]);
 
   const matches = useMemo(
     () => levelsForConfig.flatMap(l => schedulesByLevel[l] || []),
@@ -694,21 +741,55 @@ export default function SuperAdminPage() {
      record that happens to share a sport/team name. */
   const matchBuckets = useMemo(
     () => levelsForConfig.flatMap(l => {
-      const records = recordsByLevel[l] || [];
-      return (schedulesByLevel[l] || []).map(m => ({
-        status: classifyMatch(m, now),
-        recorded: records.some(r => recordMatchesSchedule(r, m)),
-      }));
+      const schedules = schedulesByLevel[l] || [];
+
+      /* One saved result finishes AT MOST ONE fixture — the same rule the
+         Home dashboard uses. Matching every schedule against every record
+         independently let a single result "finish" several fixtures that
+         merely share sport/category/teams (a re-match, a double round
+         robin, a bracket placeholder), inflating Finished past the number
+         of results actually saved. Fixtures linked by scheduleId claim
+         their record first; older records without that link are then
+         assigned to whichever unclaimed fixture they match. */
+      const records = Array.from(
+        new Map((recordsByLevel[l] || []).map(r => [recordIdentity(r), r])).values(),
+      );
+      const claimed = new Set();
+      const recordedIds = new Set();
+      const claim = (m, candidateFilter) => {
+        const rec = records.find(r => !claimed.has(recordIdentity(r))
+          && candidateFilter(r) && recordMatchesSchedule(r, m));
+        if (!rec) return;
+        claimed.add(recordIdentity(rec));
+        recordedIds.add(m.id);
+      };
+      const timedSchedules = schedules.filter(m => matchWindow(m));
+      timedSchedules.forEach(m => claim(m, r => !!r.scheduleId));
+      timedSchedules.forEach(m => { if (!recordedIds.has(m.id)) claim(m, r => !r.scheduleId); });
+
+      return schedules.map(m => {
+        const recorded = recordedIds.has(m.id);
+        // A saved result is what makes a match Finished everywhere else in
+        // the app (Home dashboard, Moderator), so it wins over the clock:
+        // a match recorded ahead of its scheduled time is still Finished.
+        // Past its window with no result yet isn't Finished (the Home
+        // dashboard doesn't list it as finished either) — it stays in
+        // Ongoing and is flagged as awaiting a result below.
+        const timed = classifyMatch(m, now);
+        return {
+          status: recorded ? 'finished' : (timed === 'finished' ? 'ongoing' : timed),
+          awaitingResult: !recorded && timed === 'finished',
+          recorded,
+        };
+      });
     }),
     [schedulesByLevel, recordsByLevel, levelsForConfig, now],
   );
 
-  // Matches whose window has elapsed but that the moderator hasn't
-  // submitted a result for yet — still counted as "Finished" in the donut
-  // above (matching the Moderator page), surfaced here as a call-to-action
-  // instead of silently reading as "Ongoing".
+  // Matches whose window has elapsed but that the moderator hasn't submitted
+  // a result for yet — kept under Ongoing and flagged as awaiting a result.
   const unrecordedFinishedCount = useMemo(
-    () => matchBuckets.filter(b => b.status === 'finished' && !b.recorded).length,
+    () => matchBuckets.filter(b => b.awaitingResult).length,
     [matchBuckets],
   );
 
@@ -854,7 +935,7 @@ export default function SuperAdminPage() {
     const counts = { finished: 0, ongoing: 0, upcoming: 0 };
     matchBuckets.forEach(({ status }) => { counts[status]++; });
     return STATUS_BUCKETS.map(b => {
-      const label = b.key === 'finished' && unrecordedFinishedCount > 0
+      const label = b.key === 'ongoing' && unrecordedFinishedCount > 0
         ? `${b.label} (${unrecordedFinishedCount} Awaiting Result)`
         : b.label;
       return { label, value: counts[b.key], color: b.color };
@@ -874,25 +955,28 @@ export default function SuperAdminPage() {
     ];
   }, [rangedStudents, roleOf]);
 
+  // Every student in the current level/date filter, not just players — the
+  // same population (and the same gender field) as the Users Registration
+  // Details table below, so the two always agree. Gender comes from the
+  // student's profile first, falling back to their registration's gender;
+  // a student with neither set is "Not specified" rather than being
+  // silently counted as Others.
   const genderSegments = useMemo(() => {
-    const counts = { Male: 0, Female: 0, Others: 0 };
-    // One row per PLAYER (see activePlayersByUid above), gender resolved
-    // from the student's current profile first — same "trust the live
-    // profile over the registration snapshot" rule as levelOfRegistration
-    // — falling back to the representative registration's own gender only
-    // if no matching user record exists.
-    activePlayersByUid.forEach((reg, uid) => {
-      const gender = (usersById.get(uid)?.gender || reg.gender || '').toLowerCase();
+    const counts = { Male: 0, Female: 0, Others: 0, Unspecified: 0 };
+    rangedStudents.forEach((u) => {
+      const gender = (u.gender || activePlayersByUid.get(u.id)?.gender || '').toLowerCase();
       if (gender === 'male') counts.Male++;
       else if (gender === 'female') counts.Female++;
-      else counts.Others++;
+      else if (gender) counts.Others++;
+      else counts.Unspecified++;
     });
     return [
-      { label: 'Male',   value: counts.Male,   color: '#1d4ed8' },
-      { label: 'Female', value: counts.Female, color: '#db2777' },
-      { label: 'Others', value: counts.Others, color: '#94a3b8' },
+      { label: 'Male',          value: counts.Male,        color: '#1d4ed8' },
+      { label: 'Female',        value: counts.Female,      color: '#db2777' },
+      { label: 'Others',        value: counts.Others,      color: '#94a3b8' },
+      { label: 'Not specified', value: counts.Unspecified, color: '#cbd5e1' },
     ];
-  }, [activePlayersByUid, usersById]);
+  }, [rangedStudents, activePlayersByUid]);
 
   const rangeCaption = useMemo(() => {
     if (!cutoff) return 'All time';
