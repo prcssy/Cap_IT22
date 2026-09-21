@@ -1800,6 +1800,7 @@ input.mp-text-input:disabled {
   padding: 10px 12px;
   font-size: 0.74rem;
   color: #7a5a12;
+  margin-top: 16px;
   margin-bottom: 18px;
 }
 
@@ -2868,16 +2869,10 @@ input.mp-text-input:disabled {
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-}
-
-/* On narrow phones .mp-intro wraps: the "Request a schedule" button drops
-   onto its own line below the title and sits flush against the Match
-   Schedules panel right under it, since .mp-intro has no bottom margin of
-   its own. Give it one once it's actually wrapped/stacked. */
-@media (max-width: 480px) {
-  .mp-intro {
-    margin-bottom: 16px;
-  }
+  /* Keeps the "Single play" chip / title block from sitting flush against
+     the Match Schedules panel beneath it (and, on narrow phones, the
+     wrapped "Request a schedule" button). */
+  margin-bottom: 16px;
 }
 
 .mp-format-chip {
