@@ -1,6 +1,6 @@
 import { useContext } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { FaBars, FaTimes, FaUserCircle, FaHome, FaFlag, FaEdit, FaCalendarAlt, FaMedal, FaShieldAlt, FaUserShield, FaChartPie } from "react-icons/fa";
+import { FaBars, FaTimes, FaUserCircle, FaHome, FaFlag, FaCalendarAlt, FaMedal, FaShieldAlt, FaUserShield, FaChartPie } from "react-icons/fa";
 import { SidebarContext } from "./SidebarContext";
 import { AuthContext } from "../../context/AuthContext";
 import { ScheduleRequestsContext } from "../../context/ScheduleRequestsContext";
@@ -52,14 +52,6 @@ function Sidebar() {
               onClick={() => navigate('/dashboard')}
             >
               <FaHome />
-            </button>
-            <button
-              className={`sidebar-btn ${location.pathname === "/registration" ? "active" : ""}`}
-              aria-label="Registration"
-              data-label="Registration"
-              onClick={() => navigate('/registration')}
-            >
-              <FaEdit />
             </button>
             <button
               className={`sidebar-btn ${location.pathname === "/events" ? "active" : ""}`}
@@ -158,10 +150,6 @@ function Sidebar() {
           <Link to="/dashboard" className={`panel-nav-item ${location.pathname === "/dashboard" ? "active" : ""}`}>
             <FaHome className="panel-nav-icon" />
             <span>Home</span>
-          </Link>
-          <Link to="/registration" className={`panel-nav-item ${location.pathname === "/registration" ? "active" : ""}`}>
-            <FaEdit className="panel-nav-icon" />
-            <span>Registration</span>
           </Link>
           <Link to="/events" className={`panel-nav-item ${location.pathname === "/events" ? "active" : ""}`}>
             <FaFlag className="panel-nav-icon" />

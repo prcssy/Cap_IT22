@@ -22,7 +22,6 @@ const AdminSchedulePage = lazy(() => import('./admin/AdminSchedulePage'));
 const ModeratorPage = lazy(() => import('./moderator/ModeratorPage'));
 const SuperAdminPage = lazy(() => import('./superadmin/SuperAdminPage'));
 const ProfilePage = lazy(() => import('./student/ProfilePage'));
-const RegistrationPage = lazy(() => import('./student/RegistrationPage'));
 const TeamAndSportsPage = lazy(() => import('./student/TeamAndSportsPage'));
 const MatchSchedulesPage = lazy(() => import('./student/MatchSchedulesPage'));
 const RankingPage = lazy(() => import('./student/RankingPage'));
@@ -89,14 +88,6 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={["superadmin"]}>
                     <SuperAdminPage />
-                  </ProtectedRoute>
-                }
-              />
-              <Route
-                path="/registration"
-                element={
-                  <ProtectedRoute>
-                    <RegistrationPage />
                   </ProtectedRoute>
                 }
               />
