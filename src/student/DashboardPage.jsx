@@ -1080,7 +1080,9 @@ function PlayerRegistration({ onBack }) {
   const [restoredFileNames, setRestoredFileNames] = useState(null);
 
   useEffect(() => {
-    if (hydrated || !currentUser?.uid) return;
+    // Wait for the profile too, so the sign-up details are available to
+    // pre-fill below (AuthContext always sets one once a user is signed in).
+    if (hydrated || !currentUser?.uid || !userProfile) return;
     const draft = loadRegistrationDraft(currentUser.uid);
     if (draft?.form) {
       restoringDraftRef.current = true;
@@ -1090,8 +1092,24 @@ function PlayerRegistration({ onBack }) {
         setRestoredFileNames(draft.pendingFileNames);
       }
     }
+    // Pre-fill whatever the student already gave at sign-up (name, gender,
+    // grade/year, section). Only fills fields still blank, so a restored
+    // draft's own edits always win.
+    const fromSignup = {
+      fullName: userProfile.name,
+      gender: ['Male', 'Female', 'Others'].includes(userProfile.gender) ? userProfile.gender : '',
+      gradeLevel: GRADE_LEVELS.includes(userProfile.gradeLevel) ? userProfile.gradeLevel : '',
+      section: userProfile.section,
+    };
+    setForm(prev => {
+      const next = { ...prev };
+      Object.entries(fromSignup).forEach(([k, v]) => {
+        if (v && !next[k]) next[k] = v;
+      });
+      return next;
+    });
     setHydrated(true);
-  }, [currentUser?.uid, hydrated]);
+  }, [currentUser?.uid, userProfile, hydrated]);
 
   useEffect(() => {
     if (!hydrated || !currentUser?.uid || submitted) return;
