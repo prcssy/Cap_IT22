@@ -347,6 +347,14 @@ function forceDownloadMetadata(file) {
 export async function createRegistration(uid, email, formData, photoFile, waiverFile, actorRole = 'student', eventList = EVENT_TYPES) {
   if (!db) throw new Error('Firestore not initialized.');
 
+  // One player registration per student. A rejected one doesn't count, so
+  // a student whose registration was turned down can submit a corrected one.
+  // Checked before any upload so a blocked attempt leaves nothing in Storage.
+  const existing = await getMyRegistrations(uid);
+  if (existing.some((r) => r.status !== 'rejected')) {
+    throw new Error('You have already submitted a player registration. Only one registration is allowed per student.');
+  }
+
   // Upload both files in parallel — either can be null (optional).
   // Only the waiver forces a download (see forceDownloadMetadata) — the
   // photo must stay inline-viewable so Admin's thumbnail preview and
