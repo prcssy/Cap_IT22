@@ -74,10 +74,20 @@
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  overflow-x: hidden;
   -webkit-overflow-scrolling: touch;
   padding: 0 14px 20px;
   width: 100%;
   box-sizing: border-box;
+}
+
+.ms-body::-webkit-scrollbar {
+  width: 4px;
+}
+
+.ms-body::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 2px;
 }
 
 /* ── Level filter — segmented tab bar (matches RankingPage/DashboardPage) ── */
