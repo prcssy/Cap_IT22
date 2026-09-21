@@ -1696,7 +1696,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   const handleDownloadPdf = async () => {
     const { jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
-    const { loadPdfLogo, drawLogoTitleRow } = await import('../shared/utils/loadPdfLogo');
+    const { loadPdfLogo, drawLogoTitleRow, drawSignatureBlock } = await import('../shared/utils/loadPdfLogo');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -1745,6 +1745,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
       cursorY = doc.lastAutoTable.finalY + 24;
     });
 
+    drawSignatureBlock(doc, { contentBottom: cursorY });
     doc.save(`match-schedule-${level}-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 
@@ -1757,7 +1758,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     if (!stages.length) return;
 
     const { jsPDF } = await import('jspdf');
-    const { loadPdfLogo, drawLogoTitleRow } = await import('../shared/utils/loadPdfLogo');
+    const { loadPdfLogo, drawLogoTitleRow, drawSignatureBlock } = await import('../shared/utils/loadPdfLogo');
 
     const NODE_W = 150, NODE_H = 46, ROW_H = 60, LINE_GAP = 46;
     const COL_W = NODE_W + LINE_GAP;
@@ -1768,7 +1769,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     const pdf = new jsPDF({
       orientation: 'landscape',
       unit: 'pt',
-      format: [Math.max(842, MARGIN * 2 + (totalRounds + 1) * COL_W + 120), Math.max(595, MARGIN * 2 + leafCount * ROW_H)],
+      format: [Math.max(842, MARGIN * 2 + (totalRounds + 1) * COL_W + 120), Math.max(595, MARGIN * 2 + leafCount * ROW_H) + 90],
     });
     const pageWidth = pdf.internal.pageSize.getWidth();
 
@@ -1885,6 +1886,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     pdf.setTextColor(110);
     pdf.text(`Generated ${new Date().toLocaleString()}`, MARGIN, pdf.internal.pageSize.getHeight() - 20);
 
+    drawSignatureBlock(pdf);
     pdf.save(`bracket-${selSport?.name || 'sport'}-${selCategory?.label || ''}-${level}-${new Date().toISOString().slice(0, 10)}.pdf`);
   };
 

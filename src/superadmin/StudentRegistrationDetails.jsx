@@ -403,7 +403,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
   const handleDownloadPdf = async (reg) => {
     const { jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
-    const { loadPdfLogo, drawLogoTitleRow } = await import('../shared/utils/loadPdfLogo');
+    const { loadPdfLogo, drawLogoTitleRow, drawSignatureBlock } = await import('../shared/utils/loadPdfLogo');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -489,6 +489,8 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
       }
       doc.setTextColor(0);
     }
+
+    drawSignatureBlock(doc, { contentBottom: cursorY });
 
     const safeName = (reg.fullName || 'student').trim().replace(/[^a-z0-9]+/gi, '_').toLowerCase();
     doc.save(`registration-${safeName || 'student'}.pdf`);
