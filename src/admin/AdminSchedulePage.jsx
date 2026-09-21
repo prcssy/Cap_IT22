@@ -436,19 +436,21 @@ function generateBracket(teamNames) {
   return { stages, totalMatches: n - 1, leaves: padded };
 }
 
-/* ── Horizontal bracket tree: team boxes → round dots → champion ──
-   Coordinates are computed once per render: each match's y is the
-   average of its two children's y, which is what naturally produces
-   the classic elbow-merge bracket look with plain straight lines. ── */
+/* ── Horizontal bracket tree, drawn in the same style as the Double
+   Bracket: team boxes on the left, every match's winner shown as a boxed
+   "Winner of Match N" row (not a bare dot), a "Match N" caption above each
+   pair of inputs, then GC → Champion. Byes don't get a match number — the
+   team that advances is shown in that round's box instead. ── */
 function BracketTree({ stages, leaves, teamByName }) {
-  const ROW_H = 64;
-  const TEAM_W = 190;
-  const TEAM_H = 44;
-  const COL_GAP = 150;
+  const ROW_H = 56;
+  const LEAF_W = 190;
+  const LEAF_H = 40;
+  const COL_GAP = 250;
+  const TOP = 26;
 
   if (!stages.length) return null;
   const totalRounds = stages.length;
-  const leafY = leaves.map((_, i) => i * ROW_H + ROW_H / 2);
+  const leafY = leaves.map((_, i) => TOP + i * ROW_H + ROW_H / 2);
 
   const matchY = [];
   stages.forEach((stage, r) => {
@@ -459,10 +461,12 @@ function BracketTree({ stages, leaves, teamByName }) {
     )));
   });
 
-  const colX = (r) => TEAM_W + (r + 1) * COL_GAP;
-  const championX = colX(totalRounds - 1) + COL_GAP;
-  const championY = matchY[totalRounds - 1][0];
-  const height = leaves.length * ROW_H;
+  const colX = (r) => LEAF_W + (r + 1) * COL_GAP;
+  const outX = (r) => (r < 0 ? LEAF_W : colX(r) + LEAF_W); // right edge where a round's output line leaves
+  const gcX = outX(totalRounds - 1) + 140;
+  const championX = gcX + 90;
+  const gcY = matchY[totalRounds - 1][0];
+  const height = TOP + leaves.length * ROW_H + 10;
   const width = championX + 130;
 
   const elbow = (childX, y1, y2, parentX, parentY) => {
@@ -470,53 +474,86 @@ function BracketTree({ stages, leaves, teamByName }) {
     return `M ${childX} ${y1} H ${midX} M ${childX} ${y2} H ${midX} M ${midX} ${y1} V ${y2} M ${midX} ${parentY} H ${parentX}`;
   };
 
+  // Real (non-bye) matches are numbered 1..N in bracket order.
+  const numbers = stages.flatMap(stage => stage.matches).reduce(
+    (acc, match) => [...acc, match.isBye ? null : Math.max(0, ...acc.filter(Boolean)) + 1],
+    [],
+  );
+  let flatIdx = 0;
+  const nodes = stages.map(stage => stage.matches.map(match => {
+    const number = numbers[flatIdx++];
+    return number
+      ? { number, text: `Winner of Match ${number}` }
+      : { number: null, text: match.a ?? match.b ?? 'Bye' };
+  }));
+
   const connectors = [];
+  const captions = [];
   stages.forEach((stage, r) => {
-    const childX = r === 0 ? TEAM_W : colX(r - 1);
+    const childX = outX(r - 1);
     stage.matches.forEach((_, m) => {
       const y1 = r === 0 ? leafY[2 * m] : matchY[r - 1][2 * m];
       const y2 = r === 0 ? leafY[2 * m + 1] : matchY[r - 1][2 * m + 1];
       connectors.push(elbow(childX, y1, y2, colX(r), matchY[r][m]));
+      if (nodes[r][m].number) {
+        captions.push({
+          text: `Match ${nodes[r][m].number}`,
+          x: r === 0 ? 0 : colX(r - 1),
+          y: Math.min(y1, y2) - LEAF_H / 2 - 14,
+        });
+      }
     });
   });
-  connectors.push(`M ${colX(totalRounds - 1)} ${championY} H ${championX}`);
+  connectors.push(`M ${outX(totalRounds - 1)} ${gcY} H ${gcX}`);
+  connectors.push(`M ${gcX} ${gcY} H ${championX}`);
 
   return (
-    <div className="msf-bracket" style={{ height }}>
-      <div className="msf-bracket-headers">
-        <div style={{ width: colX(0) }}>{stages[0].name}</div>
-        {stages.slice(1).map((s, i) => <div key={i} style={{ width: COL_GAP }}>{s.name}</div>)}
-        <div style={{ width: width - colX(totalRounds - 1) }}>Champion</div>
-      </div>
+    <div className="msf-dbracket">
+      <div className="msf-dbracket__scroll msf-dbracket__scroll--free">
+        <div className="msf-dbracket2" style={{ height, width }}>
+          <svg width={width} height={height} className="msf-bracket-lines">
+            {connectors.map((d, i) => <path key={i} d={d} />)}
+          </svg>
 
-      <div className="msf-bracket-canvas" style={{ height, width }}>
-        <svg width={width} height={height} className="msf-bracket-lines">
-          {connectors.map((d, i) => <path key={i} d={d} />)}
-        </svg>
-
-        {leaves.map((name, i) => (
-          name ? (
-            <div key={i} className="msf-bracket-team" style={{ top: leafY[i] - TEAM_H / 2, height: TEAM_H, width: TEAM_W }}>
-              <TeamBadge team={teamByName(name)} size={26} />
-              <span>{name}</span>
-            </div>
-          ) : (
-            <div key={i} className="msf-bracket-team msf-bracket-team--bye" style={{ top: leafY[i] - TEAM_H / 2, height: TEAM_H, width: TEAM_W }}>
-              <span>Bye</span>
-            </div>
-          )
-        ))}
-
-        {stages.map((stage, r) => stage.matches.map((match, m) => (
-          <div key={`${r}-${m}`} className="msf-bracket-node" style={{ left: colX(r), top: matchY[r][m] }}>
-            <span className="msf-bracket-node__dot" />
-            <span className="msf-bracket-node__label">{r === totalRounds - 1 ? 'GC' : match.label}</span>
+          <div className="msf-dbracket2-headers" style={{ top: 0 }}>
+            <div style={{ width: colX(0) }}>{stages[0].name}</div>
+            {stages.slice(1).map((st, i) => <div key={i} style={{ width: COL_GAP }}>{st.name}</div>)}
+            <div style={{ width: COL_GAP }}>Champion</div>
           </div>
-        )))}
 
-        <div className="msf-bracket-champion" style={{ left: championX, top: championY }}>
-          <FaTrophy />
-          <span>Champion</span>
+          {leaves.map((name, i) => (
+            name ? (
+              <div key={i} className="msf-bracket-team" style={{ top: leafY[i] - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
+                <TeamBadge team={teamByName(name)} size={26} />
+                <span>{name}</span>
+              </div>
+            ) : (
+              <div key={i} className="msf-bracket-team msf-bracket-team--bye" style={{ top: leafY[i] - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
+                <span>Bye</span>
+              </div>
+            )
+          ))}
+
+          {stages.map((stage, r) => stage.matches.map((_, m) => (
+            <div key={`node-${r}-${m}`} className="msf-lbracket-leaf" style={{ top: matchY[r][m] - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
+              <span className="msf-lbracket-leaf__dot" />
+              <span>{nodes[r][m].text}</span>
+            </div>
+          )))}
+
+          {captions.map((c, i) => (
+            <span key={i} className="msf-dbracket__matchcap" style={{ left: c.x, top: c.y, width: LEAF_W }}>{c.text}</span>
+          ))}
+
+          <div className="msf-bracket-node" style={{ left: gcX, top: gcY }}>
+            <span className="msf-bracket-node__dot" />
+            <span className="msf-bracket-node__label">GC</span>
+          </div>
+
+          <div className="msf-bracket-champion" style={{ left: championX, top: gcY }}>
+            <FaTrophy />
+            <span>Champion</span>
+          </div>
         </div>
       </div>
     </div>

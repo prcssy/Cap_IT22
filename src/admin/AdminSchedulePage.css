@@ -1932,6 +1932,12 @@
   -webkit-overflow-scrolling: touch;
 }
 
+/* Single Bracket reuses the Double Bracket box but grows to fit, so it
+   never shows a scrollbar of its own. */
+.msf-dbracket__scroll--free {
+  max-height: none;
+}
+
 .msf-dbracket2 {
   position: relative;
   overflow: visible;
@@ -1964,7 +1970,7 @@
 
 .msf-dbracket2-headers {
   position: absolute;
-  left: 0;
+  left: 63px; /* stage titles sit inward of their columns */
   display: flex;
 }
 
