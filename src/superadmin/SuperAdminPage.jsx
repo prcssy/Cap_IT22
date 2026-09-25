@@ -11,6 +11,7 @@ import StudentRegistrationDetails from './StudentRegistrationDetails';
 import BrandingSettings from './BrandingSettings';
 import LandingPageSettings from './LandingPageSettings';
 import LevelLabelsSettings from './LevelLabelsSettings';
+import '../admin/AdminSchedulePage.css';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
@@ -1295,34 +1296,46 @@ export default function SuperAdminPage() {
               rather than filtered out of `users` — that's the actual
               source of truth AuthContext itself resolves login access
               from. To change a role, use Roles & Permissions above. */}
-          <div className="sa-card" style={{ marginTop: 24 }}>
-            <div className="sa-card__head">
-              <h3><FaUserShield style={{ marginRight: 8, verticalAlign: -2 }} />Staff List</h3>
-              <span className="sa-card__tag">{staffList.length} total</span>
+          <div className="asp-card" style={{ marginTop: 24 }}>
+            <div className="asp-card__toprow">
+              <div className="asp-card__heading">
+                <FaUserShield className="asp-card__icon" />
+                <span>STAFF LIST</span>
+              </div>
+              <span className="asp-results-count">{staffList.length} result{staffList.length !== 1 ? 's' : ''}</span>
             </div>
-            <div className="sa-table-wrap">
-              <table className="sa-table">
+            <div className="asp-table-wrap" style={{ marginTop: 8 }}>
+              <table className="asp-table asp-table--students">
                 <thead>
                   <tr>
+                    <th>#</th>
                     <th>Name</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Level</th>
+                    <th className="asp-col-center">Email</th>
+                    <th className="asp-col-center">Role</th>
+                    <th className="asp-col-center">Level</th>
                   </tr>
                 </thead>
                 <tbody>
                   {loading ? (
-                    <tr><td colSpan={4}><p className="sa-loading">Loading…</p></td></tr>
+                    <tr><td colSpan={5}><p className="asp-empty">Loading from Firestore…</p></td></tr>
                   ) : staffList.length === 0 ? (
-                    <tr><td colSpan={4}><p className="sa-loading">No staff accounts yet.</p></td></tr>
-                  ) : staffList.map((s) => (
+                    <tr><td colSpan={5}><p className="asp-empty">No staff accounts yet.</p></td></tr>
+                  ) : staffList.map((s, idx) => (
                     <tr key={`${s.role}:${s.email}`}>
-                      <td className="sa-td--name" data-label="Name">{s.name || <em>Unnamed</em>}</td>
-                      <td data-label="Email">{s.email}</td>
-                      <td data-label="Role">
+                      <td className="asp-td--num" data-label="#">{idx + 1}</td>
+                      <td className="asp-td--name" data-label="Name">
+                        <span className="asp-avatar">{(s.name || s.email).charAt(0).toUpperCase()}</span>
+                        <span className="asp-name-text">
+                          {s.name || <em className="asp-placeholder">Unnamed</em>}
+                        </span>
+                      </td>
+                      <td className="asp-col-center" data-label="Email">{s.email}</td>
+                      <td className="asp-col-center" data-label="Role">
                         <span className={`sa-role sa-role--${s.role}`}>{roleLabel(s.role)}</span>
                       </td>
-                      <td data-label="Level">{s.role === 'superadmin' ? 'All Levels' : (levelLabels[s.level] || s.level || '—')}</td>
+                      <td className="asp-col-center" data-label="Level">
+                        {s.role === 'superadmin' ? 'All Levels' : (levelLabels[s.level] || s.level || '—')}
+                      </td>
                     </tr>
                   ))}
                 </tbody>
