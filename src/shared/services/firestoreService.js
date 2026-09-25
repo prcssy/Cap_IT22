@@ -679,6 +679,52 @@ export async function saveTeamsConfig(level, teams, actorRole) {
   });
 }
 
+/**
+ * What deleting a sport takes with it, for the delete confirmation. Sports are
+ * referenced by NAME (case-insensitive) everywhere below, and the counts mirror
+ * what the `applySportChange` Cloud Function removes so the dialog matches
+ * what actually happens.
+ */
+export async function getSportDeletionImpact(level, sportName) {
+  const target = (sportName || '').trim().toLowerCase();
+  const isTarget = (name) => (name || '').trim().toLowerCase() === target;
+
+  const [matches, records, points, requests] = await Promise.all([
+    getMatchSchedules(level),
+    getMatchRecords(level),
+    getTeamRankings(level),
+    // Staff-only doc: a read the caller isn't allowed to make just means "0".
+    getScheduleRequests().catch(() => []),
+  ]);
+
+  const removedMatches = matches.filter((m) => isTarget(m.sport));
+  const scheduleIds = new Set(removedMatches.map((m) => String(m.id)));
+  const requestIds = new Set(removedMatches.map((m) => m.requestId).filter(Boolean).map(String));
+
+  return {
+    matches: removedMatches.length,
+    records: records.filter((r) => isTarget(r.sportName)
+      || (r.scheduleId && scheduleIds.has(String(r.scheduleId)))).length,
+    rankingScopes: Object.keys(points).filter((k) => k.startsWith(`${target}::`)).length,
+    requests: requests.filter((r) => (isTarget(r.sport) && (!r.level || r.level === level))
+      || requestIds.has(String(r.id))).length,
+  };
+}
+
+/**
+ * Deletes a sport's matches, results, rankings and schedule requests, or (with
+ * `newName`) renames the sport on all of them. Runs in the `applySportChange`
+ * Cloud Function because matchRecords/teamRankings deny direct client writes.
+ * Throws if it fails, so the caller can leave the sports config untouched
+ * rather than orphan the data.
+ */
+export async function applySportChange(level, sportName, newName) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'applySportChange');
+  const { data } = await call({ level, sportName, ...(newName ? { newName } : {}) });
+  return data;
+}
+
 /* ─────────────────────────────────────────────
    Match schedules (per school level)
    Stored at: matchSchedules/{level} → { matches: [...] }

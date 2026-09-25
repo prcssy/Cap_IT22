@@ -1,13 +1,20 @@
 import { useState, useEffect, useRef, useContext } from 'react';
+import { createPortal } from 'react-dom';
 import {
   FaRunning, FaUsers, FaPlus, FaTimes,
   FaEdit, FaCheck, FaSync, FaFileExcel, FaDownload,
 } from 'react-icons/fa';
 import './SportsTeamsManager.css';
 import { buildImport, readBulkWorkbook, downloadBulkTemplate } from './bulkImport';
-import { getSportsTeamsConfig, saveSportsConfig, saveTeamsConfig } from '../shared/services/firestoreService';
+import {
+  getSportsTeamsConfig, saveSportsConfig, saveTeamsConfig,
+  getSportDeletionImpact, applySportChange, getAllRegistrations,
+} from '../shared/services/firestoreService';
+import { getSchoolLevel } from '../shared/utils/schoolLevel';
 import { AuthContext } from '../shared/context/AuthContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
+import SportIcon from '../shared/components/SportIcon/SportIcon';
+import { SPORT_ICONS, resolveSportIcon } from '../shared/constants/sportIcons';
 
 /* ═══════════════════════════════════════════
    CONSTANTS
@@ -103,6 +110,84 @@ function LogoUpload({ logo, onUpload, onClear, showClearButton = false }) {
         </button>
       )}
     </div>
+  );
+}
+
+/* ═══════════════════════════════════════════
+   SPORT ICON PICKER
+   Sports use a fixed icon set instead of uploaded images so they all
+   match. `icon` is a key from sportIcons.jsx, or null = "Auto", i.e. the
+   icon follows the sport's name (Basketball -> basketball).
+═══════════════════════════════════════════ */
+function SportIconPicker({ name, icon, onChange }) {
+  const [open, setOpen] = useState(false);
+  const current = resolveSportIcon({ name, icon });
+  const caption = current.source === 'chosen' ? current.label : current.source === 'auto' ? 'Auto' : 'Default';
+
+  const pick = (key) => { onChange(key); setOpen(false); };
+
+  return (
+    <>
+      <button
+        type="button"
+        className="stm-icon-pick"
+        onClick={() => setOpen(true)}
+        title={`Icon: ${current.label}${current.source === 'auto' ? ' (from the sport name)' : ''} — click to change`}
+      >
+        <current.Icon className="stm-icon-pick__glyph" aria-hidden="true" />
+        <span className="stm-icon-pick__caption">{caption}</span>
+      </button>
+
+      {/* Portalled: this trigger lives inside tables and other modals, and a
+          fixed overlay there would be clipped or re-anchored by them. */}
+      {open && createPortal(
+        <div className="stm-overlay stm-overlay--top" onClick={() => setOpen(false)}>
+          <div className="stm-modal stm-modal--icons" onClick={e => e.stopPropagation()}>
+            <div className="stm-modal__head">
+              <div>
+                <h3>Choose Icon</h3>
+                <p>Shown for <strong>{name.trim() || 'this sport'}</strong> everywhere on the site.</p>
+              </div>
+              <button type="button" className="stm-icon-btn" onClick={() => setOpen(false)} aria-label="Close"><FaTimes /></button>
+            </div>
+
+            <div className="stm-modal__body">
+              <button
+                type="button"
+                className={`stm-icon-auto ${!icon ? 'stm-icon-auto--on' : ''}`}
+                onClick={() => pick(null)}
+              >
+                <span className="stm-icon-auto__glyph">
+                  <SportIcon sport={{ name }} />
+                </span>
+                <span>
+                  <b>Auto</b>
+                  <small>Match the sport name — currently {resolveSportIcon({ name, icon: null }).label}</small>
+                </span>
+                <span className="stm-picker-check">{!icon && <FaCheck />}</span>
+              </button>
+
+              <div className="stm-icon-grid" role="listbox" aria-label="Sport icons">
+                {SPORT_ICONS.map(({ key, label, Icon }) => (
+                  <button
+                    key={key}
+                    type="button"
+                    role="option"
+                    aria-selected={icon === key}
+                    className={`stm-icon-tile ${icon === key ? 'stm-icon-tile--on' : ''}`}
+                    onClick={() => pick(key)}
+                  >
+                    <Icon className="stm-icon-tile__glyph" aria-hidden="true" />
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>,
+        document.body,
+      )}
+    </>
   );
 }
 
@@ -471,7 +556,7 @@ function PositionsModal({ sport, onClose, onSave }) {
 ═══════════════════════════════════════════ */
 function EditSportModal({ sport, saving, onClose, onSave }) {
   const [name,           setName]           = useState(sport.name || '');
-  const [logo,           setLogo]           = useState(sport.logo || null);
+  const [icon,           setIcon]           = useState(sport.icon || null);
   const [categoryGroups, setCategoryGroups] = useState(sport.categoryGroups || []);
   const [violations,     setViolations]     = useState(sport.violations || []);
   const [positions,      setPositions]      = useState(sport.positions || []);
@@ -493,13 +578,13 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
           <div className="stm-catmod-head">
             <button className="stm-icon-btn stm-catmod-close" onClick={onClose} aria-label="Close"><FaTimes /></button>
             <h3>EDIT SPORT</h3>
-            <p>Update this sport's name, logo, categories, and format.</p>
+            <p>Update this sport's name, icon, categories, and format.</p>
           </div>
 
           <div className="stm-modal__body">
           <div className="stm-edit-sport-body">
             <div className="stm-edit-sport-row">
-              <LogoUpload logo={logo} onUpload={setLogo} onClear={() => setLogo(null)} showClearButton />
+              <SportIconPicker name={name} icon={icon} onChange={setIcon} />
               <input
                 className="stm-row-input stm-edit-sport-name"
                 placeholder="Sport name"
@@ -567,7 +652,7 @@ function EditSportModal({ sport, saving, onClose, onSave }) {
               type="button"
               className="stm-btn-primary"
               disabled={saving || !name.trim()}
-              onClick={() => onSave({ ...sport, name: name.trim(), logo, categoryGroups, violations, positions })}
+              onClick={() => onSave({ ...sport, name: name.trim(), icon, categoryGroups, violations, positions })}
             >
               {saving ? 'Saving…' : 'Save Changes'}
             </button>
@@ -796,15 +881,12 @@ function SportsConfirmModal({ sports, saving, onClose, onSave }) {
             })}
           </div>
 
-          {/* SPORTS LOGO col */}
+          {/* SPORTS ICON col */}
           <div className="stm-confirm-col">
-            <h4>SPORTS LOGO</h4>
+            <h4>SPORTS ICON</h4>
             {sports.map(s => (
               <div key={s.id} className="stm-confirm-cell stm-confirm-cell--logo">
-                {s.logo
-                  ? <img src={s.logo} alt="logo" className="stm-confirm-logo-img" />
-                  : <span className="stm-confirm-logo-placeholder"><FaRunning /></span>
-                }
+                <span className="stm-confirm-logo-placeholder"><SportIcon sport={s} /></span>
               </div>
             ))}
           </div>
@@ -858,10 +940,7 @@ function TeamSportsPickerModal({ team, sportsList, onClose, onSave }) {
                 className={`stm-picker-item ${selected.has(s.name) ? 'stm-picker-item--on' : ''}`}
                 onClick={() => toggle(s.name)}
               >
-                {s.logo
-                  ? <img src={s.logo} alt="" className="stm-picker-logo" />
-                  : <span className="stm-picker-logo stm-picker-logo--icon"><FaRunning /></span>
-                }
+                <span className="stm-picker-logo stm-picker-logo--icon"><SportIcon sport={s} /></span>
                 <span>{s.name}</span>
                 <span className="stm-picker-check">{selected.has(s.name) && <FaCheck />}</span>
               </button>
@@ -938,54 +1017,79 @@ function TeamsConfirmModal({ teams, saving, onClose, onSave }) {
 ═══════════════════════════════════════════ */
 function BulkImportModal({ plan, saving, onClose, onSave }) {
   const { summary, warnings } = plan;
-  const lines = [
-    plan.hasSports && `Sports: ${summary.addedSports} new, ${summary.updatedSports} updated`,
-    plan.hasTeams  && `Teams: ${summary.addedTeams} new, ${summary.updatedTeams} updated`,
+  const plural = (n, word, many = `${word}s`) => `${n} ${n === 1 ? word : many}`;
+  const stats = [
+    plan.hasSports && { label: 'Sports', added: summary.addedSports, updated: summary.updatedSports },
+    plan.hasTeams  && { label: 'Teams',  added: summary.addedTeams,  updated: summary.updatedTeams },
   ].filter(Boolean);
 
   return (
     <div className="stm-overlay" onClick={saving ? undefined : onClose}>
-      <div className="stm-modal stm-modal--category" onClick={e => e.stopPropagation()}>
+      <div className="stm-modal stm-modal--category stm-modal--bulk" onClick={e => e.stopPropagation()}>
         <div className="stm-catmod-head">
           <button className="stm-icon-btn stm-catmod-close" onClick={onClose} disabled={saving} aria-label="Close"><FaTimes /></button>
           <h3>BULK UPLOAD</h3>
           <p>Review what will be saved from your Excel file.</p>
         </div>
 
-        <div className="stm-modal__body">
-          <ul className="stm-preview-list">
-            {lines.map(l => <li key={l}>{l}</li>)}
-          </ul>
+        <div className="stm-modal__body stm-bulk-body">
+          <div className="stm-bulk-stats">
+            {stats.map(st => (
+              <div className="stm-bulk-stat" key={st.label}>
+                <span className="stm-bulk-stat__label">{st.label}</span>
+                <span className="stm-bulk-stat__row">
+                  <span className="stm-bulk-pill stm-bulk-pill--new"><b>{st.added}</b> new</span>
+                  <span className="stm-bulk-pill stm-bulk-pill--upd"><b>{st.updated}</b> updated</span>
+                </span>
+              </div>
+            ))}
+          </div>
+
           {plan.incomingSports.length > 0 && (
-            <div className="stm-bulk-detail">
-              <span className="stm-preview-label">SPORTS IN THIS FILE</span>
-              <ul className="stm-preview-list">
+            <section>
+              <h4 className="stm-bulk-section__title">Sports in this file <span>{plan.incomingSports.length}</span></h4>
+              <div className="stm-bulk-cards">
                 {plan.incomingSports.map(s => {
                   const divs = s.categoryGroups.reduce((n, g) => n + g.divisions.length, 0);
                   return (
-                    <li key={s.id}>
-                      <b>{s.name}</b> — {s.categoryGroups.length} categor{s.categoryGroups.length === 1 ? 'y' : 'ies'},{' '}
-                      {divs} division{divs === 1 ? '' : 's'}, {s.positions.length} position{s.positions.length === 1 ? '' : 's'},{' '}
-                      {s.violations.length} violation{s.violations.length === 1 ? '' : 's'}{s.logo ? ', logo ✓' : ''}
-                      {divs === 0 && ' ⚠ no categories/divisions found'}
-                    </li>
+                    <div className="stm-bulk-card" key={s.id}>
+                      <span className="stm-bulk-card__name">{s.name}</span>
+                      <span className="stm-bulk-chips">
+                        <span className="stm-bulk-chip">{plural(s.categoryGroups.length, 'category', 'categories')}</span>
+                        <span className="stm-bulk-chip">{plural(divs, 'division')}</span>
+                        <span className="stm-bulk-chip">{plural(s.positions.length, 'position')}</span>
+                        <span className="stm-bulk-chip">{plural(s.violations.length, 'violation')}</span>
+                        {divs === 0 && <span className="stm-bulk-chip stm-bulk-chip--warn">⚠ no divisions found</span>}
+                      </span>
+                    </div>
                   );
                 })}
-              </ul>
-            </div>
+              </div>
+            </section>
           )}
+
           {plan.incomingTeams.length > 0 && (
-            <div className="stm-bulk-detail">
-              <span className="stm-preview-label">TEAMS IN THIS FILE</span>
-              <ul className="stm-preview-list">
-                {plan.incomingTeams.map(t => <li key={t.name}><b>{t.name}</b> — {t.sports.length ? t.sports.join(', ') : 'no sports'}{t.logo ? ' · logo ✓' : ''}</li>)}
-              </ul>
-            </div>
+            <section>
+              <h4 className="stm-bulk-section__title">Teams in this file <span>{plan.incomingTeams.length}</span></h4>
+              <div className="stm-bulk-cards">
+                {plan.incomingTeams.map(t => (
+                  <div className="stm-bulk-card" key={t.name}>
+                    <span className="stm-bulk-card__name">{t.name}{t.logo && <em className="stm-bulk-logo-ok">logo ✓</em>}</span>
+                    <span className="stm-bulk-chips">
+                      {t.sports.length
+                        ? t.sports.map(sp => <span className="stm-bulk-chip" key={sp}>{sp}</span>)
+                        : <span className="stm-bulk-chip stm-bulk-chip--warn">no sports</span>}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </section>
           )}
+
           {warnings.length > 0 && (
             <div className="stm-bulk-warnings">
-              <span className="stm-preview-label">{warnings.length} NOTE{warnings.length === 1 ? '' : 'S'}</span>
-              <ul className="stm-preview-list">
+              <span className="stm-bulk-warnings__title">⚠ {warnings.length} note{warnings.length === 1 ? '' : 's'}</span>
+              <ul>
                 {warnings.map((w, i) => <li key={i}>{w}</li>)}
               </ul>
             </div>
@@ -1023,13 +1127,49 @@ export default function SportsTeamsManager({ level }) {
   const [showTeamsConfirm,  setShowTeamsConfirm]  = useState(false);
   const [deleteSportTarget, setDeleteSportTarget] = useState(null); // sport object pending delete
   const [deletingSport,     setDeletingSport]     = useState(false);
-  const [deleteTeamTarget,  setDeleteTeamTarget]  = useState(null); // team object pending delete
+  const [loadedImpact,      setLoadedImpact]      = useState(null); // counts of what deleting a sport removes, tagged with that sport's id
+  const [deleteConfirm,     setDeleteConfirm]     = useState({ id: null, text: '' });
+  const [deleteTeamTarget, setDeleteTeamTarget]  = useState(null); // team object pending delete
   const [deletingTeam,      setDeletingTeam]      = useState(false);
   const [editSportTarget,   setEditSportTarget]   = useState(null); // sport object being edited in popup
   const [savingEditSport,   setSavingEditSport]   = useState(false);
   const [editTeamTarget,    setEditTeamTarget]    = useState(null); // saved team being edited in popup
   const [savingEditTeam,    setSavingEditTeam]    = useState(false);
   const [resetTarget,       setResetTarget]       = useState(null); // 'sports' | 'teams' — form pending reset confirmation
+
+  /* When the delete dialog opens, count what the delete will take with it
+     (matches, results, rankings, requests) and how many registrations will
+     stay behind, so the admin sees the real impact before confirming. */
+  useEffect(() => {
+    if (!deleteSportTarget) return undefined;
+    let cancelled = false;
+    const { id, name } = deleteSportTarget;
+    const key = norm(name);
+    Promise.all([
+      getSportDeletionImpact(level, name),
+      getAllRegistrations()
+        .then(regs => regs.filter(r => norm(r.sport) === key && getSchoolLevel(r.gradeLevel) === level).length)
+        .catch(() => 0),
+    ])
+      .then(([impact, registrations]) => { if (!cancelled) setLoadedImpact({ id, ...impact, registrations }); })
+      .catch(err => {
+        console.error(err);
+        if (!cancelled) setLoadedImpact({ id, matches: 0, records: 0, rankingScopes: 0, requests: 0, registrations: 0, failed: true });
+      });
+    return () => {
+      // Runs when the dialog closes or moves to another sport, so reopening
+      // never starts with the previous typed name or counts.
+      cancelled = true;
+      setLoadedImpact(null);
+      setDeleteConfirm({ id: null, text: '' });
+    };
+  }, [deleteSportTarget, level]);
+
+  // Impact and typed text belong to one specific sport; ignore them once the
+  // dialog has moved on to another (or closed) so nothing stale shows.
+  const deleteImpact = loadedImpact && loadedImpact.id === deleteSportTarget?.id ? loadedImpact : null;
+  const deleteConfirmText = deleteConfirm.id === deleteSportTarget?.id ? deleteConfirm.text : '';
+  const setDeleteConfirmText = (text) => setDeleteConfirm({ id: deleteSportTarget?.id, text });
 
   const [saving,  setSaving]  = useState(false);
   const [loading, setLoading] = useState(false);
@@ -1055,8 +1195,8 @@ export default function SportsTeamsManager({ level }) {
         const cfg = await getSportsTeamsConfig(level);
         if (cancelled) return;
         const sports = (cfg.sports || []).map(s => ({
-          ...ensureId(s),
-          logo: s.logo || null,
+          ...ensureId(s), // legacy `logo` (uploaded image) rides along untouched but is no longer shown
+          icon: s.icon || null,
           categoryGroups: (s.categoryGroups || (s.categories
             ? [{ id: uid(), label: 'DIVISION', divisions: s.categories.map(ensureId) }]
             : [])).map(g => ({ ...ensureId(g), divisions: (g.divisions || []).map(ensureId) })),
@@ -1131,7 +1271,7 @@ export default function SportsTeamsManager({ level }) {
   /* ── Sport row helpers ── */
   const setSportsCount = (n) => setSportsRows(prev => {
     const next = [...prev];
-    while (next.length < n) next.push({ id: uid(), name: '', logo: null, categoryGroups: [], violations: [], positions: [] });
+    while (next.length < n) next.push({ id: uid(), name: '', icon: null, categoryGroups: [], violations: [], positions: [] });
     while (next.length > n) next.pop();
     return next;
   });
@@ -1160,7 +1300,9 @@ export default function SportsTeamsManager({ level }) {
        leave every team pointing at a sport that no longer exists — they
        silently vanished from that sport's team pool in the schedule
        generator. Follow the rename through to the teams. */
-    const renamed = previous && norm(previous.name) !== norm(updatedSport.name);
+    /* Exact compare, not norm(): a case-only rename ("basketball" → "Basketball")
+       still has to be followed through, since schedule sets match on the exact name. */
+    const renamed = previous && previous.name !== updatedSport.name;
     const retargetedTeams = renamed
       ? teamsList.map(t => ({
           ...t,
@@ -1173,6 +1315,20 @@ export default function SportsTeamsManager({ level }) {
     if (retargetedTeams) setTeamsList(retargetedTeams);
 
     try {
+      /* Matches, results, rankings and schedule requests reference the sport by
+         name too. Rename them first; if that fails, undo the local edit and
+         stop so nothing ends up pointing at a name that no longer exists. */
+      if (renamed) {
+        try {
+          await applySportChange(level, previous.name, updatedSport.name);
+        } catch (e) {
+          console.error(e);
+          setSportsList(sportsList);
+          if (retargetedTeams) setTeamsList(teamsList);
+          flash(`Couldn't rename "${previous.name}" — its matches could not be updated. Nothing was changed.`);
+          return;
+        }
+      }
       await saveSportsConfig(level, merged, actorRole);
       if (retargetedTeams) await saveTeamsConfig(level, retargetedTeams, actorRole);
       flash(`✓ "${updatedSport.name}" updated.`);
@@ -1210,11 +1366,41 @@ export default function SportsTeamsManager({ level }) {
   /* ── Delete a saved sport ── */
   const deleteSport = async (sport) => {
     const remaining = sportsList.filter(s => s.id !== sport.id);
+    setDeletingSport(true);
+
+    /* Remove the sport's matches, results, rankings and schedule requests
+       FIRST. If that fails, stop before touching the sports list — deleting
+       only the config entry is exactly what left finished matches showing on
+       the Dashboard. */
+    try {
+      await applySportChange(level, sport.name);
+    } catch (e) {
+      console.error(e);
+      flash(`Couldn't delete "${sport.name}" — its matches could not be removed. Nothing was changed.`);
+      setDeletingSport(false);
+      return;
+    }
+
     setSportsList(remaining);
     setDeleteSportTarget(null);
-    setDeletingSport(true);
+
+    /* Teams reference a sport by NAME, so drop it from every team too — otherwise
+       the dead name lingers and shows up doubled when the sport is re-added. */
+    const gone = norm(sport.name);
+    const affected = teamsList.some(t => (t.sportIds || []).some(n => norm(n) === gone)
+      || Object.keys(t.divisionMap || {}).some(k => norm(k) === gone));
+    const cleanedTeams = affected
+      ? teamsList.map(t => ({
+          ...t,
+          sportIds: (t.sportIds || []).filter(n => norm(n) !== gone),
+          divisionMap: Object.fromEntries(Object.entries(t.divisionMap || {}).filter(([k]) => norm(k) !== gone)),
+        }))
+      : null;
+    if (cleanedTeams) setTeamsList(cleanedTeams);
+
     try {
       await saveSportsConfig(level, remaining, actorRole);
+      if (cleanedTeams) await saveTeamsConfig(level, cleanedTeams, actorRole);
       flash(`✓ "${sport.name}" deleted.`);
     } catch (e) {
       console.error(e);
@@ -1364,21 +1550,24 @@ export default function SportsTeamsManager({ level }) {
           <button type="button" className="stm-link-btn" onClick={() => setSportsCount(sportsRows.length + 1)}>
             <FaPlus /> Add Row for Sports
           </button>
-          <button
-            type="button"
-            className="stm-link-btn"
-            onClick={() => openBulk('sports')}
-            disabled={bulkBusy || saving || loading}
-          >
-            <FaFileExcel /> {bulkBusy === 'sports' ? 'Reading…' : 'Upload Excel File'}
-          </button>
-          <button
-            type="button"
-            className="stm-link-btn"
-            onClick={() => downloadBulkTemplate('sports').catch(() => flash('Could not create the template.'))}
-          >
-            <FaDownload /> Download template
-          </button>
+          <div className="stm-bulk-group">
+            <span className="stm-bulk-group__label">Bulk import:</span>
+            <button
+              type="button"
+              className="stm-link-btn"
+              onClick={() => downloadBulkTemplate('sports').catch(() => flash('Could not create the template.'))}
+            >
+              <FaDownload /> 1. Download template
+            </button>
+            <button
+              type="button"
+              className="stm-link-btn"
+              onClick={() => openBulk('sports')}
+              disabled={bulkBusy || saving || loading}
+            >
+              <FaFileExcel /> {bulkBusy === 'sports' ? 'Reading…' : '2. Upload Excel File'}
+            </button>
+          </div>
         </div>
 
         {sportsRows.length > 0 && (
@@ -1388,7 +1577,7 @@ export default function SportsTeamsManager({ level }) {
                 <tr>
                   <th>#</th>
                   <th>Sports Name</th>
-                  <th className="stm-th-center">Logo</th>
+                  <th className="stm-th-center">Icon</th>
                   <th className="stm-th-center">Categories</th>
                   <th>Division</th>
                   <th>Violations</th>
@@ -1409,11 +1598,10 @@ export default function SportsTeamsManager({ level }) {
                       />
                     </td>
                     <td>
-                      <LogoUpload
-                        logo={row.logo}
-                        onUpload={(b64) => updateSportRow(row.id, { logo: b64 })}
-                        onClear={() => updateSportRow(row.id, { logo: null })}
-                        showClearButton
+                      <SportIconPicker
+                        name={row.name}
+                        icon={row.icon}
+                        onChange={(key) => updateSportRow(row.id, { icon: key })}
                       />
                     </td>
                     <td className="stm-td-center">
@@ -1538,10 +1726,17 @@ export default function SportsTeamsManager({ level }) {
                       </div>
                     );
 
+                    const sportLabel = (
+                      <span className="stm-sport-label">
+                        <SportIcon sport={sport} className="stm-sport-label__icon" />
+                        {sport.name.toUpperCase()}
+                      </span>
+                    );
+
                     if (divisions.length === 0) {
                       return [(
                         <tr key={sport.id} className="stm-preview-table__sport-group">
-                          <td className="stm-preview-table__sport">{sport.name.toUpperCase()}</td>
+                          <td className="stm-preview-table__sport">{sportLabel}</td>
                           <td><span className="stm-empty-note">—</span></td>
                           <td><span className="stm-empty-note">No categories set.</span></td>
                           <td><span className="stm-empty-note">—</span></td>
@@ -1568,7 +1763,7 @@ export default function SportsTeamsManager({ level }) {
                         >
                           {isFirstOfSport && (
                             <td className="stm-preview-table__sport" rowSpan={divisions.length}>
-                              {sport.name.toUpperCase()}
+                              {sportLabel}
                             </td>
                           )}
                           {isFirstOfCategory && (
@@ -1611,7 +1806,10 @@ export default function SportsTeamsManager({ level }) {
                 return (
                   <div className="stm-preview-card" key={sport.id}>
                     <div className="stm-preview-card__head">
-                      <span className="stm-preview-card__title">{sport.name.toUpperCase()}</span>
+                      <span className="stm-preview-card__title stm-sport-label">
+                        <SportIcon sport={sport} className="stm-sport-label__icon" />
+                        {sport.name.toUpperCase()}
+                      </span>
                       <div className="stm-preview-table__actions">
                         <button type="button" className="stm-preview-edit-btn" title="Edit sport" onClick={() => setEditSportTarget(sport)}>
                           <FaEdit />
@@ -1660,21 +1858,24 @@ export default function SportsTeamsManager({ level }) {
           <button type="button" className="stm-link-btn" onClick={addTeamRow}>
             <FaPlus /> Add row for Teams
           </button>
-          <button
-            type="button"
-            className="stm-link-btn"
-            onClick={() => openBulk('teams')}
-            disabled={bulkBusy || saving || loading}
-          >
-            <FaFileExcel /> {bulkBusy === 'teams' ? 'Reading…' : 'Upload Excel File'}
-          </button>
-          <button
-            type="button"
-            className="stm-link-btn"
-            onClick={() => downloadBulkTemplate('teams').catch(() => flash('Could not create the template.'))}
-          >
-            <FaDownload /> Download template
-          </button>
+          <div className="stm-bulk-group">
+            <span className="stm-bulk-group__label">Bulk import:</span>
+            <button
+              type="button"
+              className="stm-link-btn"
+              onClick={() => downloadBulkTemplate('teams').catch(() => flash('Could not create the template.'))}
+            >
+              <FaDownload /> 1. Download template
+            </button>
+            <button
+              type="button"
+              className="stm-link-btn"
+              onClick={() => openBulk('teams')}
+              disabled={bulkBusy || saving || loading}
+            >
+              <FaFileExcel /> {bulkBusy === 'teams' ? 'Reading…' : '2. Upload Excel File'}
+            </button>
+          </div>
         </div>
 
         {teamsRows.length > 0 && (
@@ -1889,6 +2090,41 @@ export default function SportsTeamsManager({ level }) {
               Are you sure you want to delete <b>{deleteSportTarget.name.toUpperCase()}</b>?
               This will remove it and its categories/divisions from {levelLabels[level] || level}.
             </p>
+            {!deleteImpact && <p className="stm-delete-msg">Checking what this will affect…</p>}
+            {deleteImpact?.failed && (
+              <p className="stm-delete-msg">
+                Couldn't count the affected data. Deleting will still remove the sport's matches, results and rankings.
+              </p>
+            )}
+            {deleteImpact && !deleteImpact.failed && (
+              <div className="stm-delete-impact">
+                <p className="stm-delete-msg">This will also permanently delete:</p>
+                <ul>
+                  <li><b>{deleteImpact.matches}</b> scheduled/finished match{deleteImpact.matches === 1 ? '' : 'es'}</li>
+                  <li><b>{deleteImpact.records}</b> match result{deleteImpact.records === 1 ? '' : 's'}</li>
+                  <li><b>{deleteImpact.rankingScopes}</b> ranking table{deleteImpact.rankingScopes === 1 ? '' : 's'}</li>
+                  <li><b>{deleteImpact.requests}</b> schedule request{deleteImpact.requests === 1 ? '' : 's'}</li>
+                </ul>
+                {deleteImpact.registrations > 0 && (
+                  <p className="stm-delete-msg">
+                    <b>{deleteImpact.registrations}</b> student registration{deleteImpact.registrations === 1 ? '' : 's'} will be kept and flagged “sport removed”.
+                  </p>
+                )}
+              </div>
+            )}
+            <p className="stm-delete-msg">
+              This can't be undone. Type <b>{deleteSportTarget.name}</b> to confirm.
+            </p>
+            <input
+              type="text"
+              className="stm-row-input stm-delete-confirm-input"
+              value={deleteConfirmText}
+              onChange={e => setDeleteConfirmText(e.target.value)}
+              placeholder={deleteSportTarget.name}
+              autoComplete="off"
+              spellCheck={false}
+              disabled={deletingSport}
+            />
             <div className="stm-delete-actions">
               <button type="button" className="stm-btn-ghost" onClick={() => setDeleteSportTarget(null)}>
                 Cancel
@@ -1896,7 +2132,7 @@ export default function SportsTeamsManager({ level }) {
               <button
                 type="button"
                 className="stm-btn-danger"
-                disabled={deletingSport}
+                disabled={deletingSport || !deleteImpact || norm(deleteConfirmText) !== norm(deleteSportTarget.name)}
                 onClick={() => deleteSport(deleteSportTarget)}
               >
                 {deletingSport ? 'Deleting…' : 'Delete'}

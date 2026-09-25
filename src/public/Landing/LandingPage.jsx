@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useContext, useRef } from "react";
-import { FaCalendarAlt, FaTrophy, FaPaperPlane, FaChevronLeft, FaChevronRight, FaChevronDown, FaCrown } from "react-icons/fa";
+import { FaCalendarAlt, FaTrophy, FaChevronLeft, FaChevronRight, FaChevronDown, FaCrown } from "react-icons/fa";
+import { IoCall } from "react-icons/io5";
 import "./LandingPage.css";
 import HeaderWithLines from './HeaderWithLines';
 import HighlightsBanner from './HighlightsBanner';
@@ -18,16 +19,11 @@ import {
   FaBullseye,
   FaUsers,
   FaUserFriends,
-  FaRunning,
-  FaChess,
-  FaBasketballBall,
-  FaVolleyballBall,
-  FaGamepad,
   FaClipboardList,
   FaFileSignature,
   FaCheckCircle,
 } from "react-icons/fa";
-import { GiShuttlecock, GiPingPongBat } from "react-icons/gi";
+import SportIcon from '../../shared/components/SportIcon/SportIcon';
 
 /* Every level's Firestore key, for stats that sum across the whole
    school (Elementary + High School + College) rather than one level. */
@@ -183,37 +179,15 @@ const STATS = [
 ];
 
 const SPORTS = [
-  { name: "Athletics", icon: FaRunning, levels: [] },
-  { name: "Badminton", icon: GiShuttlecock, levels: [] },
-  { name: "Basketball", icon: FaBasketballBall, levels: [] },
-  { name: "Chess", icon: FaChess, levels: [] },
-  { name: "Mobile Legends", icon: FaGamepad, levels: [] },
-  { name: "Sepak Takraw", icon: FaVolleyballBall, levels: [] },
-  { name: "Table Tennis", icon: GiPingPongBat, levels: [] },
-  { name: "Volleyball", icon: FaVolleyballBall, levels: [] },
+  { name: "Athletics", levels: [] },
+  { name: "Badminton", levels: [] },
+  { name: "Basketball", levels: [] },
+  { name: "Chess", levels: [] },
+  { name: "Mobile Legends", levels: [] },
+  { name: "Sepak Takraw", levels: [] },
+  { name: "Table Tennis", levels: [] },
+  { name: "Volleyball", levels: [] },
 ];
-
-/* Name → icon, for sports pulled live from Admin's per-level config
-   (sportsTeamsConfig/{level}.sports) rather than the hardcoded list
-   above. Matched case/whitespace-insensitively via `norm` so an admin
-   typing "basketball" still gets the basketball icon. Anything not in
-   this map (a sport an admin adds that isn't one of the defaults, e.g.
-   Swimming or Archery) falls back to DEFAULT_SPORT_ICON rather than
-   being left iconless. */
-const SPORT_ICON_MAP = {
-  athletics: FaRunning,
-  badminton: GiShuttlecock,
-  basketball: FaBasketballBall,
-  chess: FaChess,
-  'mobile legends': FaGamepad,
-  'sepak takraw': FaVolleyballBall,
-  'table tennis': GiPingPongBat,
-  volleyball: FaVolleyballBall,
-};
-const DEFAULT_SPORT_ICON = FaTrophy;
-function iconForSportName(name) {
-  return SPORT_ICON_MAP[norm(name)] || DEFAULT_SPORT_ICON;
-}
 
 /* Icons/order for the 3 "How to Join" steps are fixed — only each step's
    title/description text is editable in the CMS. */
@@ -394,12 +368,12 @@ function LandingPage() {
           const existing = sportsByKey.get(key);
           if (existing) {
             existing.levels.add(levelKey);
-            // First level's uploaded logo wins if more than one level
-            // configured the same sport with different (or no) logos —
-            // keeps one sport = one consistent tile image on this page.
-            if (!existing.logo && s.logo) existing.logo = s.logo;
+            // First level's explicitly chosen icon wins if more than one
+            // level configured the same sport differently — keeps one
+            // sport = one consistent tile icon on this page.
+            if (!existing.icon && s.icon) existing.icon = s.icon;
           } else {
-            sportsByKey.set(key, { name: s.name.trim(), logo: s.logo || null, levels: new Set([levelKey]) });
+            sportsByKey.set(key, { name: s.name.trim(), icon: s.icon || null, levels: new Set([levelKey]) });
           }
         });
         (cfg.teams || []).forEach((t) => { if (t?.name) teamNames.add(norm(t.name)); });
@@ -411,8 +385,7 @@ function LandingPage() {
       const sportEntries = [...sportsByKey.values()]
         .map((entry) => ({
           name: entry.name,
-          logo: entry.logo,
-          icon: iconForSportName(entry.name),
+          icon: entry.icon,
           levels: ALL_LEVEL_KEYS.filter((lvl) => entry.levels.has(lvl)),
         }))
         .sort((a, b) => a.name.localeCompare(b.name));
@@ -454,6 +427,11 @@ function LandingPage() {
      the dropdown with no way to tell which level it belonged to. Now it
      shows nothing (and the card prompts "Pick a level…") until a level
      is actually chosen. */
+  // TEMP preview: visit /?previewEmpty to see the empty states. Remove after review.
+  const previewEmpty = new URLSearchParams(window.location.search).has('previewEmpty');
+  const shownSports = previewEmpty ? [] : sports;
+  const shownChampionsByLevel = previewEmpty ? {} : topChampionsByLevel;
+
   const activeLevelKey = selectedLevelKey;
   useEffect(() => {
     let cancelled = false;
@@ -645,7 +623,7 @@ function LandingPage() {
               aria-label="Send suggestion"
               onClick={handleSendButtonClick}
             >
-              <FaPaperPlane />
+              <IoCall />
             </button>
           </div>
         </div>
@@ -812,24 +790,31 @@ function LandingPage() {
             each only appearing once at least one match has been scored
             for that level, so it never crowns an arbitrary untouched
             team. ── */}
-        {ALL_LEVEL_KEYS.some((levelKey) => topChampionsByLevel[levelKey]) && (
-          <div className="champion-spotlight-row">
-            {ALL_LEVEL_KEYS.map((levelKey) => {
-              const champion = topChampionsByLevel[levelKey];
+        <div className="champion-spotlight-row">
+          {ALL_LEVEL_KEYS.some((levelKey) => shownChampionsByLevel[levelKey]) ? (
+            ALL_LEVEL_KEYS.map((levelKey) => {
+              const champion = shownChampionsByLevel[levelKey];
               if (!champion) return null;
               return (
                 <div className="champion-spotlight" key={levelKey}>
                   <span className="champion-spotlight__ray champion-spotlight__ray--1" aria-hidden="true" />
                   <span className="champion-spotlight__ray champion-spotlight__ray--2" aria-hidden="true" />
                   <FaCrown className="champion-spotlight__crown" aria-hidden="true" />
-                  <span className="champion-spotlight__eyebrow">#1 Potential Champion</span>
+                  <span className="champion-spotlight__eyebrow">{levelLabels[champion.level] || champion.level} Potential Champion</span>
                   <h3 className="champion-spotlight__team">{champion.team}</h3>
-                  <span className="champion-spotlight__meta">{levelLabels[champion.level] || champion.level} &middot; {champion.rating} RATING</span>
+                  <span className="champion-spotlight__meta">{champion.rating} RATING</span>
                 </div>
               );
-            })}
-          </div>
-        )}
+            })
+          ) : (
+            <div className="champion-spotlight champion-spotlight--empty">
+              <FaCrown className="champion-spotlight__crown" aria-hidden="true" />
+              <span className="champion-spotlight__eyebrow">Potential Champion</span>
+              <h3 className="champion-spotlight__team">No Champion Yet</h3>
+              <span className="champion-spotlight__meta">The top-rated team will appear here once matches have been scored.</span>
+            </div>
+          )}
+        </div>
 
         {/* ── Sports available ── */}
         <div className="section-heading">
@@ -839,7 +824,13 @@ function LandingPage() {
         </div>
 
         <div className="sports-row">
-          {sports.map((sport) => {
+          {shownSports.length === 0 && (
+            <div className="section-empty">
+              <span className="section-empty__title">No Sports Available Yet</span>
+              <span className="section-empty__text">Sports will be listed here once an Administrator adds them.</span>
+            </div>
+          )}
+          {shownSports.map((sport) => {
             const sportKey = norm(sport.name);
             const isHovered = hoveredSportKey === sportKey;
             const availableLevels = sport.levels || [];
@@ -851,13 +842,7 @@ function LandingPage() {
                 onMouseLeave={() => setHoveredSportKey((k) => (k === sportKey ? null : k))}
                 onClick={() => setHoveredSportKey((k) => (k === sportKey ? null : sportKey))}
               >
-                {sport.logo ? (
-                  <span className="sport-tile-logo">
-                    <img src={sport.logo} alt="" />
-                  </span>
-                ) : (
-                  <sport.icon className="sport-tile-icon" />
-                )}
+                <SportIcon sport={sport} className="sport-tile-icon" />
                 <span className="sport-tile-name">{sport.name.toUpperCase()}</span>
                 {isHovered && availableLevels.length > 0 && (
                   <div className="sport-tile-tooltip" role="tooltip">
@@ -938,4 +923,4 @@ function LandingPage() {
   );
 }
 
-export default LandingPage;
+export default LandingPage;

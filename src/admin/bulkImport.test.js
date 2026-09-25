@@ -59,6 +59,17 @@ describe('buildImport', () => {
     expect(plan.sports).toHaveLength(1);
     expect(plan.sports[0]).toMatchObject({ id: 's1', logo: 'data:x' });
     expect(plan.summary).toMatchObject({ addedSports: 0, updatedSports: 1, addedTeams: 1, updatedTeams: 1 });
-    expect(plan.teams.find(t => t.id === 't1').sportIds).toEqual(['Chess', 'BASKETBALL']);
+    /* "Chess" is not a saved sport, so the stale reference is dropped */
+    expect(plan.teams.find(t => t.id === 't1').sportIds).toEqual(['BASKETBALL']);
+  });
+
+  it('does not list a re-imported sport twice on a team that still holds its old name', () => {
+    const plan = buildImport({
+      sportRows,
+      existingSports: [],
+      existingTeams: [{ id: 't1', name: 'Red', sportIds: ['BASKETBALL', 'basketball'], color: '#000' }],
+      teamRows: [{ team: 'Red', sports: 'Basketball' }],
+    });
+    expect(plan.teams.find(t => t.id === 't1').sportIds).toEqual(['Basketball']);
   });
 });

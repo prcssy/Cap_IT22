@@ -1409,7 +1409,7 @@ function PlayerRegistration({ onBack }) {
     [sportsConfig, form.sport]
   );
 
-  // Team Name and Sport / Event cross-filter each other via each team's
+  // Team Name and Sport cross-filter each other via each team's
   // sportIds (the sports that team actually plays, set by the admin in
   // Sports & Teams): picking one narrows the other down to a compatible
   // pick instead of letting the two disagree.
@@ -1718,7 +1718,7 @@ function PlayerRegistration({ onBack }) {
     if (!form.gradeLevel)             errs.gradeLevel       = 'Please select a grade / year level';
     if (!form.section.trim())         errs.section          = 'Please enter a section';
     if (!form.teamName)               errs.teamName         = 'Please select a team';
-    if (!form.sport)                  errs.sport            = 'Please select a sport / event';
+    if (!form.sport)                  errs.sport            = 'Please select a sport';
     if (!form.position)               errs.position         = 'Please select a position';
     // Waiver upload is temporarily optional: Firebase Storage isn't
     // provisioned on the project yet (requires the Blaze plan), so there's
@@ -2160,7 +2160,7 @@ function PlayerRegistration({ onBack }) {
                   {teamOptions.map(t => <option key={t}>{t}</option>)}
                 </select>
               </Field>
-              <Field label="Sport / Event" required error={errors.sport}>
+              <Field label="Sport" required error={errors.sport}>
                 <select
                   className="reg-select"
                   value={form.sport}
@@ -2175,7 +2175,7 @@ function PlayerRegistration({ onBack }) {
                         ? 'Loading sports…'
                         : sportOptions.length === 0
                           ? 'No sports configured yet'
-                          : 'Select Sport / Event'}
+                          : 'Select Sport'}
                   </option>
                   {sportOptions.map(s => <option key={s}>{s}</option>)}
                 </select>
@@ -2190,7 +2190,7 @@ function PlayerRegistration({ onBack }) {
                 >
                   <option value="">
                     {!form.sport
-                      ? 'Select Sport / Event first'
+                      ? 'Select Sport first'
                       : positionOptions.length === 0
                         ? 'No positions configured for this sport yet'
                         : 'Select Position'}

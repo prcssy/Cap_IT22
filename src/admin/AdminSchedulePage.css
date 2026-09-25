@@ -554,6 +554,13 @@
   letter-spacing: 0.02em;
 }
 
+.asp-sport-removed {
+  color: #a83218;
+  font-size: 0.72rem;
+  font-weight: 600;
+  white-space: nowrap;
+}
+
 .asp-td--total {
   font-weight: 800 !important;
   color: #3b82f6 !important;

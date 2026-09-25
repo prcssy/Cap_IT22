@@ -3,7 +3,7 @@ import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf, FaFileW
 // jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf below),
 // not imported statically here.
 import { db } from '../shared/firebase';
-import { getAllRegistrations, getAllUsers, getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration } from '../shared/services/firestoreService';
+import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration } from '../shared/services/firestoreService';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { AuthContext } from '../shared/context/AuthContext';
@@ -39,6 +39,21 @@ function getSchoolLevel(gradeLevel) {
   if (COLLEGE_GRADES.has(gradeLevel)) return 'college';
   return null;
 }
+
+/* Lower-cased sport names currently configured for each level. A level whose
+   config couldn't be read is left out, so its registrations are never
+   flagged "sport removed" just because of a failed read. */
+async function loadSportNamesByLevel() {
+  const levels = ['elementary', 'highSchool', 'college'];
+  const configs = await Promise.all(levels.map(l => getSportsTeamsConfig(l).catch(() => null)));
+  const byLevel = {};
+  levels.forEach((l, i) => {
+    if (configs[i]) byLevel[l] = new Set(configs[i].sports.map(s => (s.name || '').trim().toLowerCase()));
+  });
+  return byLevel;
+}
+
+const sportLabel = (reg) => (reg.sportRemoved ? `${reg.sport} (sport removed)` : (reg.sport || 'N/A'));
 
 // Shared by every field in the Student Details modal: values the merge
 // logic already fell back to ('—' for user-profile fields, 'N/A' for
@@ -240,9 +255,10 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
       // with whatever fetch the page embedding this table (AdminSchedulePage
       // or SuperAdminPage) does for the same two collections on the same
       // load, so this doesn't double the network round trips.
-      const [registrations, users] = await Promise.all([
+      const [registrations, users, sportNamesByLevel] = await Promise.all([
         getAllRegistrations(),
         getAllUsers(),
+        loadSportNamesByLevel(),
       ]);
 
       // This table is the STUDENT registration tabulation — staff accounts
@@ -304,6 +320,14 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
               event: getEventLabel(registration.eventKey || registration.event, events) || registration.event || 'N/A',
             };
           });
+
+      // A registration keeps its sport as plain text, so deleting the sport
+      // from Sports & Teams leaves it behind. Flag those rather than delete
+      // them — the registration is the student's record, not the sport's.
+      merged.forEach(r => {
+        const known = sportNamesByLevel[getSchoolLevel(r.gradeLevel)];
+        r.sportRemoved = Boolean(known && r.sport && r.sport !== 'N/A' && !known.has(r.sport.trim().toLowerCase()));
+      });
 
       merged.sort((a, b) =>
         (a.fullName || '').localeCompare(b.fullName || '', undefined, { sensitivity: 'base' })
@@ -468,7 +492,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
       ['Emergency Contact', reg.emergencyContact || '—'],
     ]);
     section('Sports & Team', [
-      ['Sport', reg.sport || 'N/A'],
+      ['Sport', sportLabel(reg)],
       ['Position', reg.position || 'N/A'],
       ['Team Name', reg.teamName || 'N/A'],
     ]);
@@ -679,7 +703,10 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                     <td className="asp-col-center" data-label="Grade/Year">{reg.gradeLevel || '—'}</td>
                     <td className="asp-col-center" data-label="Level">{LEVEL_LABELS[getSchoolLevel(reg.gradeLevel)] || '—'}</td>
                     {scope !== 'allUsers' && <td className="asp-col-center" data-label="Section">{reg.section || '—'}</td>}
-                    {scope !== 'allUsers' && <td className="asp-td--sport asp-col-center" data-label="Sport">{reg.sport || '—'}</td>}
+                    {scope !== 'allUsers' && <td className="asp-td--sport asp-col-center" data-label="Sport">
+                      {reg.sport || '—'}
+                      {reg.sportRemoved && <span className="asp-sport-removed"> (sport removed)</span>}
+                    </td>}
                     {scope !== 'allUsers' && <td data-label="Event">{reg.event || '—'}</td>}
                     {scope !== 'allUsers' && (
                       <td data-label="Status">
@@ -754,7 +781,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
               <section className="asp-modal__section-group">
                 <h3 className="asp-modal__section">Sports &amp; Team</h3>
                 <div className="asp-form-row">
-                  <DetailField label="Sport" value={selectedStudent.sport} />
+                  <DetailField label="Sport" value={selectedStudent.sportRemoved ? sportLabel(selectedStudent) : selectedStudent.sport} />
                   <DetailField label="Position" value={selectedStudent.position} center />
                 </div>
                 <div className="asp-form-row">

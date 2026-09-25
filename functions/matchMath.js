@@ -168,8 +168,9 @@ function computeEditFinalPoints({ ratingA, ratingB, violA, violB, comebackA, com
   const eB = expectedScore(ratingB, ratingA);
   const sA = isDraw ? 0.5 : (isWinnerA ? 1 : 0);
   const sB = isDraw ? 0.5 : (isWinnerA ? 0 : 1);
-  const changeA = K_FACTOR * (sA - eA) + PPU * (f1A - violA + (comebackA ? COMEBACK_BONUS : 0));
-  const changeB = K_FACTOR * (sB - eB) + PPU * (f1B - violB + (comebackB ? COMEBACK_BONUS : 0));
+  // Like pairComputation, the comeback bonus only counts for the winner.
+  const changeA = K_FACTOR * (sA - eA) + PPU * (f1A - violA + (comebackA && sA === 1 ? COMEBACK_BONUS : 0));
+  const changeB = K_FACTOR * (sB - eB) + PPU * (f1B - violB + (comebackB && sB === 1 ? COMEBACK_BONUS : 0));
 
   return {
     finalPointsA: round4(ratingA + changeA),
