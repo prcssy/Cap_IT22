@@ -30,7 +30,7 @@ export const TEMPLATE_FIELDS = [
   { key: 'gradeLevel',      label: 'Grade / Year Level',        required: true,  hint: 'Pick from the dropdown. Decides which teams and sports you can choose.' },
   { key: 'section',         label: 'Section',                   required: true,  hint: 'e.g. Section A' },
   { key: 'teamName',        label: 'Team Name',                 required: true,  hint: 'Pick from the dropdown — choose the Grade / Year Level first.' },
-  { key: 'sport',           label: 'Sport / Event',             required: true,  hint: "Pick from the dropdown — choose the Team first (it lists only that team's sports)." },
+  { key: 'sport',           label: 'Sport',                     required: true,  hint: "Pick from the dropdown — choose the Team first (it lists only that team's sports)." },
   { key: 'position',        label: 'Position',                  required: true,  hint: 'Pick from the dropdown — choose the Sport first. Individual sports use "Player".' },
   { key: 'message',         label: 'Message',                   required: false, hint: 'Optional.' },
 ];
@@ -38,6 +38,8 @@ export const TEMPLATE_FIELDS = [
 const norm = (v) => String(v ?? '').trim().toLowerCase();
 const key = (v) => norm(v).replace(/[^a-z0-9]/g, '');
 const labelToField = new Map(TEMPLATE_FIELDS.map(f => [key(f.label), f.key]));
+// Older downloaded templates still carry the previous "Sport / Event" header.
+labelToField.set(key('Sport / Event'), 'sport');
 
 /* Find the option whose keys match `raw`: exact first, then a loose match that
    only counts when it is unambiguous. `keysOf(option)` returns the strings to compare. */
@@ -389,7 +391,7 @@ export async function downloadRegistrationTemplate({ events, grades, countries, 
     '1. Type in the yellow row (row 2) under the navy headers on the LEFT. Fields marked * are required.',
     '2. Fill it from left to right — some dropdowns depend on the one before them:',
     '     Province → City / Municipality → Barangay',
-    '     Grade / Year Level → Team Name → Sport / Event → Position',
+    '     Grade / Year Level → Team Name → Sport → Position',
     '3. Dropdowns: click the cell and use the arrow that appears on its right.',
     '4. Phone numbers: type them without the country code (pick the country in its own column).',
     '5. This file is for ONE player. Only row 2 is read.',
@@ -438,7 +440,7 @@ export async function downloadRegistrationTemplate({ events, grades, countries, 
         r++;
       });
       r++;
-      head('Sport / Event', 'Positions');
+      head('Sport', 'Positions');
       sports.forEach(s => {
         ref.getCell(r, 1).value = s.name;
         ref.getCell(r, 2).value = (s.positions || []).length ? s.positions.join(', ') : 'Player';

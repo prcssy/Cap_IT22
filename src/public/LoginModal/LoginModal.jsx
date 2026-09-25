@@ -102,7 +102,7 @@ function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification 
               onClick={() => setShowPassword(!showPassword)}
               aria-label={showPassword ? 'Hide password' : 'Show password'}
             >
-              {showPassword ? <FaEyeSlash /> : <FaEye />}
+              {showPassword ? <FaEye /> : <FaEyeSlash />}
             </button>
           </div>
         </div>
@@ -346,7 +346,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
                     onClick={() => setShowPassword(!showPassword)}
                     aria-label={showPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showPassword ? <FaEyeSlash /> : <FaEye />}
+                    {showPassword ? <FaEye /> : <FaEyeSlash />}
                   </button>
                 </div>
               </div>
@@ -369,7 +369,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
                     onClick={() => setShowConfirmPassword(!showConfirmPassword)}
                     aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
                   >
-                    {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
+                    {showConfirmPassword ? <FaEye /> : <FaEyeSlash />}
                   </button>
                 </div>
               </div>
@@ -505,7 +505,7 @@ function NewPasswordScreen({ onSwitchScreen, onUpdatePassword }) {
               onClick={() => setShowNewPassword(!showNewPassword)}
               aria-label={showNewPassword ? 'Hide password' : 'Show password'}
             >
-              {showNewPassword ? <FaEyeSlash /> : <FaEye />}
+              {showNewPassword ? <FaEye /> : <FaEyeSlash />}
             </button>
           </div>
         </div>
@@ -528,7 +528,7 @@ function NewPasswordScreen({ onSwitchScreen, onUpdatePassword }) {
               onClick={() => setShowConfirmPassword(!showConfirmPassword)}
               aria-label={showConfirmPassword ? 'Hide password' : 'Show password'}
             >
-              {showConfirmPassword ? <FaEyeSlash /> : <FaEye />}
+              {showConfirmPassword ? <FaEye /> : <FaEyeSlash />}
             </button>
           </div>
         </div>

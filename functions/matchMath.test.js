@@ -145,6 +145,18 @@ test('computeEditFinalPoints: falls back to fallbackWinner on a tie', () => {
   assert.equal(result.winner, 'B');
 });
 
+test('computeEditFinalPoints: comeback bonus only applies to the winner', () => {
+  const base = {
+    ratingA: 1200, ratingB: 1200, violA: 0, violB: 0,
+    isPoints: true, pA: 20, pB: 10, mA: null, mB: null, fallbackWinner: 'A',
+  };
+  const none = computeEditFinalPoints({ ...base, comebackA: false, comebackB: false });
+  const withBonus = computeEditFinalPoints({ ...base, comebackA: true, comebackB: false });
+  const loserFlag = computeEditFinalPoints({ ...base, comebackA: false, comebackB: true });
+  assert.ok(withBonus.finalPointsA > none.finalPointsA);
+  assert.equal(loserFlag.finalPointsB, none.finalPointsB);
+});
+
 test('replayScope carries a team rating from one game into the next', () => {
   const mk = (id, createdAt, a, b, pa, pb, winner) => ({
     id, createdAt, sportName: 'Basketball', category: 'Men', mode: 'points', winner,

@@ -625,8 +625,12 @@ function computeEditFinalPoints(record, editDraft, isPoints) {
   const eB = expectedScore(ratingB, ratingA);
   const sA = isDraw ? 0.5 : (isWinnerA ? 1 : 0);
   const sB = isDraw ? 0.5 : (isWinnerA ? 0 : 1);
-  const changeA = K_FACTOR * (sA - eA) + PPU * (f1A - violA + (record.teamA.comeback ? COMEBACK_BONUS : 0));
-  const changeB = K_FACTOR * (sB - eB) + PPU * (f1B - violB + (record.teamB.comeback ? COMEBACK_BONUS : 0));
+  // Comeback flags come from the edit row's toggles (falling back to what was
+  // saved), and — like pairComputation — only count for the team that won.
+  const comebackA = editDraft.comebackA ?? !!record.teamA.comeback;
+  const comebackB = editDraft.comebackB ?? !!record.teamB.comeback;
+  const changeA = K_FACTOR * (sA - eA) + PPU * (f1A - violA + (comebackA && sA === 1 ? COMEBACK_BONUS : 0));
+  const changeB = K_FACTOR * (sB - eB) + PPU * (f1B - violB + (comebackB && sB === 1 ? COMEBACK_BONUS : 0));
 
   return {
     finalPointsA: round4(ratingA + changeA),
@@ -1192,6 +1196,34 @@ function RequestScheduleModal({
   );
 }
 
+/* Small team logo (initials fallback) used in the inline edit row so each
+   input can be tied to the team it belongs to. */
+function EditTeamLogo({ team }) {
+  return (
+    <span className="mp-edit-logo" title={team?.name || ''}>
+      {team?.logo ? <img src={team.logo} alt="" /> : initials(team?.name || '?')}
+    </span>
+  );
+}
+
+/* Per-team comeback toggle for the inline edit row. The bonus only counts for
+   the team that wins, so it's disabled (but keeps its value) while this team
+   isn't the one ahead in the edited score. */
+function ComebackToggle({ on, canApply, onToggle }) {
+  return (
+    <button
+      type="button"
+      className={`mp-edit-comeback ${on ? 'mp-edit-comeback--on' : ''}`}
+      aria-pressed={on}
+      disabled={!canApply}
+      onClick={onToggle}
+      title={canApply ? `Comeback bonus +${COMEBACK_BONUS}` : 'The comeback bonus only counts for the winning team'}
+    >
+      <FaExchangeAlt /> Comeback {on ? 'Yes' : 'No'}
+    </button>
+  );
+}
+
 /* ═══════════════════════════════════════════
    MATCH PANEL — "Before the game" / "After the game"
 ═══════════════════════════════════════════ */
@@ -1597,7 +1629,7 @@ export default function ModeratorPage() {
   const [savingEditId, setSavingEditId] = useState(null);
   const [flashId, setFlashId] = useState(null);
   const editTeamOptions = useMemo(
-    () => effectiveTeams.map((t) => ({ key: t.id, label: t.name })),
+    () => effectiveTeams.map((t) => ({ key: t.id, label: t.name, logo: t.logo || null })),
     [effectiveTeams],
   );
 
@@ -1818,6 +1850,19 @@ export default function ModeratorPage() {
     setLockedRecord(null);
     setEditingRecord(null);
   }, [entries.length]);
+
+  /* The Reset button: clears only what the moderator types in — points,
+     time, violations, comeback and the Win/Lose/Draw standing. The panel
+     itself (chosen match, locked teams, format, sport/division) stays put,
+     unlike resetForm which rebuilds every entry and unlocks the fixture. */
+  const resetInputs = useCallback(() => {
+    if (lockedRecord) return; // read-only view of a saved record — nothing to reset
+    setEntries((es) => es.map((e) => ({ ...e, points: '', time: '', violations: [], comeback: false })));
+    setWinnerId(null);
+    setWinnerManual(false);
+    setViolModal(null);
+    setInvalidReasons(null);
+  }, [lockedRecord]);
 
   /* Choosing a sports format rebuilds the form from scratch with the right
      number of team panels (2 for 1v1, 4 to start with for 1-vs-many). */
@@ -2258,10 +2303,6 @@ export default function ModeratorPage() {
     setFormatPickerOpen(true);
   }
 
-  function handleUnlockMatch() {
-    resetForm(2);
-  }
-
   /* ── validation + update ── */
   function handleUpdateClick() {
     /* Year Level only applies to a manual (no-fixture) record — a match
@@ -2394,6 +2435,8 @@ export default function ModeratorPage() {
       minutesB: record.teamB.minutes ?? '',
       pointsA: record.teamA.points ?? '',
       pointsB: record.teamB.points ?? '',
+      comebackA: !!record.teamA.comeback,
+      comebackB: !!record.teamB.comeback,
     });
   }
 
@@ -2453,6 +2496,8 @@ export default function ModeratorPage() {
       pointsB: editDraft.pointsB,
       minutesA: editDraft.minutesA,
       minutesB: editDraft.minutesB,
+      comebackA: editDraft.comebackA,
+      comebackB: editDraft.comebackB,
     });
 
     setRecords(records);
@@ -2535,13 +2580,6 @@ export default function ModeratorPage() {
                   Every scheduled matchup, in any sport or division. Mark a match as finished, then pick it and its sport, division, and both teams fill in automatically.
                 </p>
               </div>
-              {lockedMatch && (
-                <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexShrink: 0 }}>
-                  <button type="button" className="mp-finished-panel__unlock" onClick={handleUnlockMatch}>
-                    Change match
-                  </button>
-                </div>
-              )}
             </div>
             <div className="mp-fs-row">
               {[
@@ -2597,14 +2635,18 @@ export default function ModeratorPage() {
                         {s.teamBLogo ? <img src={s.teamBLogo} alt="" /> : initials(s.teamB)}
                       </span>
                     </div>
-                    {(s.stage || s.round != null) && (
-                      <div className="mp-finished-card__label-pill">
-                        {s.stage || `Round ${s.round}`}
-                      </div>
-                    )}
-                    {s.matchLabel && (
-                      <div className="mp-finished-card__label-pill">
-                        {s.matchLabel}
+                    {((s.stage || s.round != null) || s.matchLabel) && (
+                      <div className="mp-finished-card__pills">
+                        {(s.stage || s.round != null) && (
+                          <span className="mp-finished-card__label-pill">
+                            {s.stage || `Round ${s.round}`}
+                          </span>
+                        )}
+                        {s.matchLabel && (
+                          <span className="mp-finished-card__label-pill">
+                            {s.matchLabel}
+                          </span>
+                        )}
                       </div>
                     )}
                     <div className="mp-finished-card__names">{s.teamA} <span>vs</span> {s.teamB}</div>
@@ -2843,7 +2885,16 @@ export default function ModeratorPage() {
                     return (
                       <tr key={r.id} className={flashId === r.id ? 'mp-row-flash' : ''}>
                         <td data-label="Sports">{displayCategory(r.label || r.sportName || '').toUpperCase()} <span className="mp-tag-multi">1 vs many</span></td>
-                        <td data-label="Team">{r.participants.map((p) => p.name).join(' · ')}</td>
+                        <td data-label="Team">
+                          <div className="mp-team-cell">
+                            {r.participants.map((p, i) => (
+                              <Fragment key={p.id || i}>
+                                {i > 0 && <span className="mp-team-cell__vs">·</span>}
+                                <span className="mp-team-cell__side"><EditTeamLogo team={p} />{p.name}</span>
+                              </Fragment>
+                            ))}
+                          </div>
+                        </td>
                         <td className="mp-td-center" data-label="Violation">{r.participants.map((p) => p.totalViolations).join('-')}</td>
                         <td data-label="Duration / Score">
                           {rowIsPoints
@@ -2859,36 +2910,62 @@ export default function ModeratorPage() {
                   }
 
                   const editPreview = editingId === r.id ? computeEditFinalPoints(r, editDraft, rowIsPoints) : null;
+                  // Teams currently picked in the edit row (falls back to the saved record's team),
+                  // so each input can carry its team's logo and it's clear whose value it is.
+                  const editTeamA = editingId === r.id ? (effectiveTeams.find((t) => t.id === editDraft.teamAId) || r.teamA) : null;
+                  const editTeamB = editingId === r.id ? (effectiveTeams.find((t) => t.id === editDraft.teamBId) || r.teamB) : null;
                   return editingId === r.id ? (
                     <tr className="mp-edit-row" key={r.id}>
                       <td data-label="Sports">{displayCategory(r.label || r.sportName || '').toUpperCase()}</td>
                       <td data-label="Team">
                         <div className="mp-edit-form">
-                          <div className="mp-edit-team-select">
-                            <OptionDropdown
-                              variant="teams"
-                              value={editDraft.teamAId}
-                              options={editTeamOptions}
-                              onChange={(key) => setEditDraft((d) => ({ ...d, teamAId: key }))}
-                            />
+                          <div className="mp-edit-side">
+                            <EditTeamLogo team={editTeamA} />
+                            <div className="mp-edit-side__col">
+                              <div className="mp-edit-team-select">
+                                <OptionDropdown
+                                  variant="teams"
+                                  value={editDraft.teamAId}
+                                  options={editTeamOptions}
+                                  onChange={(key) => setEditDraft((d) => ({ ...d, teamAId: key }))}
+                                />
+                              </div>
+                              <ComebackToggle
+                                on={!!editDraft.comebackA}
+                                canApply={editPreview.winner === 'A'}
+                                onToggle={() => setEditDraft((d) => ({ ...d, comebackA: !d.comebackA }))}
+                              />
+                            </div>
                           </div>
                           <span className="mp-vs-mini">vs</span>
-                          <div className="mp-edit-team-select">
-                            <OptionDropdown
-                              variant="teams"
-                              value={editDraft.teamBId}
-                              options={editTeamOptions}
-                              onChange={(key) => setEditDraft((d) => ({ ...d, teamBId: key }))}
-                            />
+                          <div className="mp-edit-side">
+                            <EditTeamLogo team={editTeamB} />
+                            <div className="mp-edit-side__col">
+                              <div className="mp-edit-team-select">
+                                <OptionDropdown
+                                  variant="teams"
+                                  value={editDraft.teamBId}
+                                  options={editTeamOptions}
+                                  onChange={(key) => setEditDraft((d) => ({ ...d, teamBId: key }))}
+                                />
+                              </div>
+                              <ComebackToggle
+                                on={!!editDraft.comebackB}
+                                canApply={editPreview.winner === 'B'}
+                                onToggle={() => setEditDraft((d) => ({ ...d, comebackB: !d.comebackB }))}
+                              />
+                            </div>
                           </div>
                         </div>
                       </td>
                       <td className="mp-td-center" data-label="Violation">
                         <div className="mp-edit-form">
                           <div className="mp-edit-form__score">
+                            <EditTeamLogo team={editTeamA} />
                             <input type="number" min="0" value={editDraft.totalViolationsA} onChange={(e) => setEditDraft((d) => ({ ...d, totalViolationsA: e.target.value }))} />
                             <span className="mp-vs-mini">-</span>
                             <input type="number" min="0" value={editDraft.totalViolationsB} onChange={(e) => setEditDraft((d) => ({ ...d, totalViolationsB: e.target.value }))} />
+                            <EditTeamLogo team={editTeamB} />
                           </div>
                         </div>
                       </td>
@@ -2896,24 +2973,30 @@ export default function ModeratorPage() {
                         <div className="mp-edit-form">
                           {rowIsPoints ? (
                             <div className="mp-edit-form__score">
+                              <EditTeamLogo team={editTeamA} />
                               <input className="mp-edit-time" type="number" min="0" placeholder="pts" value={editDraft.pointsA} onChange={(e) => setEditDraft((d) => ({ ...d, pointsA: e.target.value }))} />
                               <span className="mp-vs-mini">-</span>
                               <input className="mp-edit-time" type="number" min="0" placeholder="pts" value={editDraft.pointsB} onChange={(e) => setEditDraft((d) => ({ ...d, pointsB: e.target.value }))} />
+                              <EditTeamLogo team={editTeamB} />
                             </div>
                           ) : (
                             <div className="mp-edit-form__score">
+                              <EditTeamLogo team={editTeamA} />
                               <input className="mp-edit-time" type="text" placeholder="mins" value={editDraft.minutesA} onChange={(e) => setEditDraft((d) => ({ ...d, minutesA: e.target.value }))} />
                               <span className="mp-vs-mini">-</span>
                               <input className="mp-edit-time" type="text" placeholder="mins" value={editDraft.minutesB} onChange={(e) => setEditDraft((d) => ({ ...d, minutesB: e.target.value }))} />
+                              <EditTeamLogo team={editTeamB} />
                             </div>
                           )}
                         </div>
                       </td>
                       <td className="mp-table__points" data-label="Final Points">
                         <div className="mp-edit-form__score mp-edit-form__score--auto" title="Recalculated automatically from violations/score above">
+                          <EditTeamLogo team={editTeamA} />
                           <span>{fmtPts(editPreview.finalPointsA)}</span>
                           <span className="mp-vs-mini">-</span>
                           <span>{fmtPts(editPreview.finalPointsB)}</span>
+                          <EditTeamLogo team={editTeamB} />
                         </div>
                       </td>
                       <td className="mp-td-center" data-label="Edit">
@@ -2928,7 +3011,13 @@ export default function ModeratorPage() {
                   ) : (
                     <tr key={r.id} className={flashId === r.id ? 'mp-row-flash' : ''}>
                       <td data-label="Sports">{displayCategory(r.label || r.sportName || '').toUpperCase()}</td>
-                      <td data-label="Team">{r.teamA.name} vs {r.teamB.name}</td>
+                      <td data-label="Team">
+                        <div className="mp-team-cell">
+                          <span className="mp-team-cell__side"><EditTeamLogo team={r.teamA} />{r.teamA.name}</span>
+                          <span className="mp-team-cell__vs">vs</span>
+                          <span className="mp-team-cell__side"><EditTeamLogo team={r.teamB} />{r.teamB.name}</span>
+                        </div>
+                      </td>
                       <td className="mp-td-center" data-label="Violation">{(r.teamA.totalViolations || r.teamB.totalViolations) ? `${r.teamA.totalViolations}-${r.teamB.totalViolations}` : '--'}</td>
                       <td data-label="Duration / Score">{rowIsPoints ? (r.teamA.points != null ? `${r.teamA.points} - ${r.teamB.points} pts` : '--') : (r.teamA.minutes != null ? `${minutesToDurationString(r.teamA.minutes)} - ${minutesToDurationString(r.teamB.minutes)}` : '--')}</td>
                       <td className="mp-table__points" data-label="Final Points">{fmtPts(r.teamA.finalPoints)} - {fmtPts(r.teamB.finalPoints)}</td>
@@ -2991,7 +3080,7 @@ export default function ModeratorPage() {
       {resetConfirmOpen && (
         <ResetConfirmModal
           onCancel={() => setResetConfirmOpen(false)}
-          onConfirm={() => { resetForm(); setResetConfirmOpen(false); }}
+          onConfirm={() => { resetInputs(); setResetConfirmOpen(false); }}
         />
       )}
 

@@ -32,7 +32,6 @@ const SPORT_HEADERS = {
   format: ['format', 'sportformat', 'sportsformat'],
   positions: ['positions', 'position', 'positiontypes'],
   violations: ['violations', 'violation', 'violationtypes'],
-  logo: ['logo', 'image', 'picture'],
 };
 const TEAM_HEADERS = {
   team: ['team', 'teams', 'teamname'],
@@ -91,9 +90,8 @@ export function parseSports(rows) {
     lastName = name;
     if (!name) { warnings.push(`Sports row ${line}: no sport name — skipped.`); return; }
     const k = norm(name);
-    if (!bySport.has(k)) bySport.set(k, { name, groups: new Map(), positions: [], violations: [], logo: null });
+    if (!bySport.has(k)) bySport.set(k, { name, groups: new Map(), positions: [], violations: [] });
     const s = bySport.get(k);
-    if (r.logo && !s.logo) s.logo = r.logo;
 
     splitList(r.positions).forEach(p => { if (!s.positions.some(x => norm(x) === norm(p))) s.positions.push(p); });
     splitList(r.violations).forEach(v => { if (!s.violations.some(x => norm(x) === norm(v))) s.violations.push(v); });
@@ -117,7 +115,6 @@ export function parseSports(rows) {
   const sports = [...bySport.values()].map(s => ({
     id: uid(),
     name: s.name,
-    logo: s.logo,
     categoryGroups: [...s.groups.entries()].map(([label, divisions]) => ({ id: uid(), label, divisions })),
     violations: s.violations.map(name => ({ id: uid(), name })),
     positions: s.positions,
@@ -157,7 +154,6 @@ export function buildImport({ sportRows = [], teamRows = [], existingSports = []
     const old = mergedSports[at];
     mergedSports[at] = {
       ...old,
-      logo: incoming.logo || old.logo || null,
       categoryGroups: incoming.categoryGroups.length ? incoming.categoryGroups : old.categoryGroups,
       violations: incoming.violations.length ? incoming.violations : old.violations,
       positions: incoming.positions.length ? incoming.positions : old.positions,
@@ -189,7 +185,15 @@ export function buildImport({ sportRows = [], teamRows = [], existingSports = []
       addedTeams++;
     } else {
       const old = mergedTeams[at];
-      mergedTeams[at] = { ...old, logo: incoming.logo || old.logo || null, sportIds: [...new Set([...(old.sportIds || []), ...sportIds])] };
+      /* Old names are matched case-insensitively against the sports that exist now:
+         a sport deleted earlier leaves its name behind on the team, and re-importing
+         it (possibly in different casing) must not list it twice. */
+      const kept = [];
+      [...(old.sportIds || []), ...sportIds].forEach(sp => {
+        const known = canonicalSport.get(norm(sp));
+        if (known && !kept.includes(known)) kept.push(known);
+      });
+      mergedTeams[at] = { ...old, logo: incoming.logo || old.logo || null, sportIds: kept };
       updatedTeams++;
     }
   });
@@ -331,7 +335,7 @@ export async function downloadBulkTemplate(scope = 'both') {
   const sports = wb.addWorksheet('Sports');
   styleHeader(sports, [
     { header: 'Sport', width: 20 }, { header: 'Category', width: 14 }, { header: 'Division', width: 22 },
-    { header: 'Format', width: 26 }, { header: 'Positions', width: 34 }, { header: 'Violations', width: 30 }, { header: 'Logo', width: 16 },
+    { header: 'Format', width: 26 }, { header: 'Positions', width: 34 }, { header: 'Violations', width: 30 },
   ], [
     'Name of the sport, e.g. Volleyball. Leave blank to keep the sport from the row above.',
     'The group, e.g. Men, Women or Mixed.',
@@ -339,7 +343,6 @@ export async function downloadBulkTemplate(scope = 'both') {
     'Click the cell and pick from the dropdown arrow.',
     'Optional. Player positions separated by commas. Type once per sport.',
     'Optional. Violation types separated by commas. Type once per sport.',
-    'Optional. Copy a picture (Insert > Pictures), then drop it so it sits inside this cell. One logo per sport.',
   ]);
   for (let r = 2; r <= 300; r++) {
     sports.getCell(`D${r}`).dataValidation = {
@@ -348,17 +351,17 @@ export async function downloadBulkTemplate(scope = 'both') {
       showErrorMessage: true, errorTitle: 'Format', error: 'Pick one of the formats from the list.',
     };
   }
-  sidePanel(sports, 9, 'HOW TO FILL THIS SHEET', [
+  sidePanel(sports, 8, 'HOW TO FILL THIS SHEET', [
     '1. Type in the blue-headed columns on the LEFT, starting at row 2.',
     '2. One row = one division. A sport with 4 divisions uses 4 rows.',
     '3. Sport: type it on the first row, then leave it blank to repeat it.',
     '4. Format: click the cell and choose from the dropdown.',
     '5. Positions / Violations: optional — type once, separate with commas.',
-    '6. Logo: optional — Insert > Pictures, and place the picture inside the Logo cell.',
+    '6. Icons are picked automatically from the sport name — change one later in Sports Preview > Edit.',
     '7. Then fill the Teams tab, save, and upload.',
   ]);
-  sports.getCell('I10').value = 'EXAMPLE — for looking only, do not type here:';
-  sports.getCell('I10').font = { bold: true, italic: true };
+  sports.getCell('H10').value = 'EXAMPLE — for looking only, do not type here:';
+  sports.getCell('H10').font = { bold: true, italic: true };
   const exHead = ['Sport', 'Category', 'Division', 'Format', 'Positions', 'Violations'];
   const exRows = [
     ['Basketball', 'Men', 'Senior', '1 vs 1 (Point Basis)', 'Guard, Forward', 'Foul'],
@@ -367,13 +370,13 @@ export async function downloadBulkTemplate(scope = 'both') {
     ['Swimming', 'Men', '50m Free', '1 vs 1 (Time Basis)', '', ''],
   ];
   [exHead, ...exRows].forEach((row, i) => row.forEach((v, j) => {
-    const c = sports.getCell(11 + i, 9 + j);
+    const c = sports.getCell(11 + i, 8 + j);
     c.value = v;
     c.fill = solid(GREY);
     c.font = { italic: i > 0, bold: i === 0, color: { argb: 'FF5A6478' } };
     c.border = box;
   }));
-  [20, 14, 22, 26, 18, 14].forEach((w, i) => { sports.getColumn(9 + i).width = w; });
+  [20, 14, 22, 26, 18, 14].forEach((w, i) => { sports.getColumn(8 + i).width = w; });
 
   /* ── TEAMS ── */
   const teams = wb.addWorksheet('Teams');

@@ -306,17 +306,46 @@
   }
 }
 
+/* The panel (rounded, bordered) is the clipping shell; only this inner list
+   scrolls, so the scrollbar never squares off the panel's corners. The
+   bottom padding keeps the scrollbar off the cards, and the thin dark
+   scrollbar replaces the browser's default white bar. */
 .mp-finished-panel__list {
   display: flex;
+  align-items: stretch;
   gap: 12px;
   overflow-x: auto;
   overflow-y: hidden;
-  padding: 4px 2px 4px;
+  padding: 4px 2px 14px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+}
+
+.mp-finished-panel__list::-webkit-scrollbar {
+  height: 8px;
+}
+
+.mp-finished-panel__list::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 999px;
+}
+
+.mp-finished-panel__list::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+}
+
+.mp-finished-panel__list::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--c-gold-2-rgb, 245, 166, 35), 0.7);
 }
 
 .mp-finished-card {
   flex: 0 0 auto;
   min-width: 190px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  justify-content: flex-start; /* a <button> centres its content vertically by default, so cards with fewer rows looked misaligned */
   background: var(--c-navy-4, #16305a);
   border: 1.5px solid var(--c-navy-3, #2b4d7d);
   border-radius: 12px;
@@ -325,6 +354,21 @@
   text-align: left;
   color: #fff;
   transition: border-color 0.15s, transform 0.1s, background 0.15s;
+}
+
+.mp-finished-card > * {
+  max-width: 100%;
+}
+
+.mp-finished-card__sport {
+  width: 100%;
+}
+
+.mp-finished-card__pills {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-bottom: 6px;
 }
 
 /* Was entirely inline styles (no stylesheet rule existed) — the mobile
@@ -362,7 +406,6 @@
   padding: 2px 7px;
   border-radius: 20px;
   display: inline-block;
-  margin-bottom: 4px;
 }
 
 /* On narrow phones, a card's own natural (unwrapped) width — e.g. "Ateneo
@@ -412,6 +455,9 @@
   .mp-finished-card__label-pill {
     font-size: 0.52rem;
     padding: 1px 5px;
+  }
+
+  .mp-finished-card__pills {
     margin-bottom: 3px;
   }
 
@@ -466,7 +512,7 @@
    card (a <button> inside a <button> is invalid), so both sit in this wrapper,
    which takes over the card's role as the flex item of the scrolling list. */
 .mp-finished-item {
-  flex: 0 0 auto;
+  flex: 0 0 300px; /* equal-width cards so the row reads as a tidy strip */
   min-width: 190px;
   display: flex;
   flex-direction: column;
@@ -2594,7 +2640,7 @@ input.mp-text-input:disabled {
    with "vs" naturally between them. */
 @media (max-width: 480px) {
   .mp-edit-form>.mp-vs-mini {
-    margin-left: 130px;
+    margin-left: 150px;
   }
 }
 
@@ -2602,6 +2648,92 @@ input.mp-text-input:disabled {
   display: flex;
   align-items: center;
   gap: 4px;
+}
+
+/* Team logo tying each edit input/picker to its team (Team A on the left,
+   Team B on the right, matching the "A vs B" order of the Team column). */
+.mp-edit-logo {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: var(--c-navy-2, #0b2447);
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.55rem;
+  font-weight: 700;
+  overflow: hidden;
+}
+
+.mp-edit-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.mp-edit-form__score .mp-edit-logo {
+  margin: 0 4px;
+}
+
+/* Read-only Team column: "[logo] Team A vs [logo] Team B" */
+.mp-team-cell {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.mp-team-cell__side {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mp-team-cell__vs {
+  color: #93a0b8;
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.mp-edit-side {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Team picker with its comeback toggle stacked underneath. */
+.mp-edit-side__col {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.mp-edit-comeback {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 10px;
+  border: 1.5px solid #dde3ef;
+  border-radius: 999px;
+  background: #fff;
+  color: #6b7891;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mp-edit-comeback--on {
+  background: #f6a623;
+  border-color: #f6a623;
+  color: #fff;
+}
+
+.mp-edit-comeback:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 .mp-edit-form__score--auto {

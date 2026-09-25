@@ -57,7 +57,7 @@ export default function PrivacyPolicyPage() {
             <li>Contact number, and your emergency contact's name and phone number</li>
             <li>Home address (province, city/municipality, barangay, and house no./street)</li>
             <li>Grade/year level and section</li>
-            <li>Team name, sport/event, and position</li>
+            <li>Team name, sport, and position</li>
             <li>An optional message or notes you choose to add</li>
             <li>A photo you upload for identification purposes</li>
             <li>A signed waiver/consent form you upload, where required</li>

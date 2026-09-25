@@ -553,6 +553,7 @@ exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
   const {
     level, recordId, teamA: teamAIn, teamB: teamBIn,
     totalViolationsA, totalViolationsB, pointsA, pointsB, minutesA, minutesB,
+    comebackA: comebackAIn, comebackB: comebackBIn,
   } = data;
 
   requireLevel(level);
@@ -582,9 +583,13 @@ exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
     const mA = !isPoints ? (minutesA === "" || minutesA == null ? record.teamA.minutes : Number(minutesA)) : null;
     const mB = !isPoints ? (minutesB === "" || minutesB == null ? record.teamB.minutes : Number(minutesB)) : null;
 
+    // Omitted → keep what was saved, so older clients don't wipe the flag.
+    const comebackA = comebackAIn == null ? !!record.teamA.comeback : !!comebackAIn;
+    const comebackB = comebackBIn == null ? !!record.teamB.comeback : !!comebackBIn;
+
     const { finalPointsA, finalPointsB, winner } = matchMath.computeEditFinalPoints({
       ratingA, ratingB, violA, violB,
-      comebackA: !!record.teamA.comeback, comebackB: !!record.teamB.comeback,
+      comebackA, comebackB,
       isPoints, pA, pB, mA, mB,
       fallbackWinner: record.winner,
     });
@@ -602,6 +607,7 @@ exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
         name: teamAObj.name || record.teamA.name,
         logo: teamAObj.logo || null,
         totalViolations: violA,
+        comeback: comebackA,
         minutes: isPoints ? record.teamA.minutes : mA,
         points: isPoints ? pA : record.teamA.points,
         finalPoints: finalPointsA,
@@ -612,6 +618,7 @@ exports.editMatchRecord = onCall({ enforceAppCheck: true }, async (request) => {
         name: teamBObj.name || record.teamB.name,
         logo: teamBObj.logo || null,
         totalViolations: violB,
+        comeback: comebackB,
         minutes: isPoints ? record.teamB.minutes : mB,
         points: isPoints ? pB : record.teamB.points,
         finalPoints: finalPointsB,
@@ -764,4 +771,155 @@ exports.removeScheduledMatchRecords = onCall({ enforceAppCheck: true }, async (r
   });
 
   return { records, rankings };
+});
+
+/**
+ * Follows a sport delete or rename from Sports & Teams (SportsTeamsManager)
+ * through everything that references the sport by NAME: match schedules,
+ * match records, team rankings and schedule requests. matchRecords and
+ * teamRankings deny direct client writes, so this has to run here.
+ *
+ *  - delete (no `newName`): removes the sport's fixtures, its records (by
+ *    scheduleId, and by sportName for records saved without a fixture), the
+ *    `<sport>::*` ranking scopes and its schedule requests.
+ *  - rename (`newName`): rewrites the name on all of those instead.
+ *
+ * Registrations are never touched. They hold personal data and carry no
+ * school level of their own, so the admin UI flags a removed sport instead.
+ */
+exports.applySportChange = onCall({ enforceAppCheck: true }, async (request) => {
+  const data = request.data || {};
+  const level = data.level;
+  const sportName = String(data.sportName || "").trim();
+  const newName = data.newName == null ? null : String(data.newName).trim();
+  const actor = await requireStaffForLevel(request, level);
+
+  if (!sportName) throw new HttpsError("invalid-argument", "sportName is required.");
+  if (newName !== null && !newName) throw new HttpsError("invalid-argument", "newName cannot be empty.");
+
+  const target = matchMath.norm(sportName);
+  const isRename = newName !== null;
+  const isTarget = (name) => matchMath.norm(name) === target;
+  const scopePrefix = `${target}::`;
+
+  const schedulesRef = db.collection("matchSchedules").doc(level);
+  const recordsRef = db.collection("matchRecords").doc(level);
+  const rankingsRef = db.collection("teamRankings").doc(level);
+  const requestsRef = db.collection("scheduleRequests").doc("all");
+
+  const counts = await db.runTransaction(async (tx) => {
+    const [schedulesSnap, recordsSnap, rankingsSnap, requestsSnap] = await Promise.all([
+      tx.get(schedulesRef), tx.get(recordsRef), tx.get(rankingsRef), tx.get(requestsRef),
+    ]);
+    const schedules = schedulesSnap.exists ? (schedulesSnap.data().matches || []) : [];
+    const records = recordsSnap.exists ? (recordsSnap.data().records || []) : [];
+    const points = rankingsSnap.exists ? (rankingsSnap.data().points || {}) : {};
+    const requests = requestsSnap.exists ? (requestsSnap.data().requests || []) : [];
+
+    // A schedule request carries the level it was filed for; older ones may not.
+    const isTargetRequest = (r) => isTarget(r.sport) && (!r.level || r.level === level);
+    const scopeKeys = Object.keys(points).filter((k) => k.startsWith(scopePrefix));
+
+    const result = {
+      matches: schedules.filter((m) => isTarget(m.sport)).length,
+      records: 0,
+      rankingScopes: scopeKeys.length,
+      requests: 0,
+    };
+
+    if (isRename) {
+      const renamedPoints = { ...points };
+      // Delete every old key before adding the new ones: a case-only rename
+      // ("basketball" -> "Basketball") maps a key onto itself.
+      scopeKeys.forEach((k) => { delete renamedPoints[k]; });
+      scopeKeys.forEach((k) => {
+        renamedPoints[`${matchMath.norm(newName)}::${k.slice(scopePrefix.length)}`] = points[k];
+      });
+      result.records = records.filter((r) => isTarget(r.sportName)).length;
+      result.requests = requests.filter(isTargetRequest).length;
+
+      if (result.matches) {
+        tx.set(schedulesRef, {
+          matches: schedules.map((m) => (isTarget(m.sport) ? { ...m, sport: newName } : m)),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+      if (result.records) {
+        tx.set(recordsRef, {
+          records: records.map((r) => (isTarget(r.sportName) ? { ...r, sportName: newName } : r)),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+      if (scopeKeys.length) {
+        // update() replaces the whole `points` map; set(..., { merge: true })
+        // would deep-merge and leave the old scope keys behind.
+        tx.update(rankingsRef, { points: renamedPoints, updatedAt: FieldValue.serverTimestamp() });
+      }
+      if (result.requests) {
+        tx.set(requestsRef, {
+          requests: requests.map((r) => (isTargetRequest(r) ? { ...r, sport: newName } : r)),
+          updatedAt: FieldValue.serverTimestamp(),
+        }, { merge: true });
+      }
+      return result;
+    }
+
+    const removedMatches = schedules.filter((m) => isTarget(m.sport));
+    const removedScheduleIds = new Set(removedMatches.map((m) => String(m.id)));
+    const removedRequestIds = new Set(removedMatches.map((m) => m.requestId).filter(Boolean).map(String));
+    const isRemovedRecord = (r) => isTarget(r.sportName)
+      || (r.scheduleId && removedScheduleIds.has(String(r.scheduleId)));
+    const isRemovedRequest = (r) => isTargetRequest(r) || removedRequestIds.has(String(r.id));
+
+    result.records = records.filter(isRemovedRecord).length;
+    result.requests = requests.filter(isRemovedRequest).length;
+
+    if (result.matches) {
+      tx.set(schedulesRef, {
+        matches: schedules.filter((m) => !isTarget(m.sport)),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    if (result.records) {
+      tx.set(recordsRef, {
+        records: records.filter((r) => !isRemovedRecord(r)),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    if (scopeKeys.length) {
+      const nextPoints = { ...points };
+      scopeKeys.forEach((k) => { delete nextPoints[k]; });
+      tx.update(rankingsRef, { points: nextPoints, updatedAt: FieldValue.serverTimestamp() });
+    }
+    if (result.requests) {
+      tx.set(requestsRef, {
+        requests: requests.filter((r) => !isRemovedRequest(r)),
+        updatedAt: FieldValue.serverTimestamp(),
+      }, { merge: true });
+    }
+    return result;
+  });
+
+  const plural = (n, one, many) => `${n} ${n === 1 ? one : many}`;
+  const summary = [
+    plural(counts.matches, "match", "matches"),
+    plural(counts.records, "result", "results"),
+    plural(counts.rankingScopes, "ranking scope", "ranking scopes"),
+    plural(counts.requests, "schedule request", "schedule requests"),
+  ].join(", ");
+  await logActivity({
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    actorName: actor.name,
+    actorRole: actor.role,
+    type: isRename ? "Sport Renamed" : "Sport Deleted",
+    details: isRename
+      ? `Renamed ${sportName} to ${newName} in ${level}; updated ${summary}`
+      : `Deleted ${sportName} from ${level}; removed ${summary}`,
+    targetType: "sport",
+    targetId: `${level}::${sportName}`,
+    targetLabel: sportName,
+  });
+
+  return counts;
 });

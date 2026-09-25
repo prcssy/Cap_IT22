@@ -179,11 +179,119 @@ function TeamPill({ name, logo, result }) {
 }
 
 /* ═══════════════════════════════════════════════════════════
+   STANDINGS — one row per team, built from the saved results of
+   every fixture in the category, ranked by most wins (teams level
+   on wins share a rank, same as the champion's tie = TBA rule).
+   Only fixtures that have a saved result count; unplayed ones are
+   ignored.
+   ═══════════════════════════════════════════════════════════ */
+function computeStandings(matches, resultFor) {
+  const rows = new Map(); // norm(name) -> row
+  const rowFor = (name, logo) => {
+    const k = norm(name);
+    if (!rows.has(k)) {
+      rows.set(k, { name, logo: logo || null, played: 0, wins: 0, losses: 0, draws: 0 });
+    } else if (logo && !rows.get(k).logo) {
+      rows.get(k).logo = logo;
+    }
+    return rows.get(k);
+  };
+
+  const when = (m) => (m.date ? new Date(`${m.date}T${m.time || '00:00'}`).getTime() || 0 : 0);
+  const ordered = matches
+    .filter(m => m.teamA && m.teamB && !isPlaceholderTeam(m.teamA) && !isPlaceholderTeam(m.teamB))
+    .sort((a, b) => (a.round ?? 0) - (b.round ?? 0) || when(a) - when(b));
+
+  ordered.forEach((m) => {
+    const a = rowFor(m.teamA, m.teamALogo);
+    const b = rowFor(m.teamB, m.teamBLogo);
+    const record = resultFor(m);
+    if (!record) return; // still to be played
+
+    a.played += 1; b.played += 1;
+    const winner = winnerNameOf(record);
+    if (!winner) {
+      a.draws += 1; b.draws += 1;
+    } else {
+      const aWon = norm(winner) === norm(m.teamA);
+      (aWon ? a : b).wins += 1;
+      (aWon ? b : a).losses += 1;
+    }
+  });
+
+  const sorted = [...rows.values()]
+    .sort((x, y) => y.wins - x.wins || x.name.localeCompare(y.name));
+
+  /* Teams level on wins share a rank (1, 1, 3 …). */
+  sorted.forEach((r, i) => {
+    const prev = sorted[i - 1];
+    r.rank = prev && prev.wins === r.wins ? prev.rank : i + 1;
+  });
+  return sorted;
+}
+
+function StandingsTable({ matches, resultFor, champion }) {
+  const rows = useMemo(() => computeStandings(matches, resultFor), [matches, resultFor]);
+  if (rows.length === 0) return null;
+
+  const anyPlayed = rows.some(r => r.played > 0);
+
+  return (
+    <div className="ms-standings">
+      <h4 className="ms-standings__title">Standings</h4>
+      <div className="ms-standings__shell">
+        <div className="ms-standings__scroll">
+          <table className="ms-standings__table">
+            <thead>
+              <tr>
+                <th className="ms-standings__rank" title="Rank">#</th>
+                <th className="ms-standings__team">Team</th>
+                <th title="Games played">P</th>
+                <th title="Wins">W</th>
+                <th title="Losses">L</th>
+                <th title="Draws">D</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const isChampion = !!champion && norm(champion) === norm(r.name);
+                const leading = anyPlayed && r.rank === 1 && r.played > 0;
+                return (
+                  <tr key={norm(r.name)} className={leading ? 'ms-standings__row--leader' : ''}>
+                    <td className="ms-standings__rank">{r.rank}</td>
+                    <td className="ms-standings__team">
+                      <div className="ms-team-pill">
+                        {r.logo
+                          ? <img src={r.logo} alt="" className="ms-team-pill__avatar ms-team-pill__avatar--img" />
+                          : <span className="ms-team-pill__avatar" style={{ background: colorFor(r.name) }}>{r.name.charAt(0)}</span>}
+                        <span className="ms-team-pill__name">{r.name}</span>
+                        {isChampion && <FaTrophy className="ms-standings__trophy" title="Champion" />}
+                      </div>
+                    </td>
+                    <td>{r.played}</td>
+                    <td className="ms-standings__win">{r.wins}</td>
+                    <td className="ms-standings__loss">{r.losses}</td>
+                    <td>{r.draws}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+      <p className="ms-standings__note">
+        Ranked by most wins. {anyPlayed ? 'Updates as results are recorded.' : 'No results recorded yet.'}
+      </p>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
    ROUNDS VIEW — groups a category's generated matches into
    columns by stage/round exactly as the admin generated them
    (round-robin legs, bracket stages, or grand-final matches)
    ═══════════════════════════════════════════════════════════ */
-function RoundsView({ matches, resultFor, champion }) {
+function RoundsView({ matches, standingsMatches, resultFor, champion }) {
   const columns = useMemo(() => {
     const map = new Map();
     matches.forEach(m => {
@@ -197,6 +305,7 @@ function RoundsView({ matches, resultFor, champion }) {
   if (columns.length === 0) return null;
 
   return (
+    <>
     <div className="ms-rounds-wrap">
       {columns.map(([label, colMatches]) => (
         <div key={label} className="ms-rounds-col">
@@ -230,6 +339,8 @@ function RoundsView({ matches, resultFor, champion }) {
         </div>
       </div>
     </div>
+    <StandingsTable matches={standingsMatches || matches} resultFor={resultFor} champion={champion} />
+    </>
   );
 }
 
@@ -432,7 +543,14 @@ function buildSavedDoubleBracketStages(matches) {
   }));
   const leaves = wbStages[0]?.matches.flatMap(m => [m.a, m.b]) || [];
 
-  return { wbStages, leaves, lbRounds };
+  /* Saved team logos by team name, so the bracket's team boxes can show them. */
+  const logos = {};
+  matches.forEach((m) => {
+    if (m.teamA && m.teamALogo) logos[norm(m.teamA)] = m.teamALogo;
+    if (m.teamB && m.teamBLogo) logos[norm(m.teamB)] = m.teamBLogo;
+  });
+
+  return { wbStages, leaves, lbRounds, logos };
 }
 
 /* ── Double Bracket tree: Upper (Winner's) and Lower (Loser's) brackets
@@ -440,7 +558,7 @@ function buildSavedDoubleBracketStages(matches) {
    with real connector lines into a single "GC" node and Champion box —
    ported unchanged from the admin Schedule Manager so it renders in
    exactly the same format here. ── */
-function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw }) {
+function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw, logos = {} }) {
   const ROW_H = 56;
   const LEAF_W = 190;
   const LEAF_H = 40;
@@ -547,7 +665,9 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
       {leaves.map((name, i) => (
         name ? (
           <div key={`ub-${i}`} className="msf-bracket-team" style={{ top: UB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
-            <span className="msf-lbracket-leaf__dot" />
+            {logos[norm(name)]
+              ? <img src={logos[norm(name)]} alt="" className="ms-dbracket-avatar ms-dbracket-avatar--img" />
+              : <span className="ms-dbracket-avatar" style={{ background: colorFor(name) }}>{name.charAt(0)}</span>}
             <span>{name}</span>
           </div>
         ) : (
@@ -1050,7 +1170,7 @@ export default function MatchSchedulesPage() {
                     </div>
                   </div>
                 ) : (
-                  <RoundsView matches={generatedMatches} resultFor={resultFor} champion={champion} />
+                  <RoundsView matches={generatedMatches} standingsMatches={categoryMatches} resultFor={resultFor} champion={champion} />
                 )
               ) : (
                 <p className="ms-bracket-empty">No bracket or rounds generated yet for {category?.label}.</p>

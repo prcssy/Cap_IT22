@@ -108,6 +108,21 @@
   margin-bottom: 16px;
 }
 
+/* ── Bulk import group (Download template → Upload Excel), pushed to the right ── */
+.stm-bulk-group {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+}
+
+.stm-bulk-group__label {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: #6b7c93;
+}
+
 /* ── Link button ── */
 .stm-link-btn {
   font-family: "Inter", sans-serif;
@@ -715,6 +730,22 @@
   color: #33455c;
   line-height: 1.5;
   margin: 4px 0 20px;
+}
+
+.stm-delete-impact ul {
+  margin: 0 0 12px;
+  padding-left: 20px;
+  font-size: 0.86rem;
+  color: #33455c;
+  line-height: 1.6;
+}
+
+.stm-delete-impact .stm-delete-msg {
+  margin-bottom: 6px;
+}
+
+.stm-delete-confirm-input {
+  margin-bottom: 16px;
 }
 
 .stm-delete-actions {
@@ -1887,18 +1918,329 @@
   }
 }
 
-/* ── Bulk upload confirmation: warnings list ── */
+/* ── Bulk upload confirmation ──
+   Rounded shell (.stm-modal--bulk) + separately-scrolling body (.stm-bulk-body),
+   per the border-radius/scrollbar gotcha in CLAUDE.md. */
+.stm-modal--bulk {
+  max-width: 560px;
+}
+
+.stm-bulk-body {
+  padding: 18px 24px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  font-family: "Inter", sans-serif;
+}
+
+.stm-bulk-stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 10px;
+}
+
+.stm-bulk-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: #f3f6fa;
+  border: 1px solid #e3e9f1;
+}
+
+.stm-bulk-stat__label {
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #6b7c93;
+}
+
+.stm-bulk-stat__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stm-bulk-pill {
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  font-weight: 600;
+}
+
+.stm-bulk-pill b {
+  font-weight: 900;
+  font-size: 0.9rem;
+}
+
+.stm-bulk-pill--new { background: #dff5e6; color: #146c33; }
+.stm-bulk-pill--upd { background: #fff0d1; color: #8a5a00; }
+
+.stm-bulk-section__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 10px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: #6b7c93;
+}
+
+.stm-bulk-section__title span {
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: var(--c-dark, #001529);
+  color: #fff;
+  font-size: 0.66rem;
+  letter-spacing: 0;
+}
+
+.stm-bulk-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.stm-bulk-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 11px 14px;
+  border-radius: 12px;
+  border: 1px solid #e3e9f1;
+  border-left: 4px solid #f5a623;
+  background: #fff;
+}
+
+.stm-bulk-card__name {
+  font-size: 0.92rem;
+  font-weight: 800;
+  color: var(--c-dark, #001529);
+}
+
+.stm-bulk-logo-ok {
+  margin-left: 8px;
+  font-style: normal;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: #146c33;
+}
+
+.stm-bulk-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.stm-bulk-chip {
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: #eef2f7;
+  color: #3d4b61;
+  font-size: 0.74rem;
+  font-weight: 600;
+}
+
+.stm-bulk-chip--warn {
+  background: #fff0d1;
+  color: #8a5a00;
+}
+
 .stm-bulk-warnings {
-  margin-top: 16px;
-  padding: 10px 12px;
-  border-radius: 8px;
+  padding: 12px 14px;
+  border-radius: 12px;
   background: #fff7e6;
   border: 1px solid #f5d9a0;
 }
 
-.stm-bulk-detail {
-  margin-top: 14px;
+.stm-bulk-warnings__title {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 0.72rem;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #8a5a00;
 }
-.stm-modal--category .stm-modal__body > .stm-preview-list {
-  padding: 4px 4px 0 22px;
+
+.stm-bulk-warnings ul {
+  margin: 0;
+  padding-left: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.stm-bulk-warnings li {
+  font-size: 0.8rem;
+  color: #5c4310;
+}
+
+@media (max-width: 600px) {
+  .stm-bulk-body { padding: 14px 16px 16px; }
+}
+
+/* ── Sport icon picker (replaces the sports image upload) ── */
+.stm-icon-pick {
+  width: 72px;
+  min-height: 52px;
+  padding: 6px 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  border: 1.5px solid #c0c8d4;
+  border-radius: 8px;
+  background: #f7f9fc;
+  color: var(--c-dark, #001529);
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.stm-icon-pick:hover {
+  border-color: var(--c-dark, #001529);
+  background: #eef3fa;
+}
+}
+
+.stm-icon-pick__glyph {
+  font-size: 1.4rem;
+}
+
+.stm-icon-pick__caption {
+  max-width: 100%;
+  font-family: "Inter", sans-serif;
+  font-size: 0.58rem;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #6b7c93;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.stm-modal--icons {
+  max-width: 580px;
+}
+
+.stm-icon-auto {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  background: #f6f8fb;
+  color: var(--c-dark, #001529);
+  border: 2px solid transparent;
+  border-radius: 10px;
+  font-family: "Inter", sans-serif;
+  text-align: left;
+  cursor: pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.stm-icon-auto b {
+  display: block;
+  font-size: 0.88rem;
+}
+
+.stm-icon-auto small {
+  display: block;
+  margin-top: 1px;
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: #6b7c93;
+}
+
+.stm-icon-auto__glyph {
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: var(--c-dark, #001529);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  flex-shrink: 0;
+}
+
+.stm-icon-auto .stm-picker-check {
+  border-color: #c0c8d4;
+}
+
+.stm-icon-auto--on {
+  border-color: var(--c-dark, #001529);
+}
+
+.stm-icon-auto--on .stm-picker-check {
+  background: var(--c-dark, #001529);
+  border-color: var(--c-dark, #001529);
+  color: #fff;
+}
+
+.stm-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 8px;
+}
+
+.stm-icon-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  padding: 12px 6px 10px;
+  background: var(--c-dark, #001529);
+  color: #fff;
+  border: 2px solid transparent;
+  border-radius: 10px;
+  font-family: "Inter", sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1.15;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.2s ease, border-color 0.2s ease, transform 0.1s ease;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.stm-icon-tile:hover {
+  background: var(--c-dark-2, #022240);
+}
+}
+
+.stm-icon-tile:active {
+  transform: scale(0.97);
+}
+
+.stm-icon-tile__glyph {
+  font-size: 1.7rem;
+}
+
+.stm-icon-tile--on {
+  background: transparent;
+  color: var(--c-dark, #001529);
+  border-color: var(--c-dark, #001529);
+}
+
+/* Icon + name in the Sports Preview rows */
+.stm-sport-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stm-sport-label__icon {
+  font-size: 1.2rem;
+  flex-shrink: 0;
 }

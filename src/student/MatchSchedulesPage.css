@@ -848,6 +848,129 @@
   color: #aaa;
 }
 
+/* Team logo/initial in the double-bracket team boxes. The doubled class
+   out-specifies the admin stylesheet's `.msf-bracket-team span` text rules. */
+.msf-bracket-team .ms-dbracket-avatar {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0;
+  color: #fff;
+  flex-shrink: 0;
+  overflow: hidden;
+}
+
+.msf-bracket-team .ms-dbracket-avatar--img {
+  object-fit: cover;
+}
+
+/* ═══════════════════════════════════════════
+   STANDINGS TABLE — under the round-robin rounds.
+   Rounded/clipped outer shell + separately-scrolling inner body, so the
+   scrollbar never squares off the corners.
+   ═══════════════════════════════════════════ */
+.ms-standings {
+  align-self: stretch;
+  width: 100%;
+  min-width: 0;
+  margin-top: 22px;
+}
+
+.ms-standings__title {
+  font-size: 13px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--c-dark, #001529);
+  text-align: center;
+  margin: 0 0 10px;
+}
+
+.ms-standings__shell {
+  border: 1px solid #e2e4ee;
+  border-radius: 12px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.ms-standings__scroll {
+  overflow-x: auto;
+}
+
+.ms-standings__table {
+  width: 100%;
+  min-width: 480px;
+  border-collapse: collapse;
+  font-size: 12px;
+  color: var(--c-dark, #001529);
+}
+
+.ms-standings__table th {
+  background: #f6f7fb;
+  color: #5b678a;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  padding: 9px 8px;
+  text-align: center;
+  border-bottom: 1px solid #e2e4ee;
+  white-space: nowrap;
+}
+
+.ms-standings__table td {
+  padding: 9px 8px;
+  text-align: center;
+  font-weight: 700;
+  border-bottom: 1px solid #eef0f6;
+  white-space: nowrap;
+}
+
+.ms-standings__table tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.ms-standings__table .ms-standings__rank {
+  width: 38px;
+  color: #8a8fa3;
+  font-weight: 800;
+}
+
+.ms-standings__table .ms-standings__team {
+  text-align: left;
+  min-width: 150px;
+}
+
+.ms-standings__row--leader td {
+  background: #fff8e1;
+}
+
+.ms-standings__row--leader .ms-standings__rank {
+  color: #b7791f;
+}
+
+.ms-standings__win { color: #14713a; }
+.ms-standings__loss { color: #a83218; }
+
+.ms-standings__trophy {
+  color: #f5b301;
+  font-size: 12px;
+  margin-left: 2px;
+  flex-shrink: 0;
+}
+
+.ms-standings__note {
+  margin: 8px 2px 0;
+  font-size: 11px;
+  color: #8a8fa3;
+  text-align: center;
+}
+
 /* ═══════════════════════════════════════════
    BRACKET TREE — connected single-elimination tree, same layout as the
    admin's Schedule Manager: one two-team box per round, joined by elbow
