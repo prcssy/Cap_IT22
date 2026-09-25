@@ -37,8 +37,11 @@
 .hero {
   position: relative;
   width: 100%;
-  height: 100vh;
-  height: 100dvh;
+  /* min-height (not height) so a short/small window lets the hero grow to
+     fit its content and the page scroll, instead of clipping the headline
+     copy / match card behind overflow: hidden. */
+  min-height: 100vh;
+  min-height: 100dvh;
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
@@ -79,8 +82,8 @@
 
 
 .school-logo {
-  width: 6.504525rem;
-  height: 6.504525rem;
+  width: clamp(3.5rem, 13vh, 6.504525rem);
+  height: clamp(3.5rem, 13vh, 6.504525rem);
   line-height: normal;
   letter-spacing: 0.063396rem;
   grid-area: 1 / 1 / 2 / 2;
@@ -97,7 +100,7 @@
 .school-name-main {
   color: var(--c-navy, #0a1d52);
   font-family: "Inter", sans-serif;
-  font-size: 1.89rem;
+  font-size: clamp(1.25rem, 2.4vw, 1.89rem);
   font-weight: 900;
   line-height: 1.1;
   white-space: nowrap;
@@ -226,7 +229,7 @@
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
-  padding: 0 4.5rem;
+  padding: 0 clamp(1.5rem, 5vw, 4.5rem);
   max-width: 1320px;
   width: 100%;
   margin: 0 auto;
@@ -234,21 +237,22 @@
 
 /* Left */
 .hero-left {
-  margin-left: -3rem;
+  margin-left: calc(-1 * clamp(0.5rem, 3vw, 3rem));
   max-width: 486px;
+  min-width: 0;
 }
 
 .hero-headline {
   color: var(--c-navy, #0a1d52);
   font-family: "Poppins", sans-serif;
-  font-size: 2.964942rem;
+  font-size: clamp(1.75rem, min(3.2vw, 5.6vh), 2.964942rem);
   font-style: normal;
   font-weight: 800;
   line-height: normal;
 }
 
 .hero-tagline {
-  font-size: 1.461492rem;
+  font-size: clamp(0.95rem, min(1.7vw, 3.4vh), 1.461492rem);
   font-weight: 700;
   letter-spacing: 0.14em;
   color: rgba(var(--c-navy-rgb, 10, 29, 82), 0.53);
@@ -257,17 +261,17 @@
 }
 
 .line {
-  width: 22.87675rem;
+  width: min(22.87675rem, 100%);
   height: 0.38031rem;
   background: var(--c-gold, #fcbf19);
   margin-bottom: 0.99rem;
 }
 
 .hero-copy {
-  font-size: 1.536525rem;
+  font-size: clamp(1.05rem, min(1.8vw, 3.8vh), 1.536525rem);
   color: var(--c-navy, #0a1d52);
   font-weight: 600;
-  line-height: 1.75;
+  line-height: 1.6;
   margin-bottom: 1.8rem;
 }
 
@@ -331,12 +335,15 @@
   border-radius: 20px;
   padding: 1.9rem 2.2rem;
   width: 27.28413rem;
-  height: 22.63619rem;
+  /* auto height + a min-height (was a fixed 22.6rem box) so a shorter
+     window can shrink the card, while a match with more rows still grows
+     it instead of clipping behind overflow: hidden. */
+  height: auto;
+  min-height: clamp(18rem, 52vh, 22.63619rem);
   flex-shrink: 0;
   max-width: 410px;
   margin-top: -4.3rem;
-  margin-right: 2rem;
-  aspect-ratio: 6 / 5;
+  margin-right: clamp(0.5rem, 2vw, 2rem);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
@@ -1296,6 +1303,7 @@
      min-height lets the hero size to it instead of to the viewport. */
   .hero {
     height: auto;
+    min-height: 0;
     overflow: visible;
   }
 
@@ -1427,6 +1435,7 @@
     width: 100%;
     max-width: 380px;
     height: auto;
+    min-height: 0;
     aspect-ratio: auto;
     margin-top: 0;
     margin-right: 0;
