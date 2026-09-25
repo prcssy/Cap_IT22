@@ -318,6 +318,7 @@ export function AuthProvider({ children }) {
    * @param {string} password
    * @param {object} [extra] Optional player/student details captured at sign-up:
    *   { gender, gradeLevel, section }
+   * @returns {Promise<{user: object, verificationEmailSent: boolean}>}
    */
   const signup = useCallback(async (name, email, password, extra = {}) => {
     if (!auth) throw new Error('Firebase Auth not configured. Please add Firebase credentials to .env');
@@ -326,10 +327,16 @@ export function AuthProvider({ children }) {
 
     // Send the gmail verification link right away. The account exists
     // in Firebase Auth already, but login() will refuse access until
-    // the person clicks the link.
+    // the person clicks the link. A failure here (e.g. the custom SMTP
+    // relay's daily sending limit was already hit) must not abort signup
+    // — the Auth account already exists — but the caller needs to know,
+    // so it can tell the person to use "Resend verification email" later
+    // instead of leaving them with no email and no explanation.
+    let verificationEmailSent = true;
     try {
       await sendEmailVerification(user);
     } catch (error) {
+      verificationEmailSent = false;
       console.warn('Failed to send verification email:', error);
     }
 
@@ -365,7 +372,7 @@ export function AuthProvider({ children }) {
     setUserProfile(null);
     await signOut(auth);
 
-    return user;
+    return { user, verificationEmailSent };
   }, []);
 
   /**
