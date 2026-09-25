@@ -211,17 +211,25 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
       // create-staff-account.cjs), the same trusted, console/CLI-only
       // process already used for the admins/moderators/superadmins
       // allowlist docs themselves.
-      await onSignUp(formData.name, formData.email, formData.password, {
+      const { verificationEmailSent } = await onSignUp(formData.name, formData.email, formData.password, {
         role: 'student',
         gender: formData.gender,
         gradeLevel: formData.gradeLevel,
         section: formData.section,
       });
 
-      alert(
-        `Account created successfully! We sent a verification link to ${formData.email} — ` +
-        'please check your gmail inbox and verify your email before logging in.'
-      );
+      if (verificationEmailSent) {
+        alert(
+          `Account created successfully! We sent a verification link to ${formData.email} — ` +
+          'please check your gmail inbox and verify your email before logging in.'
+        );
+      } else {
+        alert(
+          'Account created, but we could not send the verification email right now ' +
+          '(the daily email sending limit may have been reached). Please wait a while, ' +
+          'then use "Resend verification email" from the login screen.'
+        );
+      }
       onSuccess();
     } catch (error) {
       alert(error.message || 'Sign up failed. Please try again.');
