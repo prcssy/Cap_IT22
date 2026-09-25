@@ -258,7 +258,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
       <form onSubmit={handleSubmit} className="auth-form">
         <div className="auth-fields">
             <div className="form-group">
-              <label htmlFor="name">Create Name</label>
+              <label htmlFor="name">Full Name</label>
               <input
                 type="text"
                 id="name"
