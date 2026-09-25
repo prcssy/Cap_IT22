@@ -414,21 +414,12 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
 
   const docRef = await addDoc(collection(db, 'registrations'), registrationData);
 
-  // Bump the public per-event counter so the registration form can show
-  // live "how many have registered for this event" numbers without
-  // students ever reading the registrations collection itself (it holds
-  // addresses and emergency contacts — staff only).
-  //
-  // Fire-and-forget on purpose: the registration is already saved, so a
-  // denied or failed counter write must never surface as a failed
-  // registration. AdminSchedulePage recomputes the exact numbers from
-  // the real documents every time it loads and overwrites this counter,
-  // so any drift self-corrects.
-  if (registrationData.eventKey) {
-    bumpEventRegistrationCount(registrationData.eventKey, 1, eventList).catch((err) => {
-      console.warn('Could not update the public event counter:', err);
-    });
-  }
+  // The public per-event counter (siteCounters/liveCounters.eventCounts)
+  // is deliberately NOT bumped here: a new registration is `pending`, and
+  // only APPROVED registrations count as players. AdminSchedulePage
+  // recomputes the counter from the real documents (approved only) every
+  // time it loads and after each approve/reject, so it updates once an
+  // admin approves — not the moment a student submits.
 
   // AdminSchedulePage/SuperAdminPage classify a student's Elementary/High
   // School/College bucket from users/{uid}.gradeLevel — a value normally
@@ -1410,10 +1401,10 @@ export async function setLivePlayerCount(count) {
 
    Same reasoning as the player counter above: `registrations` is
    staff-only, so students can't count it themselves. Instead the count
-   is nudged up by one when a registration is submitted
-   (bumpEventRegistrationCount) and re-derived from scratch whenever an
-   admin opens the Registration tab (setEventRegistrationCounts), which
-   keeps the public number honest even if a bump was ever missed.
+   is re-derived from scratch (approved registrations only) whenever an
+   admin opens the Registration tab or approves/rejects a registration
+   (setEventRegistrationCounts). bumpEventRegistrationCount is no longer
+   called on submit, since a new registration is still pending.
 ───────────────────────────────────────────── */
 export async function getEventRegistrationCounts(eventList = EVENT_TYPES) {
   const data = await getLiveStatsCounters();

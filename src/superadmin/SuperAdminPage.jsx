@@ -13,7 +13,7 @@ import LevelLabelsSettings from './LevelLabelsSettings';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
-  FaSync, FaDownload, FaChartPie, FaRegCalendarAlt, FaChevronDown, FaCheck,
+  FaSync, FaDownload, FaChartPie, FaChevronDown, FaCheck,
 } from 'react-icons/fa';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -863,9 +863,11 @@ export default function SuperAdminPage() {
 
   /* A student account that has submitted a registration is a Player;
      one that hasn't is an Audience member. That's the only honest way
-     to split the two from the data — there's no `audience` role. */
+     to split the two from the data — there's no `audience` role.
+     Only an APPROVED registration makes someone a Player, matching the
+     Total Players tile — pending/rejected ones stay Students. */
   const registeredUids = useMemo(
-    () => new Set(registrations.map(r => r.uid).filter(Boolean)),
+    () => new Set(registrations.filter(r => r.status === 'approved').map(r => r.uid).filter(Boolean)),
     [registrations],
   );
 
@@ -880,8 +882,10 @@ export default function SuperAdminPage() {
     () => rangedRegs.filter(r => (r.status || 'pending') === 'pending').length,
     [rangedRegs]
   );
-  // A rejected registration no longer holds a spot, so it shouldn't keep
-  // counting toward Total Players once an admin has rejected it.
+  // Only an APPROVED registration counts toward Total Players (and Sports
+  // Participation below) — a pending one hasn't been reviewed yet (it's
+  // counted by the Pending Review tile instead) and a rejected one no
+  // longer holds a spot.
   //
   // "Total Players" (and Gender Distribution below) mean unique STUDENTS,
   // matching the User Distribution donut's Players count and the
@@ -893,12 +897,13 @@ export default function SuperAdminPage() {
   // player is only counted once, keeping their first active submission
   // as the representative doc (used below for Gender Distribution).
   // Sports Participation and Pending Review intentionally stay
-  // per-registration — a sport signup or a review decision is a real,
+  // per-registration (Sports Participation approved-only, Pending Review
+  // pending-only) — a sport signup or a review decision is a real,
   // separate item, not a duplicate of the person.
   const activePlayersByUid = useMemo(() => {
     const map = new Map();
     rangedRegs.forEach((r) => {
-      if (r.status === 'rejected' || !r.uid || map.has(r.uid)) return;
+      if (r.status !== 'approved' || !r.uid || map.has(r.uid)) return;
       map.set(r.uid, r);
     });
     return map;
@@ -918,7 +923,7 @@ export default function SuperAdminPage() {
   const sportBars = useMemo(() => {
     const map = {};
     rangedRegs.forEach((r) => {
-      if (!r.sport) return;
+      if (!r.sport || r.status !== 'approved') return;
       const name = r.sport.trim();
       map[name] = (map[name] || 0) + 1;
     });
@@ -952,7 +957,7 @@ export default function SuperAdminPage() {
   // Staff (moderator/admin/superadmin) accounts aren't part of any school
   // level's population, so this donut — like the Total Users tile above it
   // — only ever breaks down students: Audience (signed up, never
-  // registered) vs Player (has a registration).
+  // registered, or not yet approved) vs Player (has an approved registration).
   const roleSegments = useMemo(() => {
     const counts = { audience: 0, player: 0 };
     rangedStudents.forEach((u) => { counts[roleOf(u)]++; });
@@ -1163,10 +1168,6 @@ export default function SuperAdminPage() {
                 tabClassName="sa-lvltab"
                 activeClassName="sa-lvltab--active"
               />
-              <span className="sa-daterange" title={rangeCaption}>
-                <FaRegCalendarAlt />
-                {rangeCaption}
-              </span>
               <RangeDropdown value={rangeKey} options={RANGES} onChange={setRangeKey} />
               <button className="sa-icon-btn" onClick={fetchAnalytics} disabled={loading} title="Refresh">
                 <FaSync className={loading ? 'sa-spin' : ''} />
