@@ -24,6 +24,7 @@ import {
 } from 'firebase/storage';
 import { httpsCallable } from 'firebase/functions';
 import { db, auth, functions } from '../firebase';
+import { isLevelScopedRole, normalizeStaffLevel } from '../constants/roles';
 
 /**
  * Shared per-level/per-doc "list" fields (matchSchedules/{level}.matches,
@@ -638,6 +639,41 @@ export async function getAllUsers() {
     }
     const snap = await getDocs(collection(db, 'users'));
     return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+  });
+}
+
+/* Every doc across the three staff allowlist collections — the same
+   admins/moderators/superadmins AuthContext resolves login access from
+   (see roles.js). Doc id is the staff member's email (lowercased). Super
+   Admin only — firestore.rules grants `list` on these three collections
+   to isSuperAdmin() alone, everyone else can only `get` their own doc.
+   Powers Super Admin's Staff List, under Student/Users Registration
+   Details. */
+export async function getStaffRoster() {
+  return dedupeRead('staffRoster', async () => {
+    if (!db) {
+      console.warn('Firestore not initialized. Cannot load staff roster.');
+      return [];
+    }
+    const [superadmins, admins, moderators] = await Promise.all([
+      getDocs(collection(db, 'superadmins')),
+      getDocs(collection(db, 'admins')),
+      getDocs(collection(db, 'moderators')),
+    ]);
+    const toEntries = (snap, role) => snap.docs.map((d) => ({
+      email: d.id,
+      role,
+      // Same fallback AuthContext's resolveStaffAccess applies: a level-scoped
+      // doc with no/invalid level (accounts created before levels existed)
+      // defaults to elementary rather than showing as unset.
+      level: isLevelScopedRole(role) ? normalizeStaffLevel(d.data().level) : null,
+      addedAt: d.data().addedAt || null,
+    }));
+    return [
+      ...toEntries(superadmins, 'superadmin'),
+      ...toEntries(admins, 'admin'),
+      ...toEntries(moderators, 'moderator'),
+    ];
   });
 }
 

@@ -3,7 +3,8 @@ import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { db } from '../shared/firebase';
-import { getAllUsers, getAllRegistrations, getSportsTeamsConfig, getMatchSchedules, getMatchRecords, getActivityLogs } from '../shared/services/firestoreService';
+import { getAllUsers, getAllRegistrations, getSportsTeamsConfig, getMatchSchedules, getMatchRecords, getActivityLogs, getStaffRoster } from '../shared/services/firestoreService';
+import { roleLabel } from '../shared/constants/roles';
 import LevelTabs from '../shared/components/LevelTabs';
 import ActivityLogsAndRoles from './ActivityLogsAndRoles';
 import StudentRegistrationDetails from './StudentRegistrationDetails';
@@ -13,7 +14,7 @@ import LevelLabelsSettings from './LevelLabelsSettings';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
-  FaSync, FaDownload, FaChartPie, FaChevronDown, FaCheck,
+  FaSync, FaDownload, FaChartPie, FaChevronDown, FaCheck, FaUserShield,
 } from 'react-icons/fa';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -587,6 +588,7 @@ export default function SuperAdminPage() {
 
   const [users, setUsers]                 = useState([]);
   const [registrations, setRegistrations] = useState([]);
+  const [staffRoster, setStaffRoster]     = useState([]);
   const [configsByLevel, setConfigsByLevel]     = useState({});
   const [schedulesByLevel, setSchedulesByLevel] = useState({});
   const [recordsByLevel, setRecordsByLevel]     = useState({});
@@ -651,9 +653,10 @@ export default function SuperAdminPage() {
       // getAllUsers/getAllRegistrations share an in-flight de-dupe cache
       // with the embedded StudentRegistrationDetails table's own fetch of
       // the same 2 collections, so loading this tab doesn't double them up.
-      const [users, registrations, configs, schedules, records] = await Promise.all([
+      const [users, registrations, staffRoster, configs, schedules, records] = await Promise.all([
         getAllUsers(),
         getAllRegistrations(),
+        getStaffRoster().catch(() => []),
         Promise.all(LEVELS.map(l => getSportsTeamsConfig(l).catch(() => ({ sports: [], teams: [] })))),
         Promise.all(LEVELS.map(l => getMatchSchedules(l).catch(() => []))),
         Promise.all(LEVELS.map(l => getMatchRecords(l).catch(() => []))),
@@ -661,6 +664,7 @@ export default function SuperAdminPage() {
 
       setUsers(users);
       setRegistrations(registrations);
+      setStaffRoster(staffRoster);
 
       const configMap = {};
       const scheduleMap = {};
@@ -818,6 +822,23 @@ export default function SuperAdminPage() {
     users.forEach(u => map.set(u.id, u));
     return map;
   }, [users]);
+
+  /* Staff list — one row per admins/moderators/superadmins allowlist doc
+     (see getStaffRoster's own comment), not per `users` doc: a staff
+     account created before it ever signed in has an allowlist entry but
+     no Auth/users record yet, so sourcing this from `users` would miss
+     it. Matched against `users` by lowercased email (same lookup
+     AuthContext itself uses) purely to show a display name — the role
+     and level shown always come from the allowlist doc, never from
+     `users`, since that's the actual source of authorization. */
+  const staffList = useMemo(() => {
+    const usersByEmail = new Map(users.map(u => [(u.email || '').toLowerCase(), u]));
+    const ROLE_ORDER = { superadmin: 0, admin: 1, moderator: 2 };
+    return [...staffRoster]
+      .map(s => ({ ...s, name: usersByEmail.get(s.email)?.name || '' }))
+      .sort((a, b) => (ROLE_ORDER[a.role] - ROLE_ORDER[b.role])
+        || (a.name || a.email).localeCompare(b.name || b.email, undefined, { sensitivity: 'base' }));
+  }, [staffRoster, users]);
 
   /* A registration doc's own `gradeLevel` is a snapshot taken at submission
      time — it can drift from the student's CURRENT profile (year-level
@@ -1267,6 +1288,47 @@ export default function SuperAdminPage() {
             )))}
             onDeleted={(regId) => setRegistrations(prev => prev.filter(r => r.id !== regId))}
           />
+
+          {/* ── Staff List ── */}
+          {/* Admins/Moderators/Super Admins currently granted access, read
+              straight from the allowlist collections (see getStaffRoster)
+              rather than filtered out of `users` — that's the actual
+              source of truth AuthContext itself resolves login access
+              from. To change a role, use Roles & Permissions above. */}
+          <div className="sa-card" style={{ marginTop: 24 }}>
+            <div className="sa-card__head">
+              <h3><FaUserShield style={{ marginRight: 8, verticalAlign: -2 }} />Staff List</h3>
+              <span className="sa-card__tag">{staffList.length} total</span>
+            </div>
+            <div className="sa-table-wrap">
+              <table className="sa-table">
+                <thead>
+                  <tr>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Level</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {loading ? (
+                    <tr><td colSpan={4}><p className="sa-loading">Loading…</p></td></tr>
+                  ) : staffList.length === 0 ? (
+                    <tr><td colSpan={4}><p className="sa-loading">No staff accounts yet.</p></td></tr>
+                  ) : staffList.map((s) => (
+                    <tr key={`${s.role}:${s.email}`}>
+                      <td className="sa-td--name" data-label="Name">{s.name || <em>Unnamed</em>}</td>
+                      <td data-label="Email">{s.email}</td>
+                      <td data-label="Role">
+                        <span className={`sa-role sa-role--${s.role}`}>{roleLabel(s.role)}</span>
+                      </td>
+                      <td data-label="Level">{s.role === 'superadmin' ? 'All Levels' : (levelLabels[s.level] || s.level || '—')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
           </>
           )}
 
