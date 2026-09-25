@@ -1,5 +1,6 @@
 const { setGlobalOptions } = require("firebase-functions");
 const { onCall, HttpsError } = require("firebase-functions/v2/https");
+const { onSchedule } = require("firebase-functions/v2/scheduler");
 const logger = require("firebase-functions/logger");
 const { initializeApp } = require("firebase-admin/app");
 const { getAuth } = require("firebase-admin/auth");
@@ -40,6 +41,30 @@ function randomPassword() {
 
 function randomId() {
   return crypto.randomBytes(6).toString("hex");
+}
+
+/**
+ * Normalizes an email for duplicate-account detection: lowercases/trims,
+ * and — for Gmail/Googlemail addresses only — strips dots from the local
+ * part and truncates at the first "+", since Gmail treats
+ * "student.name@gmail.com", "studentname@gmail.com" and
+ * "studentname+1@gmail.com" as the exact same inbox even though Firebase
+ * Auth treats them as three completely different accounts (each can sign
+ * up separately, verify separately, and end up as a separate `users/{uid}`
+ * doc — which is how one real student ends up with two rows in Super
+ * Admin's Users Registration Details table). Every other provider's
+ * address is only lowercased/trimmed — dots ARE significant outside Gmail.
+ */
+function normalizeEmailForDuplicateCheck(email) {
+  const trimmed = (email || "").trim().toLowerCase();
+  const at = trimmed.lastIndexOf("@");
+  if (at < 0) return trimmed;
+  const local = trimmed.slice(0, at);
+  const domain = trimmed.slice(at + 1);
+  if (domain !== "gmail.com" && domain !== "googlemail.com") return trimmed;
+  const withoutPlus = local.split("+")[0];
+  const withoutDots = withoutPlus.replace(/\./g, "");
+  return `${withoutDots}@gmail.com`;
 }
 
 /**
@@ -146,6 +171,57 @@ async function logActivity({ actorUid, actorEmail, actorName, actorRole, type, d
     timestamp: FieldValue.serverTimestamp(),
   });
 }
+
+/**
+ * Reserves a normalized email ahead of Firebase Auth account creation, so
+ * two signups whose emails are cosmetically different but the SAME real
+ * Gmail inbox (dots/plus tricks — see normalizeEmailForDuplicateCheck)
+ * can't both get an account. Called by AuthContext.signup() BEFORE
+ * createUserWithEmailAndPassword; if that Auth call then fails for any
+ * reason, releaseEmail below frees the reservation back up so a bad
+ * password or dropped connection doesn't permanently lock the address out.
+ *
+ * Public (no `request.auth`) since this runs before the person has any
+ * session — App Check still gates it. Firebase Auth's own
+ * "email-already-in-use" already blocks a second signup with the EXACT
+ * SAME email string; this only adds protection for the Gmail-variant case
+ * Firebase itself doesn't catch.
+ */
+exports.reserveEmail = onCall({ enforceAppCheck: true }, async (request) => {
+  const email = (request.data?.email || "").trim();
+  if (!email || !email.includes("@")) {
+    throw new HttpsError("invalid-argument", "A valid email is required.");
+  }
+  const key = normalizeEmailForDuplicateCheck(email);
+  const ref = db.collection("emailIndex").doc(key);
+
+  await db.runTransaction(async (tx) => {
+    const snap = await tx.get(ref);
+    if (snap.exists) {
+      throw new HttpsError(
+        "already-exists",
+        "An account already exists using this email address (or a variation of it, like a different placement of dots). Please sign in instead, or use a different email."
+      );
+    }
+    tx.set(ref, { email: email.toLowerCase(), reservedAt: FieldValue.serverTimestamp() });
+  });
+
+  return { reserved: true };
+});
+
+/**
+ * Frees a reservation reserveEmail made, when the Firebase Auth account
+ * creation that was supposed to follow it never actually succeeded (bad
+ * password, network error, etc.) — otherwise that normalized email would
+ * stay permanently blocked with no real account behind it. Safe to call
+ * even if nothing was reserved — just a no-op then.
+ */
+exports.releaseEmail = onCall({ enforceAppCheck: true }, async (request) => {
+  const email = (request.data?.email || "").trim();
+  if (!email) return { released: false };
+  await db.collection("emailIndex").doc(normalizeEmailForDuplicateCheck(email)).delete();
+  return { released: true };
+});
 
 exports.createStaffAccount = onCall({ enforceAppCheck: true }, async (request) => {
   const actor = await requireSuperAdmin(request);
@@ -357,6 +433,71 @@ exports.removeStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
 });
 
 /**
+ * Permanently deletes a STUDENT account — the Firebase Auth user, their
+ * `users/{uid}` profile doc, and any `registrations` doc(s) tied to that
+ * uid. Built for Super Admin's "Users Registration Details" table (Login
+ * Status column's "Manage" button) to clean up duplicate accounts — e.g. a
+ * student who signed up twice under two different emails with the same
+ * name. Super Admin can't approve/reject a registration (Admin-only), but
+ * removing a genuinely duplicate ACCOUNT is a Super-Admin-level action,
+ * same tier as the role-management functions above.
+ *
+ * Refuses to touch a staff account (this is student-account cleanup only —
+ * use removeStaffRole for staff) or the caller's own account. No undo —
+ * the client confirms with the person first.
+ */
+exports.deleteStudentAccount = onCall({ enforceAppCheck: true }, async (request) => {
+  const actor = await requireSuperAdmin(request);
+  const uid = (request.data?.uid || "").trim();
+  if (!uid) {
+    throw new HttpsError("invalid-argument", "uid is required.");
+  }
+  if (uid === actor.uid) {
+    throw new HttpsError("failed-precondition", "You can't delete your own account here.");
+  }
+
+  const profileRef = db.collection("users").doc(uid);
+  const profileSnap = await profileRef.get();
+  const profile = profileSnap.exists ? profileSnap.data() : null;
+  if (profile && (profile.role || "student") !== "student") {
+    throw new HttpsError(
+      "failed-precondition",
+      "This tool only removes student accounts — use Roles & Permissions to remove a staff account."
+    );
+  }
+
+  const regsSnap = await db.collection("registrations").where("uid", "==", uid).get();
+  const batch = db.batch();
+  regsSnap.docs.forEach((doc) => batch.delete(doc.ref));
+  if (profileSnap.exists) batch.delete(profileRef);
+  await batch.commit();
+
+  try {
+    await getAuth().deleteUser(uid);
+  } catch (error) {
+    // Already gone from Auth (e.g. a retry after a partial earlier
+    // failure) — the Firestore cleanup above still needs to happen, so
+    // this isn't treated as a failure of the overall delete.
+    if (error.code !== "auth/user-not-found") throw error;
+  }
+
+  const label = profile?.name || profile?.email || uid;
+  await logActivity({
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    actorName: actor.name,
+    actorRole: actor.role,
+    type: "Student Account Deleted",
+    details: `Deleted student account ${label} (${regsSnap.size} registration${regsSnap.size === 1 ? "" : "s"} removed with it)`,
+    targetType: "user",
+    targetId: uid,
+    targetLabel: label,
+  });
+
+  return { uid, registrationsDeleted: regsSnap.size };
+});
+
+/**
  * Returns each requested account's REAL Firebase Auth sign-in history
  * (`metadata.lastSignInTime`), keyed by uid — backs Super Admin's "Users
  * Registration Details" table (Login Status column: Signed In / Not
@@ -376,18 +517,88 @@ exports.getUsersLastSignIn = onCall({ enforceAppCheck: true }, async (request) =
   const uids = Array.isArray(request.data?.uids)
     ? [...new Set(request.data.uids.filter((uid) => typeof uid === "string" && uid))]
     : [];
-  if (uids.length === 0) return { lastSignIn: {} };
+  if (uids.length === 0) return { lastSignIn: {}, deletedUids: [] };
 
   const auth = getAuth();
   const lastSignIn = {};
+  const deletedUids = [];
   // getUsers() accepts at most 100 identifiers per call.
   for (let i = 0; i < uids.length; i += 100) {
     const batch = uids.slice(i, i + 100).map((uid) => ({ uid }));
     const { users, notFound } = await auth.getUsers(batch);
     users.forEach((u) => { lastSignIn[u.uid] = u.metadata.lastSignInTime || null; });
-    notFound.forEach((identifier) => { lastSignIn[identifier.uid] = null; });
+    // A uid with a `users/{uid}` Firestore doc but no matching Firebase
+    // Auth account is an orphan — most likely someone was deleted directly
+    // from Authentication in the Firebase Console (which never touches
+    // Firestore), rather than through this app's own Delete Account
+    // action. Surfaced separately from "never signed in" so the table can
+    // show "Account Deleted" instead of a misleading "Not Signed In Yet".
+    notFound.forEach((identifier) => { deletedUids.push(identifier.uid); });
   }
-  return { lastSignIn };
+  return { lastSignIn, deletedUids };
+});
+
+/**
+ * Auto-cleanup for accounts deleted directly from Authentication in the
+ * Firebase Console (or any other way that isn't this app's own
+ * deleteStudentAccount) — that kind of deletion only removes the Auth
+ * account and never touches Firestore, which is what let a deleted
+ * account's `users/{uid}` doc keep showing up as a ghost row in Super
+ * Admin's Users Registration Details table.
+ *
+ * This runs on a schedule rather than reacting to the deletion instantly:
+ * Cloud Functions v2 has no auth-user-deleted EVENT trigger (only the
+ * unrelated beforeCreate/beforeSignIn BLOCKING triggers) — that trigger
+ * only exists on Cloud Functions Gen 1, which doesn't support this
+ * project's Node 24 runtime. Between runs, the gap is already visible and
+ * fixable by hand: getUsersLastSignIn (above) flags the same orphaned
+ * uids immediately as "Account Deleted" in the table, with a "Clear
+ * Leftover Data" button that does the same cleanup on demand.
+ */
+exports.cleanupOrphanedUserDocs = onSchedule("every 1 hours", async () => {
+  const usersSnap = await db.collection("users").get();
+  const uids = usersSnap.docs.map((d) => d.id);
+  if (uids.length === 0) return;
+
+  const auth = getAuth();
+  const orphanUids = [];
+  for (let i = 0; i < uids.length; i += 100) {
+    const batch = uids.slice(i, i + 100).map((uid) => ({ uid }));
+    const { notFound } = await auth.getUsers(batch);
+    notFound.forEach((identifier) => orphanUids.push(identifier.uid));
+  }
+  if (orphanUids.length === 0) return;
+
+  let registrationsRemoved = 0;
+  // Firestore batched writes cap at 500 operations — chunk conservatively
+  // in case one orphan has several registration docs.
+  let batch = db.batch();
+  let opsInBatch = 0;
+  const flushIfNeeded = async () => {
+    if (opsInBatch < 400) return;
+    await batch.commit();
+    batch = db.batch();
+    opsInBatch = 0;
+  };
+
+  for (const uid of orphanUids) {
+    batch.delete(db.collection("users").doc(uid));
+    opsInBatch++;
+    const regsSnap = await db.collection("registrations").where("uid", "==", uid).get();
+    for (const doc of regsSnap.docs) {
+      batch.delete(doc.ref);
+      opsInBatch++;
+      registrationsRemoved++;
+      await flushIfNeeded();
+    }
+    await flushIfNeeded();
+  }
+  if (opsInBatch > 0) await batch.commit();
+
+  logger.info("cleanupOrphanedUserDocs: removed Firestore data for deleted Auth users", {
+    profilesRemoved: orphanUids.length,
+    registrationsRemoved,
+  });
 });
 
 /**

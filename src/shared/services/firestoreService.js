@@ -152,19 +152,71 @@ export async function getUserProfile(uid) {
 }
 
 /**
+ * Claims a normalized email ahead of account creation — see
+ * reserveEmail's own comment in functions/index.js for why this exists
+ * (Gmail dot/plus tricks Firebase Auth itself doesn't catch). Throws if
+ * that normalized address is already taken; AuthContext.signup() calls
+ * this before createUserWithEmailAndPassword.
+ */
+export async function reserveEmail(email) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'reserveEmail');
+  const { data } = await call({ email });
+  return data;
+}
+
+/**
+ * Frees a reservation reserveEmail made, when the Firebase Auth account
+ * creation that was supposed to follow it never actually happened.
+ * Fire-and-forget by convention here (swallows its own errors) since it
+ * only runs from a signup failure path that's already surfacing its own
+ * error to the person.
+ */
+export async function releaseEmail(email) {
+  if (!functions) return;
+  try {
+    const call = httpsCallable(functions, 'releaseEmail');
+    await call({ email });
+  } catch (error) {
+    console.warn('Failed to release email reservation:', error);
+  }
+}
+
+/**
  * Every requested account's real Firebase Auth sign-in history, keyed by
- * uid — backs Super Admin's "Users Registration Details" table (Signed In
- * / Not Signed In Yet column, see StudentRegistrationDetails.jsx). Only the
- * Admin SDK can read another user's Auth metadata, hence the Cloud
- * Function (getUsersLastSignIn in functions/index.js) rather than a
- * Firestore field — that also means it's correct from each account's very
- * first real login, not just logins after some tracking write was added.
+ * uid — backs Super Admin's "Users Registration Details" table (Login
+ * Status column, see StudentRegistrationDetails.jsx). Only the Admin SDK
+ * can read another user's Auth metadata, hence the Cloud Function
+ * (getUsersLastSignIn in functions/index.js) rather than a Firestore field
+ * — that also means it's correct from each account's very first real
+ * login, not just logins after some tracking write was added.
+ *
+ * Also returns `deletedUids`: uids with a `users/{uid}` Firestore doc but
+ * no matching Firebase Auth account — most often someone deleted directly
+ * from Authentication in the Firebase Console, which never touches
+ * Firestore. The table shows these as "Account Deleted" rather than
+ * lumping them in with "Not Signed In Yet".
  */
 export async function getUsersLastSignIn(uids) {
-  if (!functions || !uids || uids.length === 0) return {};
+  if (!functions || !uids || uids.length === 0) return { lastSignIn: {}, deletedUids: [] };
   const call = httpsCallable(functions, 'getUsersLastSignIn');
   const { data } = await call({ uids });
-  return data?.lastSignIn || {};
+  return { lastSignIn: data?.lastSignIn || {}, deletedUids: data?.deletedUids || [] };
+}
+
+/**
+ * Permanently deletes a STUDENT account (Firebase Auth user + their
+ * `users/{uid}` profile + any registrations tied to it) — see
+ * deleteStudentAccount's own comment in functions/index.js. Super-Admin
+ * only; the Cloud Function re-checks that itself. Used by
+ * StudentRegistrationDetails.jsx's "Manage" action (scope 'allUsers') to
+ * clean up duplicate student accounts.
+ */
+export async function deleteStudentAccount(uid) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'deleteStudentAccount');
+  const { data } = await call({ uid });
+  return data;
 }
 
 /* ─────────────────────────────────────────────

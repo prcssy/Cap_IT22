@@ -10,7 +10,7 @@ import {
   updatePassword as firebaseUpdatePassword,
 } from 'firebase/auth';
 import { doc, getDoc, onSnapshot } from 'firebase/firestore';
-import { createUserProfile, getUserProfile, logActivity } from '../services/firestoreService';
+import { createUserProfile, getUserProfile, logActivity, reserveEmail, releaseEmail } from '../services/firestoreService';
 import { isLevelScopedRole, normalizeStaffLevel } from '../constants/roles';
 
 // ════════════════════════════════════════════════════════════════════════════════
@@ -322,7 +322,27 @@ export function AuthProvider({ children }) {
    */
   const signup = useCallback(async (name, email, password, extra = {}) => {
     if (!auth) throw new Error('Firebase Auth not configured. Please add Firebase credentials to .env');
-    const credential = await createUserWithEmailAndPassword(auth, email, password);
+
+    // Firebase Auth already refuses a second signup with the EXACT SAME
+    // email string, but Gmail treats dots/plus-tags as insignificant
+    // (student.name@gmail.com, studentname@gmail.com and
+    // studentname+1@gmail.com are the same inbox to Gmail, but three
+    // different accounts to Firebase Auth) — this closes that gap by
+    // reserving the normalized address first. See reserveEmail's own
+    // comment in functions/index.js. Throws (and aborts signup) if that
+    // normalized address is already taken.
+    await reserveEmail(email);
+
+    let credential;
+    try {
+      credential = await createUserWithEmailAndPassword(auth, email, password);
+    } catch (error) {
+      // No account actually got created behind the reservation above (bad
+      // password, network error, etc.) — free it, or this address would
+      // stay permanently blocked with nothing behind it.
+      releaseEmail(email);
+      throw error;
+    }
     const user = credential.user;
 
     // Send the gmail verification link right away. The account exists

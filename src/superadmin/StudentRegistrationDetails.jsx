@@ -3,7 +3,7 @@ import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf, FaFileW
 // jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf below),
 // not imported statically here.
 import { db } from '../shared/firebase';
-import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration, getUsersLastSignIn } from '../shared/services/firestoreService';
+import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration, getUsersLastSignIn, deleteStudentAccount } from '../shared/services/firestoreService';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { AuthContext } from '../shared/context/AuthContext';
@@ -80,7 +80,13 @@ function formatSignInDate(date) {
    Firebase Auth sign-in record (see getUsersLastSignIn's own comment in
    firestoreService.js) rather than a Firestore field, so it's accurate
    for every account immediately, including logins from before this
-   column existed — not just logins going forward. */
+   column existed — not just logins going forward.
+
+   A uid with no matching Firebase Auth account at all (most often deleted
+   directly from Authentication in the Firebase Console, which never
+   touches Firestore) never reaches this badge — fetchStudents below
+   cleans those up and drops them from the list before render, rather than
+   showing a "ghost row" state here. */
 function SignedInBadge({ lastSignInAt }) {
   const date = toDate(lastSignInAt);
   return date
@@ -263,6 +269,9 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
   // disable without blocking the rest of the table.
   const [decidingId, setDecidingId] = useState(null);
   const [decisionError, setDecisionError] = useState('');
+  // Which account's Delete Account (scope 'allUsers' only) is in flight —
+  // kept separate from decidingId since that one's keyed by regId, not uid.
+  const [deletingAccountId, setDeletingAccountId] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState('');
   const [filterLevel, setFilterLevel] = useState('');
@@ -306,12 +315,31 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
       // Only Super Admin's table (scope 'allUsers') shows the Login Status
       // column, so only it needs this extra round trip — a Cloud Function
       // call per load, not per row.
-      const lastSignInByUid = scope === 'allUsers'
+      const { lastSignIn: lastSignInByUid, deletedUids } = scope === 'allUsers'
         ? await getUsersLastSignIn(studentUsers.map(u => u.id)).catch((err) => {
             console.warn('Failed to load sign-in status:', err);
-            return {};
+            return { lastSignIn: {}, deletedUids: [] };
           })
-        : {};
+        : { lastSignIn: {}, deletedUids: [] };
+      const deletedUidSet = new Set(deletedUids);
+
+      // A uid with no matching Firebase Auth account left is almost always
+      // someone deleted straight from Authentication in the Firebase
+      // Console, which never touches Firestore — that's what used to leave
+      // a stale "ghost" row behind. Rather than showing that state and
+      // making Super Admin clear it by hand, clean it up right here (same
+      // cleanup deleteStudentAccount does) and drop it from what's about
+      // to render, so it never appears at all. This runs on every load in
+      // addition to the hourly cleanupOrphanedUserDocs sweep on the
+      // backend — whichever gets there first.
+      if (deletedUidSet.size > 0) {
+        await Promise.all(
+          [...deletedUidSet].map((uid) => deleteStudentAccount(uid).catch((err) => {
+            console.warn(`Failed to auto-clean orphaned account ${uid}:`, err);
+          }))
+        );
+      }
+      const liveStudentUsers = studentUsers.filter(u => !deletedUidSet.has(u.id));
 
       // Admin page (scope: 'registrants') — one row per REGISTRATION
       // SUBMISSION, keyed by the registration doc rather than the student
@@ -323,7 +351,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
       // registered as a player; this is the original behavior this page
       // always had, kept as-is for the Super Admin audit view.
       const merged = scope === 'allUsers'
-        ? studentUsers.map(user => {
+        ? liveStudentUsers.map(user => {
             const registration = studentRegistrations.find(r => r.uid === user.id);
             return {
               ...user,
@@ -459,6 +487,34 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
       setDecidingId(null);
     }
   }, [userProfile, onDeleted, fetchStudents]);
+
+  /* Super Admin-only: removes a whole STUDENT ACCOUNT (Auth user + profile
+     + any registration), not just a registration doc — see
+     deleteStudentAccount's own comment in firestoreService.js. Built for
+     cleaning up duplicate accounts (e.g. one student who signed up twice
+     under two different emails, showing as two identical-looking rows). */
+  const handleDeleteAccount = useCallback(async (row) => {
+    if (!row.uid) return;
+    if (!window.confirm(
+      `Permanently delete ${row.fullName || 'this student'}'s account?\n\n` +
+      `This removes their login, their profile, and any registration they submitted. This cannot be undone.`
+    )) {
+      return;
+    }
+    setDeletingAccountId(row.uid);
+    setDecisionError('');
+    try {
+      await deleteStudentAccount(row.uid);
+      setSelectedStudent(prev => (prev && prev.uid === row.uid ? null : prev));
+      await fetchStudents();
+      onDeleted?.(row.regId || row.uid);
+    } catch (err) {
+      console.error(err);
+      setDecisionError(`Failed to delete ${row.fullName || 'this account'}${err.message ? `: ${err.message}` : '.'}`);
+    } finally {
+      setDeletingAccountId(null);
+    }
+  }, [fetchStudents, onDeleted]);
 
   /* ── Download one student's registration as a PDF ──
      Same jsPDF + jspdf-autotable combo AdminSchedulePage already uses for
@@ -764,7 +820,10 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                     )}
                     {scope === 'allUsers' ? (
                       <td data-label="Login Status">
-                        <SignedInBadge lastSignInAt={reg.lastSignInAt} />
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: 6, alignItems: 'flex-start' }}>
+                          <SignedInBadge lastSignInAt={reg.lastSignInAt} />
+                          <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>Manage</button>
+                        </div>
                       </td>
                     ) : (
                       <td data-label="Action">
@@ -787,7 +846,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
           <div className="asp-modal" onClick={e => e.stopPropagation()}>
             <div className="asp-modal__header">
               <h2>
-                Student Details
+                {scope === 'allUsers' ? 'Account Details' : 'Student Details'}
                 {selectedStudent.status && (
                   <span
                     className={`asp-status-badge asp-status--${selectedStudent.status}`}
@@ -800,114 +859,169 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
               <button className="asp-modal__close" onClick={() => setSelectedStudent(null)}><FaTimes /></button>
             </div>
             <div className="asp-modal__body">
-              <section className="asp-modal__section-group">
-                <h3 className="asp-modal__section">Basic Information</h3>
-                <div className="asp-form-row">
-                  <DetailField label="Full Name" value={selectedStudent.fullName} />
-                  <DetailField label="Gender" value={selectedStudent.gender} center />
-                </div>
-                <div className="asp-form-row">
-                  <DetailField label="Date of Birth" value={selectedStudent.dob} />
-                  <DetailField label="Age" value={selectedStudent.age} center />
-                </div>
-              </section>
+              {scope === 'allUsers' ? (
+                <>
+                  {/* Super Admin's audit view: account identity + login
+                      activity, plus a read-only note on any registration —
+                      approving/rejecting that stays Admin's job. This is
+                      deliberately lighter than the full registration modal
+                      below (no waiver/photo/emergency contact), since it's
+                      for telling accounts apart, not reviewing a signup. */}
+                  <section className="asp-modal__section-group">
+                    <h3 className="asp-modal__section">Account</h3>
+                    <div className="asp-form-row">
+                      <DetailField label="Full Name" value={selectedStudent.fullName} />
+                      <DetailField label="Gender" value={selectedStudent.gender} center />
+                    </div>
+                    <div className="asp-form-row">
+                      <DetailField label="Email" value={selectedStudent.email} />
+                      <DetailField label="Grade / Year Level" value={selectedStudent.gradeLevel} center />
+                    </div>
+                    <DetailField label="Level" value={LEVEL_LABELS[getSchoolLevel(selectedStudent.gradeLevel)]} />
+                  </section>
 
-              <section className="asp-modal__section-group">
-                <h3 className="asp-modal__section">Academic Information</h3>
-                <div className="asp-form-row">
-                  <DetailField label="Grade / Year Level" value={selectedStudent.gradeLevel} />
-                  <DetailField label="Section" value={selectedStudent.section} center />
-                </div>
-                <DetailField label="Level" value={LEVEL_LABELS[getSchoolLevel(selectedStudent.gradeLevel)]} />
-              </section>
+                  <section className="asp-modal__section-group">
+                    <h3 className="asp-modal__section">Login Status</h3>
+                    <div className="asp-form-group">
+                      <SignedInBadge lastSignInAt={selectedStudent.lastSignInAt} />
+                    </div>
+                  </section>
 
-              <section className="asp-modal__section-group">
-                <h3 className="asp-modal__section">Contact Information</h3>
-                <div className="asp-form-row">
-                  <DetailField label="Contact Number" value={selectedStudent.contactNumber} />
-                  <DetailField label="Email" value={selectedStudent.email || selectedStudent.studentEmail} center />
-                </div>
-                <DetailField label="Address" value={selectedStudent.address} />
-                <DetailField label="Emergency Contact" value={selectedStudent.emergencyContact} />
-              </section>
+                  {selectedStudent.regId && (
+                    <section className="asp-modal__section-group">
+                      <h3 className="asp-modal__section">Registration</h3>
+                      <p style={{ margin: 0, color: '#475569', fontSize: 14 }}>
+                        Registered for {selectedStudent.sport || 'a sport'} ({selectedStudent.event || 'no event'}).
+                        Approve, reject, or review full details from Admin's Registration tab.
+                      </p>
+                    </section>
+                  )}
 
-              <section className="asp-modal__section-group">
-                <h3 className="asp-modal__section">Sports &amp; Team</h3>
-                <div className="asp-form-row">
-                  <DetailField label="Sport" value={selectedStudent.sportRemoved ? sportLabel(selectedStudent) : selectedStudent.sport} />
-                  <DetailField label="Position" value={selectedStudent.position} center />
-                </div>
-                <div className="asp-form-row">
-                  <DetailField label="Team Name" value={selectedStudent.teamName} />
-                  <DetailField label="Event" value={selectedStudent.event} center />
-                </div>
-              </section>
-
-              {selectedStudent.message && (
-                <section className="asp-modal__section-group">
-                  <h3 className="asp-modal__section">Message</h3>
-                  <DetailField label="Message" value={selectedStudent.message} />
-                </section>
-              )}
-
-              {(selectedStudent.photoURL || selectedStudent.waiverURL) && (
-                <section className="asp-modal__section-group">
-                  <h3 className="asp-modal__section">Attachments</h3>
-                  <div className="asp-form-row">
-                    {selectedStudent.photoURL && (
-                      <div className="asp-form-group">
-                        <label>Photo</label>
-                        <PhotoAttachment url={selectedStudent.photoURL} />
-                      </div>
-                    )}
-                    {selectedStudent.waiverURL && (
-                      <div className="asp-form-group">
-                        <label>Waiver / Consent Form</label>
-                        <WaiverAttachment url={selectedStudent.waiverURL} fileName={selectedStudent.waiverFileName} />
-                      </div>
-                    )}
-                  </div>
-                </section>
-              )}
-
-              <div className="asp-form-actions">
-                <button
-                  type="button"
-                  className="asp-btn-download"
-                  onClick={() => handleDownloadPdf(selectedStudent)}
-                >
-                  <FaFilePdf /> Download PDF
-                </button>
-                {selectedStudent.regId && (
-                  <>
-                    <button
-                      type="button"
-                      className="asp-btn-approve"
-                      disabled={decidingId === selectedStudent.regId || selectedStudent.status === 'approved'}
-                      onClick={() => handleDecision(selectedStudent, 'approved')}
-                    >
-                      <FaCheck /> Approve
-                    </button>
-                    <button
-                      type="button"
-                      className="asp-btn-reject"
-                      disabled={decidingId === selectedStudent.regId || selectedStudent.status === 'rejected'}
-                      onClick={() => handleDecision(selectedStudent, 'rejected')}
-                    >
-                      <FaTimes /> Reject
-                    </button>
+                  <div className="asp-form-actions">
                     <button
                       type="button"
                       className="asp-btn-delete"
-                      disabled={decidingId === selectedStudent.regId}
-                      onClick={() => handleDelete(selectedStudent)}
+                      disabled={deletingAccountId === selectedStudent.uid}
+                      onClick={() => handleDeleteAccount(selectedStudent)}
+                      title="Removes this account's login, profile, and any registration it submitted"
                     >
-                      <FaTrash /> Delete
+                      <FaTrash /> {deletingAccountId === selectedStudent.uid ? 'Deleting…' : 'Delete Account'}
                     </button>
-                  </>
-                )}
-                <button type="button" className="asp-btn-cancel" onClick={() => setSelectedStudent(null)}>Close</button>
-              </div>
+                    <button type="button" className="asp-btn-cancel" onClick={() => setSelectedStudent(null)}>Close</button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <section className="asp-modal__section-group">
+                    <h3 className="asp-modal__section">Basic Information</h3>
+                    <div className="asp-form-row">
+                      <DetailField label="Full Name" value={selectedStudent.fullName} />
+                      <DetailField label="Gender" value={selectedStudent.gender} center />
+                    </div>
+                    <div className="asp-form-row">
+                      <DetailField label="Date of Birth" value={selectedStudent.dob} />
+                      <DetailField label="Age" value={selectedStudent.age} center />
+                    </div>
+                  </section>
+
+                  <section className="asp-modal__section-group">
+                    <h3 className="asp-modal__section">Academic Information</h3>
+                    <div className="asp-form-row">
+                      <DetailField label="Grade / Year Level" value={selectedStudent.gradeLevel} />
+                      <DetailField label="Section" value={selectedStudent.section} center />
+                    </div>
+                    <DetailField label="Level" value={LEVEL_LABELS[getSchoolLevel(selectedStudent.gradeLevel)]} />
+                  </section>
+
+                  <section className="asp-modal__section-group">
+                    <h3 className="asp-modal__section">Contact Information</h3>
+                    <div className="asp-form-row">
+                      <DetailField label="Contact Number" value={selectedStudent.contactNumber} />
+                      <DetailField label="Email" value={selectedStudent.email || selectedStudent.studentEmail} center />
+                    </div>
+                    <DetailField label="Address" value={selectedStudent.address} />
+                    <DetailField label="Emergency Contact" value={selectedStudent.emergencyContact} />
+                  </section>
+
+                  <section className="asp-modal__section-group">
+                    <h3 className="asp-modal__section">Sports &amp; Team</h3>
+                    <div className="asp-form-row">
+                      <DetailField label="Sport" value={selectedStudent.sportRemoved ? sportLabel(selectedStudent) : selectedStudent.sport} />
+                      <DetailField label="Position" value={selectedStudent.position} center />
+                    </div>
+                    <div className="asp-form-row">
+                      <DetailField label="Team Name" value={selectedStudent.teamName} />
+                      <DetailField label="Event" value={selectedStudent.event} center />
+                    </div>
+                  </section>
+
+                  {selectedStudent.message && (
+                    <section className="asp-modal__section-group">
+                      <h3 className="asp-modal__section">Message</h3>
+                      <DetailField label="Message" value={selectedStudent.message} />
+                    </section>
+                  )}
+
+                  {(selectedStudent.photoURL || selectedStudent.waiverURL) && (
+                    <section className="asp-modal__section-group">
+                      <h3 className="asp-modal__section">Attachments</h3>
+                      <div className="asp-form-row">
+                        {selectedStudent.photoURL && (
+                          <div className="asp-form-group">
+                            <label>Photo</label>
+                            <PhotoAttachment url={selectedStudent.photoURL} />
+                          </div>
+                        )}
+                        {selectedStudent.waiverURL && (
+                          <div className="asp-form-group">
+                            <label>Waiver / Consent Form</label>
+                            <WaiverAttachment url={selectedStudent.waiverURL} fileName={selectedStudent.waiverFileName} />
+                          </div>
+                        )}
+                      </div>
+                    </section>
+                  )}
+
+                  <div className="asp-form-actions">
+                    <button
+                      type="button"
+                      className="asp-btn-download"
+                      onClick={() => handleDownloadPdf(selectedStudent)}
+                    >
+                      <FaFilePdf /> Download PDF
+                    </button>
+                    {selectedStudent.regId && (
+                      <>
+                        <button
+                          type="button"
+                          className="asp-btn-approve"
+                          disabled={decidingId === selectedStudent.regId || selectedStudent.status === 'approved'}
+                          onClick={() => handleDecision(selectedStudent, 'approved')}
+                        >
+                          <FaCheck /> Approve
+                        </button>
+                        <button
+                          type="button"
+                          className="asp-btn-reject"
+                          disabled={decidingId === selectedStudent.regId || selectedStudent.status === 'rejected'}
+                          onClick={() => handleDecision(selectedStudent, 'rejected')}
+                        >
+                          <FaTimes /> Reject
+                        </button>
+                        <button
+                          type="button"
+                          className="asp-btn-delete"
+                          disabled={decidingId === selectedStudent.regId}
+                          onClick={() => handleDelete(selectedStudent)}
+                        >
+                          <FaTrash /> Delete
+                        </button>
+                      </>
+                    )}
+                    <button type="button" className="asp-btn-cancel" onClick={() => setSelectedStudent(null)}>Close</button>
+                  </div>
+                </>
+              )}
             </div>
           </div>
         </div>

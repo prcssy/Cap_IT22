@@ -181,6 +181,15 @@ service cloud.firestore {
       allow read, write: if isStaff();
     }
 
+    // ── Email de-duplication index (Gmail dot/plus tricks) ───────
+    // Written only by the reserveEmail/releaseEmail Cloud Functions (Admin
+    // SDK, bypasses these rules entirely, same trust boundary as
+    // matchRecords/teamRankings above) — see reserveEmail's own comment in
+    // functions/index.js.
+    match /emailIndex/{key} {
+      allow read, write: if false;
+    }
+
     // ── Activity logs ───────────────────────────────────────────
     // Append-only audit trail: anyone signed in may CREATE a log entry
     // (login/logout, submitting a registration, etc. are logged by every
