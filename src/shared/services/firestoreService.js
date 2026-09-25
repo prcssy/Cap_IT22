@@ -151,6 +151,22 @@ export async function getUserProfile(uid) {
   return snapshot.exists() ? { id: snapshot.id, ...snapshot.data() } : null;
 }
 
+/**
+ * Every requested account's real Firebase Auth sign-in history, keyed by
+ * uid — backs Super Admin's "Users Registration Details" table (Signed In
+ * / Not Signed In Yet column, see StudentRegistrationDetails.jsx). Only the
+ * Admin SDK can read another user's Auth metadata, hence the Cloud
+ * Function (getUsersLastSignIn in functions/index.js) rather than a
+ * Firestore field — that also means it's correct from each account's very
+ * first real login, not just logins after some tracking write was added.
+ */
+export async function getUsersLastSignIn(uids) {
+  if (!functions || !uids || uids.length === 0) return {};
+  const call = httpsCallable(functions, 'getUsersLastSignIn');
+  const { data } = await call({ uids });
+  return data?.lastSignIn || {};
+}
+
 /* ─────────────────────────────────────────────
    Activity logs — a single, append-only audit trail written by every
    part of the app that performs a "named" action (login/logout, role

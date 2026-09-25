@@ -357,6 +357,39 @@ exports.removeStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
 });
 
 /**
+ * Returns each requested account's REAL Firebase Auth sign-in history
+ * (`metadata.lastSignInTime`), keyed by uid — backs Super Admin's "Users
+ * Registration Details" table (Signed In / Not Signed In Yet column).
+ *
+ * This reads Firebase Auth directly rather than a Firestore mirror, so it's
+ * correct for every account from the moment they first ever signed in, not
+ * just logins that happen after some tracking code was added — there's no
+ * way to backfill a Firestore-only counter for past logins Firebase Auth
+ * already recorded, so this is the only source that's accurate right away.
+ * Only the Admin SDK (used here) can read another user's Auth metadata —
+ * there's no client-reachable way to do it, hence the callable. Staff-only,
+ * not Super-Admin-only: any staff role may audit sign-in activity.
+ */
+exports.getUsersLastSignIn = onCall({ enforceAppCheck: true }, async (request) => {
+  await requireStaff(request);
+  const uids = Array.isArray(request.data?.uids)
+    ? [...new Set(request.data.uids.filter((uid) => typeof uid === "string" && uid))]
+    : [];
+  if (uids.length === 0) return { lastSignIn: {} };
+
+  const auth = getAuth();
+  const lastSignIn = {};
+  // getUsers() accepts at most 100 identifiers per call.
+  for (let i = 0; i < uids.length; i += 100) {
+    const batch = uids.slice(i, i + 100).map((uid) => ({ uid }));
+    const { users, notFound } = await auth.getUsers(batch);
+    users.forEach((u) => { lastSignIn[u.uid] = u.metadata.lastSignInTime || null; });
+    notFound.forEach((identifier) => { lastSignIn[identifier.uid] = null; });
+  }
+  return { lastSignIn };
+});
+
+/**
  * Confirms a match result (ModeratorPage's "Confirm update" — new record or
  * re-confirming an already-locked one). The client still runs its own copy
  * of buildComputation for the live confirmation-screen preview, but this is

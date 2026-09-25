@@ -910,6 +910,18 @@
   color: #991b1b;
 }
 
+/* Sign-in status (Super Admin's Users Registration Details table only —
+   see SignedInBadge in StudentRegistrationDetails.jsx). */
+.asp-status--signedin {
+  background: #dbeafe;
+  color: #1d4ed8;
+}
+
+.asp-status--notsignedin {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
 /* Approve/Reject/Delete — Student Registration Details table row + modal
    footer. All three stay visible regardless of the registration's current
    status (not just while pending) so a wrong Approve/Reject click can be

@@ -3,7 +3,7 @@ import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf, FaFileW
 // jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf below),
 // not imported statically here.
 import { db } from '../shared/firebase';
-import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration } from '../shared/services/firestoreService';
+import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration, getUsersLastSignIn } from '../shared/services/firestoreService';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { AuthContext } from '../shared/context/AuthContext';
@@ -54,6 +54,39 @@ async function loadSportNamesByLevel() {
 }
 
 const sportLabel = (reg) => (reg.sportRemoved ? `${reg.sport} (sport removed)` : (reg.sport || 'N/A'));
+
+// getUsersLastSignIn returns an ISO date string (Firebase Auth's
+// metadata.lastSignInTime, mirrored as-is by the Cloud Function); treat
+// anything unparseable as "never signed in" rather than crashing the table.
+function toDate(value) {
+  if (!value) return null;
+  if (typeof value.toDate === 'function') return value.toDate();
+  const parsed = new Date(value);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function formatSignInDate(date) {
+  return date.toLocaleString(undefined, {
+    month: 'short', day: 'numeric', year: 'numeric',
+    hour: 'numeric', minute: '2-digit',
+  });
+}
+
+/* Super Admin can't approve/reject registrations (only Admin can, on
+   AdminSchedulePage's own Registration tab), so this table's Action/View
+   column — which only ever opened the Approve/Reject/Delete modal — is
+   replaced with something Super Admin actually uses this audit view for:
+   whether the account has ever signed in at all. Backed by the real
+   Firebase Auth sign-in record (see getUsersLastSignIn's own comment in
+   firestoreService.js) rather than a Firestore field, so it's accurate
+   for every account immediately, including logins from before this
+   column existed — not just logins going forward. */
+function SignedInBadge({ lastSignInAt }) {
+  const date = toDate(lastSignInAt);
+  return date
+    ? <span className="asp-status-badge asp-status--signedin" title={formatSignInDate(date)}>Signed In</span>
+    : <span className="asp-status-badge asp-status--notsignedin">Not Signed In Yet</span>;
+}
 
 // Shared by every field in the Student Details modal: values the merge
 // logic already fell back to ('—' for user-profile fields, 'N/A' for
@@ -270,6 +303,16 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
       const studentUids = new Set(studentUsers.map(u => u.id));
       const studentRegistrations = registrations.filter(r => studentUids.has(r.uid));
 
+      // Only Super Admin's table (scope 'allUsers') shows the Signed In
+      // column, so only it needs this extra round trip — a Cloud Function
+      // call per load, not per row.
+      const lastSignInByUid = scope === 'allUsers'
+        ? await getUsersLastSignIn(studentUsers.map(u => u.id)).catch((err) => {
+            console.warn('Failed to load sign-in status:', err);
+            return {};
+          })
+        : {};
+
       // Admin page (scope: 'registrants') — one row per REGISTRATION
       // SUBMISSION, keyed by the registration doc rather than the student
       // account. A student who only signed up for an account but never
@@ -298,6 +341,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
               position: (registration && registration.position) || 'N/A',
               teamName: (registration && registration.teamName) || 'N/A',
               event: (registration && (getEventLabel(registration.eventKey || registration.event, events) || registration.event)) || 'N/A',
+              lastSignInAt: lastSignInByUid[user.id] || null,
             };
           })
         : studentRegistrations.map(registration => {
@@ -679,7 +723,10 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                   {scope !== 'allUsers' && <th className="asp-col-center">Sport</th>}
                   {scope !== 'allUsers' && <th>Event</th>}
                   {scope !== 'allUsers' && <th>Status</th>}
-                  <th>Action</th>
+                  {/* Super Admin can't approve/reject (Admin-only), so this
+                      column shows sign-in status instead of a View/Action
+                      button here — see SignedInBadge above. */}
+                  <th>{scope === 'allUsers' ? 'Signed In' : 'Action'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -715,11 +762,17 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                         ) : '—'}
                       </td>
                     )}
-                    <td data-label="Action">
-                      <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
-                        <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
-                      </div>
-                    </td>
+                    {scope === 'allUsers' ? (
+                      <td data-label="Signed In">
+                        <SignedInBadge lastSignInAt={reg.lastSignInAt} />
+                      </td>
+                    ) : (
+                      <td data-label="Action">
+                        <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', justifyContent: 'flex-start' }}>
+                          <button className="asp-btn-view" onClick={() => setSelectedStudent(reg)}>View</button>
+                        </div>
+                      </td>
+                    )}
                   </tr>
                 ))}
               </tbody>
