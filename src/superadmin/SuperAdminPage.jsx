@@ -15,7 +15,7 @@ import '../admin/AdminSchedulePage.css';
 import './SuperAdminPage.css';
 import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
-  FaSync, FaDownload, FaChartPie, FaChevronDown, FaCheck, FaUserShield,
+  FaSync, FaDownload, FaChartPie, FaChevronDown, FaCheck, FaUserShield, FaSearch,
 } from 'react-icons/fa';
 
 /* ═══════════════════════════════════════════════════════════════
@@ -590,6 +590,7 @@ export default function SuperAdminPage() {
   const [users, setUsers]                 = useState([]);
   const [registrations, setRegistrations] = useState([]);
   const [staffRoster, setStaffRoster]     = useState([]);
+  const [staffSearch, setStaffSearch]     = useState('');
   const [configsByLevel, setConfigsByLevel]     = useState({});
   const [schedulesByLevel, setSchedulesByLevel] = useState({});
   const [recordsByLevel, setRecordsByLevel]     = useState({});
@@ -840,6 +841,12 @@ export default function SuperAdminPage() {
       .sort((a, b) => (ROLE_ORDER[a.role] - ROLE_ORDER[b.role])
         || (a.name || a.email).localeCompare(b.name || b.email, undefined, { sensitivity: 'base' }));
   }, [staffRoster, users]);
+
+  const filteredStaffList = useMemo(() => {
+    const q = staffSearch.trim().toLowerCase();
+    if (!q) return staffList;
+    return staffList.filter(s => (s.name || '').toLowerCase().includes(q) || s.email.toLowerCase().includes(q));
+  }, [staffList, staffSearch]);
 
   /* A registration doc's own `gradeLevel` is a snapshot taken at submission
      time — it can drift from the student's CURRENT profile (year-level
@@ -1302,7 +1309,19 @@ export default function SuperAdminPage() {
                 <FaUserShield className="asp-card__icon" />
                 <span>STAFF LIST</span>
               </div>
-              <span className="asp-results-count">{staffList.length} result{staffList.length !== 1 ? 's' : ''}</span>
+              <div className="asp-search-wrap">
+                <FaSearch className="asp-search-icon" />
+                <input
+                  className="asp-search-input"
+                  type="text"
+                  placeholder="Search by name or email…"
+                  value={staffSearch}
+                  onChange={e => setStaffSearch(e.target.value)}
+                />
+              </div>
+            </div>
+            <div className="asp-filters">
+              <span className="asp-results-count">{filteredStaffList.length} result{filteredStaffList.length !== 1 ? 's' : ''}</span>
             </div>
             <div className="asp-table-wrap" style={{ marginTop: 8 }}>
               <table className="asp-table asp-table--students">
@@ -1318,9 +1337,9 @@ export default function SuperAdminPage() {
                 <tbody>
                   {loading ? (
                     <tr><td colSpan={5}><p className="asp-empty">Loading from Firestore…</p></td></tr>
-                  ) : staffList.length === 0 ? (
-                    <tr><td colSpan={5}><p className="asp-empty">No staff accounts yet.</p></td></tr>
-                  ) : staffList.map((s, idx) => (
+                  ) : filteredStaffList.length === 0 ? (
+                    <tr><td colSpan={5}><p className="asp-empty">{staffSearch ? 'No staff match your search.' : 'No staff accounts yet.'}</p></td></tr>
+                  ) : filteredStaffList.map((s, idx) => (
                     <tr key={`${s.role}:${s.email}`}>
                       <td className="asp-td--num" data-label="#">{idx + 1}</td>
                       <td className="asp-td--name" data-label="Name">
