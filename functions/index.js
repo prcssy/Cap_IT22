@@ -359,7 +359,8 @@ exports.removeStaffRole = onCall({ enforceAppCheck: true }, async (request) => {
 /**
  * Returns each requested account's REAL Firebase Auth sign-in history
  * (`metadata.lastSignInTime`), keyed by uid — backs Super Admin's "Users
- * Registration Details" table (Signed In / Not Signed In Yet column).
+ * Registration Details" table (Login Status column: Signed In / Not
+ * Signed In Yet).
  *
  * This reads Firebase Auth directly rather than a Firestore mirror, so it's
  * correct for every account from the moment they first ever signed in, not

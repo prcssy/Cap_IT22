@@ -303,7 +303,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
       const studentUids = new Set(studentUsers.map(u => u.id));
       const studentRegistrations = registrations.filter(r => studentUids.has(r.uid));
 
-      // Only Super Admin's table (scope 'allUsers') shows the Signed In
+      // Only Super Admin's table (scope 'allUsers') shows the Login Status
       // column, so only it needs this extra round trip — a Cloud Function
       // call per load, not per row.
       const lastSignInByUid = scope === 'allUsers'
@@ -726,7 +726,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                   {/* Super Admin can't approve/reject (Admin-only), so this
                       column shows sign-in status instead of a View/Action
                       button here — see SignedInBadge above. */}
-                  <th>{scope === 'allUsers' ? 'Signed In' : 'Action'}</th>
+                  <th>{scope === 'allUsers' ? 'Login Status' : 'Action'}</th>
                 </tr>
               </thead>
               <tbody>
@@ -763,7 +763,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                       </td>
                     )}
                     {scope === 'allUsers' ? (
-                      <td data-label="Signed In">
+                      <td data-label="Login Status">
                         <SignedInBadge lastSignInAt={reg.lastSignInAt} />
                       </td>
                     ) : (
