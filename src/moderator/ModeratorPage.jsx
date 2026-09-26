@@ -29,10 +29,13 @@ import { isRaceMatch, raceParticipants } from '../shared/utils/raceFormat';
    CONSTANTS
 ═══════════════════════════════════════════ */
 
+/* Same four formats, ids and labels as Sports & Teams' "Choose Sport Format"
+   picker (SportsTeamsManager FORMAT_OPTIONS). */
 const GAME_FORMATS = [
-  { id: 'solo-time', label: 'Single Play (Solo Time)' },
-  { id: 'solo-points', label: 'Single Play (Solo Points)' },
-  { id: 'team-play', label: 'Team Play' },
+  { id: 'single-time',  label: '1 vs 1 (Time Basis)' },
+  { id: 'single-solo',  label: '1 vs 1 (Point Basis)' },
+  { id: 'single-group', label: '1 vs Many (Time Basis)' },
+  { id: 'team-play',    label: '1 vs Many (Point Basis)' },
 ];
 
 /* ── Sports format picker (the "Choose sports format" modal moderators see
@@ -279,13 +282,18 @@ function fmtSigned(n, digits = 4) {
   return `${v >= 0 ? '+' : ''}${Number(v.toFixed(digits))}`;
 }
 
-/* Map a division's saved format id (from Sports & Teams) to one of
-   the 3 game-format buckets used by the summary filter. */
-function bucketForFormat(formatId) {
-  if (formatId === 'single-time') return 'solo-time';
-  if (formatId === 'single-solo' || formatId === 'single-group') return 'solo-points';
-  if (formatId === 'team-play') return 'team-play';
-  return 'solo-points';
+/* Which of the four game formats a saved record was played in — the same
+   ids/labels as Sports & Teams' "Choose Sport Format" picker — decided by
+   what was actually recorded (time vs points, two teams vs many), so the
+   summary's Game format filter always agrees with the system. */
+function recordGameFormat(record) {
+  const multi = !!record.multi || (record.participants?.length || 0) > 2;
+  const mode = record.mode
+    || (record.teamA?.points != null ? 'points' : record.teamA?.minutes != null ? 'time' : null);
+  if (mode === 'time') return multi ? 'single-group' : 'single-time';
+  if (mode === 'points') return multi ? 'team-play' : 'single-solo';
+  // Nothing recorded to tell by — fall back to the division's configured format.
+  return GAME_FORMATS.some((f) => f.id === record.format) ? record.format : '';
 }
 
 /* Same flattening logic Sports & Teams uses: one row per division. */
@@ -2671,7 +2679,7 @@ export default function ModeratorPage() {
   /* ── summary table ── */
   const filteredRecords = useMemo(() => {
     if (!formatFilter) return records;
-    return records.filter((r) => bucketForFormat(r.format) === formatFilter);
+    return records.filter((r) => recordGameFormat(r) === formatFilter);
   }, [records, formatFilter]);
 
   function startEdit(record) {

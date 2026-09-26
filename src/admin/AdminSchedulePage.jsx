@@ -116,6 +116,19 @@ const FORMATS = [
   { id: RACE_FORMAT_ID, label: RACE_FORMAT_LABEL },
 ];
 
+/* A division's Sports & Teams format decides which schedule formats make
+   sense: "1 vs Many" (time or point basis) is one event with every team in
+   it, so its ONLY schedule format is Single-Race; a "1 vs 1" division uses
+   the round-robin / bracket formats (a race needs many teams at once). A
+   division with no format set yet keeps the full list. */
+const isOneVsManyFormat = (id) => id === 'single-group' || id === 'team-play';
+const isOneVsOneFormat = (id) => id === 'single-time' || id === 'single-solo';
+function formatsForDivision(divisionFormat) {
+  if (isOneVsManyFormat(divisionFormat)) return FORMATS.filter(f => f.id === RACE_FORMAT_ID);
+  if (isOneVsOneFormat(divisionFormat)) return FORMATS.filter(f => f.id !== RACE_FORMAT_ID);
+  return FORMATS;
+}
+
 const uid = () => Math.random().toString(36).slice(2, 10);
 
 /* Firestore denies a write/read with `permission-denied` for anything a
@@ -1345,9 +1358,10 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   };
   const handlePickCategory = (opt) => {
     setSelCategory(opt.raw);
-    // Pre-fill format with whatever was configured for this division in Sports & Teams
-    const preset = FORMATS.find(f => f.id === opt.raw.format);
-    setSelFormat(preset || null);
+    // A 1 vs Many division has exactly one schedule format (Single-Race), so
+    // it's chosen for the admin; anything else waits for an explicit pick.
+    const allowed = formatsForDivision(opt.raw.format);
+    setSelFormat(allowed.length === 1 ? allowed[0] : null);
     setActiveRound(0);
   };
   const handlePickFormat = (opt) => { setSelFormat(opt.raw); setActiveRound(0); };
@@ -2005,7 +2019,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
             label="FORMAT"
             value={selFormat?.label}
             placeholder="Select format"
-            options={FORMATS.map(f => ({ value: f.id, label: f.label, raw: f }))}
+            options={formatsForDivision(selCategory?.format).map(f => ({ value: f.id, label: f.label, raw: f }))}
             onChange={handlePickFormat}
             disabled={!selCategory || isLocked}
           />

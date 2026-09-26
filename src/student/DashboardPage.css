@@ -2312,3 +2312,20 @@
     padding-left: 64px;
   }
 }
+
+/* ══════════════════════════════════════════
+   SINGLE-RACE CARDS — every team gets the SAME tall banner a normal match
+   card gives each of its two teams (same width and height), so the card is
+   simply as wide as its field: n banners + the gaps + the card padding.
+   Desktop only — on a phone the card stays full-width and the banners share
+   that width (see the mobile rules above). --race-n is set inline.
+   ══════════════════════════════════════════ */
+@media (min-width: 769px) {
+  .upcoming-card--race {
+    flex: 0 0 calc(var(--race-n) * 9.0625rem + (var(--race-n) - 1) * 10px + 20px);
+  }
+
+  .ongoing-card--race {
+    flex: 0 0 calc(var(--race-n) * 9.375rem + (var(--race-n) - 1) * 4px + 16px);
+  }
+}

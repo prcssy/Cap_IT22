@@ -178,10 +178,16 @@ function winChance(team, opponent) {
 
 /* Extra card fields for a Single-Race fixture: how many teams are in it and
    who they are (the card itself only has room for two banners). */
-function raceCardFields(schedule) {
+function raceCardFields(schedule, toCardTeam) {
   if (!isRaceMatch(schedule)) return {};
-  const names = raceParticipants(schedule).map(p => p.name.toUpperCase());
-  return { raceCount: names.length, raceTeams: names };
+  const field = raceParticipants(schedule);
+  const names = field.map(p => p.name.toUpperCase());
+  return {
+    raceCount: names.length,
+    raceTeams: names,
+    // One banner per team, so the card shows the whole field, not just two teams.
+    raceBanners: field.map(p => toCardTeam(p.name, p.logo)),
+  };
 }
 
 function formatDatePill(dateStr) {
@@ -226,21 +232,38 @@ function TeamBanner({ team, size }) {
   );
 }
 
+/* Every team in a race, joined with VS the same way a two-team card reads
+   "RED DOORS VS GREEN PEAS". */
+function RaceTeamNames({ names }) {
+  return names.map((name, i) => (
+    <React.Fragment key={`${name}-${i}`}>
+      {i > 0 && <span className="ft-vs">VS</span>}
+      <span className="ft-label">{name}</span>
+    </React.Fragment>
+  ));
+}
+
 function OngoingCard({ match }) {
   return (
-    <div className="ongoing-card">
+    <div className={`ongoing-card${match.raceCount ? " ongoing-card--race" : ""}`} style={match.raceCount ? { "--race-n": match.raceCount } : undefined}>
       <div className="oc-banners">
         {match.matchLabel && (
           <div className="match-label-row"><span className="match-label-pill">{match.matchLabel}</span></div>
         )}
-        <TeamBanner team={match.teamA} size="oc" />
-        <TeamBanner team={match.teamB} size="oc" />
+        {match.raceBanners ? (
+          match.raceBanners.map((team, i) => <TeamBanner key={`${team.label}-${i}`} team={team} size="oc" />)
+        ) : (
+          <>
+            <TeamBanner team={match.teamA} size="oc" />
+            <TeamBanner team={match.teamB} size="oc" />
+          </>
+        )}
       </div>
       <div className="oc-footer">
         <div className="oc-date-row"><span className="date-pill">{match.date}</span></div>
         <div className="oc-teams-row">
           {match.raceCount ? (
-            <span className="ft-label">{match.raceCount}-TEAM RACE</span>
+            <RaceTeamNames names={match.raceTeams} />
           ) : (
             <>
               <span className="ft-label">{match.teamA.label}</span>
@@ -257,18 +280,24 @@ function OngoingCard({ match }) {
 
 function UpcomingCard({ match }) {
   return (
-    <div className="upcoming-card" tabIndex={0}>
+    <div className={`upcoming-card${match.raceCount ? " upcoming-card--race" : ""}`} style={match.raceCount ? { "--race-n": match.raceCount } : undefined} tabIndex={0}>
       <div className="uc-banners">
         {match.matchLabel && (
           <div className="match-label-row"><span className="match-label-pill">{match.matchLabel}</span></div>
         )}
-        <TeamBanner team={match.teamA} size="uc" />
-        {match.teamB ? <TeamBanner team={match.teamB} size="uc" /> : <div className="tbd-slot" />}
+        {match.raceBanners ? (
+          match.raceBanners.map((team, i) => <TeamBanner key={`${team.label}-${i}`} team={team} size="uc" />)
+        ) : (
+          <>
+            <TeamBanner team={match.teamA} size="uc" />
+            {match.teamB ? <TeamBanner team={match.teamB} size="uc" /> : <div className="tbd-slot" />}
+          </>
+        )}
       </div>
       <div className="uc-date-row"><span className="date-pill">{match.date}</span></div>
       <div className="uc-teams-row">
         {match.raceCount ? (
-          <span className="ft-label">{match.raceCount}-TEAM RACE</span>
+          <RaceTeamNames names={match.raceTeams} />
         ) : (
           <>
             <span className="ft-label">{match.teamA.label}</span>
@@ -776,7 +805,7 @@ function HomeView({ onOpenRegistration }) {
         sport: (m.sport || '').toUpperCase(),
         venue: (m.location || 'TBA').toUpperCase(),
         matchLabel: m.matchLabel || null,
-        ...raceCardFields(m),
+        ...raceCardFields(m, toCardTeam),
       }));
 
     const upcomingList = withWindow
@@ -792,7 +821,7 @@ function HomeView({ onOpenRegistration }) {
         teamB: toCardTeam(m.teamB, m.teamBLogo),
         sport: (m.sport || '').toUpperCase(),
         matchLabel: m.matchLabel || null,
-        ...raceCardFields(m),
+        ...raceCardFields(m, toCardTeam),
       }));
 
     const finishedList = finishedMatches

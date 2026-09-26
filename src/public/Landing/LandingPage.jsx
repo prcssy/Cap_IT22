@@ -11,6 +11,7 @@ import { LevelLabelsContext } from '../../shared/context/LevelLabelsContext';
 import { FaArrowRightLong } from "react-icons/fa6";
 import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchSchedules, subscribeMatchRecords, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
 import { applyPointDifferentialTieBreakers } from '../../shared/utils/tieBreakers';
+import { isRaceMatch, raceParticipants } from '../../shared/utils/raceFormat';
 import Contact from './Contact/Contact';
 
 /* ── NEW — additional icons for the scrollable content sections ── */
@@ -160,6 +161,8 @@ function mapScheduleToCardMatch(schedule) {
     venue: schedule.location || 'Venue TBA',
     teamA: buildTeamBadge(schedule.teamA, schedule.teamALogo),
     teamB: buildTeamBadge(schedule.teamB, schedule.teamBLogo),
+    // A race has every team in one event — the card shows all of them, not just two.
+    field: isRaceMatch(schedule) ? raceParticipants(schedule).map((p) => buildTeamBadge(p.name, p.logo)) : null,
     _start: scheduleStart(schedule),
   };
 }
@@ -696,10 +699,21 @@ function LandingPage() {
                   className={`match-card-body match-anim-${matchDirection}`}
                   key={matchAnimKey}
                 >
-                  <div className="match-teams">
-                    <TeamBadge team={currentMatch.teamA} />
-                    <span className="vs-label">VS</span>
-                    <TeamBadge team={currentMatch.teamB} />
+                  <div className={`match-teams${currentMatch.field ? ` match-teams--race${currentMatch.field.length > 5 ? ' match-teams--race-many' : currentMatch.field.length === 4 ? ' match-teams--race-four' : currentMatch.field.length <= 3 ? ' match-teams--race-few' : ''}` : ''}`}>
+                    {currentMatch.field ? (
+                      currentMatch.field.map((team, i) => (
+                        <React.Fragment key={`${team.name}-${i}`}>
+                          {i > 0 && <span className="vs-label">VS</span>}
+                          <TeamBadge team={team} />
+                        </React.Fragment>
+                      ))
+                    ) : (
+                      <>
+                        <TeamBadge team={currentMatch.teamA} />
+                        <span className="vs-label">VS</span>
+                        <TeamBadge team={currentMatch.teamB} />
+                      </>
+                    )}
                   </div>
                     <div className="linespace">
                       
