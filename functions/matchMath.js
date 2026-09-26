@@ -62,12 +62,28 @@ function overallRating(allRankings, teamName) {
   return sportAverages.reduce((sum, avg) => sum + avg, 0) / sportAverages.length;
 }
 
+/* Rounded to 4 decimals (e.g. 0.6401), exactly as the worksheet does by hand,
+   so every step of the confirmation screen's "Summary computation" can be
+   reproduced with a calculator and lands on the stored rating change. */
 function expectedScore(ra, rb) {
-  return 1 / (1 + Math.pow(10, (rb - ra) / 400));
+  return round4(1 / (1 + Math.pow(10, (rb - ra) / 400)));
 }
 
+/* A gap between two times (given in decimal minutes, how they're stored) written
+   the way the worksheet writes it, as MM.SS: 10:30 − 05:01 is 5 min 29 s → 5.29
+   (NOT 5.4833). Whole seconds are carried properly (15:25 − 10:30 → 4.55), and
+   the sign is kept (negative when `deltaMinutes` is). */
+function timeGapMmSs(deltaMinutes) {
+  const totalSeconds = Math.round(Math.abs(deltaMinutes) * 60);
+  if (totalSeconds === 0) return 0;
+  const value = Number((Math.floor(totalSeconds / 60) + (totalSeconds % 60) / 100).toFixed(2));
+  return deltaMinutes < 0 ? -value : value;
+}
+
+/* F1 — points: own − opponent. Time (lower is better): opponent's time − own
+   time, in MM.SS. */
 function signedPerformance(mode, ownScore, oppScore) {
-  return mode === 'points' ? ownScore - oppScore : oppScore - ownScore;
+  return mode === 'points' ? ownScore - oppScore : timeGapMmSs(oppScore - ownScore);
 }
 
 function isBetter(mode, a, b) {
@@ -157,8 +173,8 @@ function computeEditFinalPoints({ ratingA, ratingB, violA, violB, comebackA, com
     f1B = valid ? pB - pA : 0;
   } else {
     const valid = mA != null && mB != null && !Number.isNaN(mA) && !Number.isNaN(mB);
-    f1A = valid ? mB - mA : 0;
-    f1B = valid ? mA - mB : 0;
+    f1A = valid ? signedPerformance('time', mA, mB) : 0;
+    f1B = valid ? signedPerformance('time', mB, mA) : 0;
   }
 
   // An edit that leaves a recorded draw level stays a draw (S = 0.5 each).
@@ -296,6 +312,6 @@ module.exports = {
   replayScope, scheduleOrder,
   K_FACTOR, PPU, COMEBACK_BONUS, DEFAULT_POINTS, LEVEL_LABELS,
   norm, displayCategory, rankingScopeKey, round4,
-  pointsInScope, overallRating, expectedScore, signedPerformance, isBetter,
+  pointsInScope, overallRating, expectedScore, signedPerformance, timeGapMmSs, isBetter,
   pairComputation, buildComputation, computeEditFinalPoints,
 };

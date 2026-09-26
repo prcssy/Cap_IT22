@@ -11,6 +11,7 @@ const {
   overallRating,
   expectedScore,
   signedPerformance,
+  timeGapMmSs,
   isBetter,
   pairComputation,
   buildComputation,
@@ -220,4 +221,53 @@ test('DRAW: the lower-rated team gains and the higher-rated team loses', () => {
   const comp = require('./matchMath').buildComputation({ rows, mode: 'points', winnerOverrideId: 'DRAW' });
   assert.ok(comp.teams[0].change < 0);
   assert.ok(comp.teams[1].change > 0);
+});
+
+test('timeGapMmSs writes a time gap as MM.SS, carrying seconds properly', () => {
+  const t = (mm, ss) => mm + ss / 60; // decimal minutes, how times are stored
+  assert.equal(timeGapMmSs(t(10, 30) - t(5, 1)), 5.29);   // 5 min 29 s, not 5.4833
+  assert.equal(timeGapMmSs(t(15, 25) - t(10, 30)), 4.55); // 4 min 55 s (a borrow), not 4.95
+  assert.equal(timeGapMmSs(t(10, 30) - t(10, 50)), -0.2); // sign kept, 20 s
+  assert.equal(timeGapMmSs(0), 0);
+  assert.equal(signedPerformance('time', t(5, 1), t(10, 30)), 5.29);
+  assert.equal(signedPerformance('time', t(10, 30), t(5, 1)), -5.29);
+});
+
+test('buildComputation: 4-team timed race matches the hand worksheet (E to 4 decimals, F1 in MM.SS)', () => {
+  const t = (mm, ss) => mm + ss / 60;
+  const rows = [
+    { id: 'P', name: 'Purple Jaguars', score: t(5, 1), totalViolations: 2, comeback: true, prevPoints: 1500 },
+    { id: 'O', name: 'Orange Bulldogs', score: t(10, 30), totalViolations: 3, comeback: false, prevPoints: 1400 },
+    { id: 'M', name: 'Maroon Owls', score: t(10, 50), totalViolations: 8, comeback: false, prevPoints: 1400 },
+    { id: 'Y', name: 'Yellow Vipers', score: t(15, 25), totalViolations: 5, comeback: false, prevPoints: 1300 },
+  ];
+  const { teams, winnerId } = buildComputation({ rows, mode: 'time', winnerOverrideId: null });
+  const by = Object.fromEntries(teams.map((x) => [x.id, x]));
+  const gains = (id) => by[id].pairings.map((p) => round4(p.change));
+  const gaps = (id) => by[id].pairings.map((p) => p.f1);
+
+  assert.equal(winnerId, 'P');
+  assert.deepEqual(teams.map((x) => x.place), [1, 2, 3, 4]);
+  // Time differences (F1), MM.SS: 10:30−05:01 = 5.29, 10:50−05:01 = 5.49, 15:25−05:01 = 10.24, …
+  assert.deepEqual(gaps('P'), [5.29, 5.49, 10.24]);
+  assert.deepEqual(gaps('O'), [-5.29, 0.2, 4.55]);
+  assert.deepEqual(gaps('M'), [-5.49, -0.2, 4.35]);
+  assert.deepEqual(gaps('Y'), [-10.24, -4.55, -4.35]);
+  // Each per-opponent gain: K(S − E) + Ppu(F1 − F2 + F3), with E to 4 decimals.
+  assert.deepEqual(gains('P'), [23.1618, 23.2618, 21.8096]);
+  assert.deepEqual(gains('O'), [-15.6618, 14.6, 12.2918]);
+  assert.deepEqual(gains('M'), [-18.2618, -20.1, 9.6918]);
+  assert.deepEqual(gains('Y'), [-15.3096, -16.2918, -16.1918]);
+  // Overall change is the sum of the pairings, added once to the previous rating.
+  assert.equal(by.P.finalPoints, 1568.2332);
+  assert.equal(by.O.finalPoints, 1411.23);
+  assert.equal(by.M.finalPoints, 1371.33);
+  assert.equal(by.Y.finalPoints, 1252.2068);
+  assert.equal(round4(by.P.totalF1), 21.02);
+  assert.equal(round4(by.Y.totalF1), -19.14);
+});
+
+test('expectedScore is rounded to 4 decimals', () => {
+  assert.equal(expectedScore(1500, 1400), 0.6401);
+  assert.equal(expectedScore(1400, 1500), 0.3599);
 });

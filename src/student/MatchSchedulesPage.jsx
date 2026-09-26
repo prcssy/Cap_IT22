@@ -10,6 +10,8 @@ import { FaSearch, FaTrophy } from 'react-icons/fa';
 import { getMatchSchedules, getMatchRecords, getTeamRankings } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
+import RaceDiagram, { RaceResults } from '../shared/components/RaceDiagram/RaceDiagram';
+import { isRaceMatch, raceParticipants, raceStandingsFromRecord, raceWinnerName, recordCoversRace } from '../shared/utils/raceFormat';
 
 /* ═══════════════════════════════════════════════════════════
    This page is fully data-driven: every match shown here comes
@@ -54,6 +56,7 @@ function recordMatchesSchedule(record, schedule) {
   const rc = norm(displayCategory(record.category));
   const sc = norm(displayCategory(schedule.category));
   if (rc && sc && rc !== sc && !rc.endsWith(` ${sc}`) && !sc.endsWith(` ${rc}`)) return false;
+  if (isRaceMatch(schedule)) return recordCoversRace(record, schedule);
   const roster = record.participants?.length ? record.participants : [record.teamA, record.teamB];
   const names = roster.map(p => norm(p?.name)).filter(Boolean);
   return names.includes(norm(schedule.teamA)) && names.includes(norm(schedule.teamB));
@@ -187,10 +190,11 @@ function TeamPill({ name, logo, result }) {
    ═══════════════════════════════════════════════════════════ */
 function computeStandings(matches, resultFor) {
   const rows = new Map(); // norm(name) -> row
+  let racesDecided = 0;   // races with a saved result
   const rowFor = (name, logo) => {
     const k = norm(name);
     if (!rows.has(k)) {
-      rows.set(k, { name, logo: logo || null, played: 0, wins: 0, losses: 0, draws: 0 });
+      rows.set(k, { name, logo: logo || null, played: 0, wins: 0, losses: 0, draws: 0, place: null, result: null });
     } else if (logo && !rows.get(k).logo) {
       rows.get(k).logo = logo;
     }
@@ -203,6 +207,23 @@ function computeStandings(matches, resultFor) {
     .sort((a, b) => (a.round ?? 0) - (b.round ?? 0) || when(a) - when(b));
 
   ordered.forEach((m) => {
+    /* A race lists every team in the field. Once it has a result each team
+       played once: 1st place wins (a tie for 1st is a draw), the rest lose,
+       and the finishing place becomes the rank. */
+    if (isRaceMatch(m)) {
+      raceParticipants(m).forEach((p) => rowFor(p.name, p.logo));
+      const standings = raceStandingsFromRecord(resultFor(m));
+      if (standings.length) racesDecided += 1;
+      const firsts = standings.filter((s) => s.place === 1).length;
+      standings.forEach((s) => {
+        const row = rowFor(s.name, s.logo);
+        row.played += 1;
+        row.place = s.place;
+        row.result = s.scoreLabel || null;
+        if (s.place === 1) { if (firsts > 1) row.draws += 1; else row.wins += 1; } else row.losses += 1;
+      });
+      return;
+    }
     const a = rowFor(m.teamA, m.teamALogo);
     const b = rowFor(m.teamB, m.teamBLogo);
     const record = resultFor(m);
@@ -219,13 +240,18 @@ function computeStandings(matches, resultFor) {
     }
   });
 
-  const sorted = [...rows.values()]
-    .sort((x, y) => y.wins - x.wins || x.name.localeCompare(y.name));
+  // With a rematch race the table totals every race, so one finishing place /
+  // time per team no longer applies — rank by wins instead.
+  if (racesDecided > 1) rows.forEach((r) => { r.place = null; r.result = null; });
 
-  /* Teams level on wins share a rank (1, 1, 3 …). */
+  const sorted = [...rows.values()]
+    .sort((x, y) => y.wins - x.wins || (x.place ?? 99) - (y.place ?? 99) || x.name.localeCompare(y.name));
+
+  /* Teams level on wins share a rank (1, 1, 3 …); a race's teams are ranked
+     by their finishing place instead. */
   sorted.forEach((r, i) => {
     const prev = sorted[i - 1];
-    r.rank = prev && prev.wins === r.wins ? prev.rank : i + 1;
+    r.rank = r.place != null ? r.place : prev && prev.wins === r.wins ? prev.rank : i + 1;
   });
   return sorted;
 }
@@ -235,6 +261,8 @@ function StandingsTable({ matches, resultFor, champion }) {
   if (rows.length === 0) return null;
 
   const anyPlayed = rows.some(r => r.played > 0);
+  // Only a race carries a recorded time/points per team.
+  const hasResult = rows.some(r => r.result);
 
   return (
     <div className="ms-standings">
@@ -250,6 +278,7 @@ function StandingsTable({ matches, resultFor, champion }) {
                 <th title="Wins">W</th>
                 <th title="Losses">L</th>
                 <th title="Draws">D</th>
+                {hasResult && <th title="Recorded time or points">Time Result</th>}
               </tr>
             </thead>
             <tbody>
@@ -272,6 +301,7 @@ function StandingsTable({ matches, resultFor, champion }) {
                     <td className="ms-standings__win">{r.wins}</td>
                     <td className="ms-standings__loss">{r.losses}</td>
                     <td>{r.draws}</td>
+                    {hasResult && <td>{r.result || '—'}</td>}
                   </tr>
                 );
               })}
@@ -731,6 +761,54 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
   );
 }
 
+/* ═══════════════════════════════════════════════════════════
+   REQUESTED FIXTURE — a moderator asked for it (rematch, tie-break, …) and the
+   admin scheduled it. It gets its own card, titled with the moderator's
+   reason (the admin saves that as the fixture's label), showing the same
+   view as the format above: the race diagram for a race, or the two teams
+   with their result for a normal match.
+   ═══════════════════════════════════════════════════════════ */
+function RequestedFixtureCard({ match, resultFor }) {
+  const record = resultFor(match);
+  const race = isRaceMatch(match);
+  const winner = race ? raceWinnerName(record) : winnerNameOf(record);
+  const badge = (team) => {
+    if (!record) return null;
+    if (!winner) return 'DRAW';
+    return norm(team) === norm(winner) ? 'WIN' : 'LOSE';
+  };
+  const when = [match.date && formatDay(match.date), match.time && formatTime(match.time)].filter(Boolean).join(' · ');
+
+  return (
+    <div className="ms-bracket-card ms-requested">
+      <span className="ms-requested__tag">Requested match</span>
+      <h3 className="ms-bracket-title">{match.matchLabel || 'Requested match'}</h3>
+      <p className="ms-requested__meta">
+        {categoryOf(match).label}
+        {when ? ` · ${when}` : ''}
+        {match.location ? ` · ${match.location}` : ''}
+      </p>
+
+      {race ? (
+        <>
+          <RaceDiagram
+            teams={raceParticipants(match)}
+            standings={raceStandingsFromRecord(record)}
+            championName={winner}
+          />
+          <RaceResults standings={raceStandingsFromRecord(record)} />
+        </>
+      ) : (
+        <div className="ms-rounds-match ms-requested__match">
+          <TeamPill name={match.teamA} logo={match.teamALogo} result={badge(match.teamA)} />
+          <span className="ms-rounds-match__vs">vs</span>
+          <TeamPill name={match.teamB} logo={match.teamBLogo} result={badge(match.teamB)} />
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ── Wraps the substring of `text` that matches the current search query
    in a <mark>, so every field the search bar actually searches (team,
    venue) visibly shows why a row matched. No-op when there's no query
@@ -778,7 +856,8 @@ function ScheduleDayTable({ day, matches, resultFor, search }) {
             <div className="ms-cell ms-cell-team ms-cell-team--body" role="cell">
               {(() => {
                 const record = resultFor ? resultFor(m) : null;
-                const winner = winnerNameOf(record);
+                const race = isRaceMatch(m);
+                const winner = race ? raceWinnerName(record) : winnerNameOf(record);
                 const bold = (team) => (winner && norm(team) === norm(winner) ? { fontWeight: 800 } : undefined);
                 return (
                   <>
@@ -793,9 +872,12 @@ function ScheduleDayTable({ day, matches, resultFor, search }) {
                         {m.matchLabel}
                       </span>
                     )}
-                    <span style={bold(m.teamA)}><HighlightText text={m.teamA} query={search} /></span>
-                    <span className="ms-team-vs">vs</span>
-                    <span style={bold(m.teamB)}><HighlightText text={m.teamB} query={search} /></span>
+                    {raceParticipants(m).map((p, i) => (
+                      <React.Fragment key={`${p.name}-${i}`}>
+                        {i > 0 && <span className="ms-team-vs">vs</span>}
+                        <span style={bold(p.name)}><HighlightText text={p.name} query={search} /></span>
+                      </React.Fragment>
+                    ))}
                     {record && (
                       <span
                         style={{
@@ -803,7 +885,7 @@ function ScheduleDayTable({ day, matches, resultFor, search }) {
                           padding: '2px 7px', borderRadius: 20, background: '#eef1f8', color: '#46536b',
                         }}
                       >
-                        {winner ? `${winner} WON` : 'DRAW'}
+                        {winner ? `${winner} WON` : race ? 'TIE' : 'DRAW'}
                       </span>
                     )}
                   </>
@@ -941,6 +1023,23 @@ export default function MatchSchedulesPage() {
     [categoryMatches]
   );
 
+  /* ── Fixtures a moderator requested and the admin scheduled (rematch,
+     tie-break, …): manual matches that carry the request's id. They get their
+     own titled card below the format, oldest first. ── */
+  const requestedMatches = useMemo(
+    () => categoryMatches
+      .filter(m => m.requestId && m.round == null && !m.stage)
+      .sort((a, b) => `${a.date || ''}T${a.time || ''}`.localeCompare(`${b.date || ''}T${b.time || ''}`)),
+    [categoryMatches]
+  );
+
+  /* ── A Single-Race category is one fixture with every team in it, drawn as
+     the race diagram (all teams → one Champion). ── */
+  const raceMatch = useMemo(
+    () => generatedMatches.find(isRaceMatch) || null,
+    [generatedMatches]
+  );
+
   /* ── A saved single-elimination bracket gets the connected tree view;
      round-robin legs keep the column view below, same distinction the
      admin's Schedule Manager makes. ── */
@@ -981,8 +1080,7 @@ export default function MatchSchedulesPage() {
             if (!search.trim()) return true;
             const q = search.trim().toLowerCase();
             return (
-              m.teamA.toLowerCase().includes(q) ||
-              m.teamB.toLowerCase().includes(q) ||
+              raceParticipants(m).some(p => p.name.toLowerCase().includes(q)) ||
               (m.location || '').toLowerCase().includes(q)
             );
           })
@@ -1029,6 +1127,11 @@ export default function MatchSchedulesPage() {
        champion yet (TBA) — it is not settled by point difference. */
   const champion = useMemo(() => {
     if (generatedMatches.length === 0) return null;
+
+    if (raceMatch) {
+      const winner = raceWinnerName(resultFor(raceMatch));
+      return winner ? winner.toUpperCase() : null;
+    }
 
     if (isBracketShaped || isDoubleBracketShaped) {
       const finals = generatedMatches.filter((m) => {
@@ -1101,7 +1204,7 @@ export default function MatchSchedulesPage() {
     // game is added and played — point difference doesn't decide it.
     if (ranked[1] && ranked[0].wins === ranked[1].wins) return null;
     return ranked[0].name.toUpperCase();
-  }, [generatedMatches, categoryMatches, isBracketShaped, isDoubleBracketShaped, resultFor, rankingsByLevel]);
+  }, [generatedMatches, categoryMatches, raceMatch, isBracketShaped, isDoubleBracketShaped, resultFor, rankingsByLevel]);
 
   const hasAnyData = categories.length > 0;
 
@@ -1161,7 +1264,16 @@ export default function MatchSchedulesPage() {
             <div className="ms-bracket-card">
               <h3 className="ms-bracket-title">{category?.label || ''}</h3>
               {generatedMatches.length > 0 ? (
-                isBracketShaped ? (
+                raceMatch ? (
+                  <>
+                    <RaceDiagram
+                      teams={raceParticipants(raceMatch)}
+                      standings={raceStandingsFromRecord(resultFor(raceMatch))}
+                      championName={raceWinnerName(resultFor(raceMatch))}
+                    />
+                    <StandingsTable matches={categoryMatches} resultFor={resultFor} champion={champion} />
+                  </>
+                ) : isBracketShaped ? (
                   <BracketTree stages={buildBracketStages(generatedMatches)} resultFor={resultFor} champion={champion} />
                 ) : isDoubleBracketShaped ? (
                   <div className="msf-dbracket">
@@ -1176,6 +1288,10 @@ export default function MatchSchedulesPage() {
                 <p className="ms-bracket-empty">No bracket or rounds generated yet for {category?.label}.</p>
               )}
             </div>
+
+            {requestedMatches.map(m => (
+              <RequestedFixtureCard key={m.id} match={m} resultFor={resultFor} />
+            ))}
 
             {/* Section title */}
             <h2 className="ms-section-title">MATCH SCHEDULES</h2>

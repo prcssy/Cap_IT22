@@ -1,0 +1,312 @@
+/* Same look as the other bracket formats (Single/Double Bracket): white
+   boxes with a soft border, thin grey elbow lines, gold trophy champion.
+   The rounded shell clips; only the inner .race-diagram__scroll scrolls, so
+   the corners stay rounded (see the border-radius + scrollbar gotcha in
+   CLAUDE.md). */
+.race-diagram {
+  margin-top: 20px;
+  border: 1px solid #eef0f5;
+  border-radius: 12px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-self: stretch;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.race-diagram__scroll {
+  overflow: auto;
+  padding: 20px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.race-diagram__canvas {
+  position: relative;
+  margin: 0 auto;
+}
+
+.race-diagram__lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+}
+
+.race-diagram__lines path {
+  fill: none;
+  stroke: #b7bfd8;
+  stroke-width: 1.5;
+  stroke-linecap: round;
+}
+
+.race-diagram__headers {
+  position: absolute;
+  left: 0;
+  display: flex;
+}
+
+.race-diagram__headers > div {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  color: #5b678a;
+  text-transform: uppercase;
+  flex-shrink: 0;
+}
+
+.race-diagram__team {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: 1.5px solid #dde1ee;
+  border-radius: 8px;
+  padding: 0 12px;
+  background: #fff;
+  box-sizing: border-box;
+  box-shadow: 0 1px 4px rgba(var(--c-dark-rgb, 0, 21, 41), 0.08);
+}
+
+.race-diagram__team--winner {
+  border-color: var(--c-gold-2, #f5a623);
+}
+
+.race-diagram__name {
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--c-dark, #001529);
+  letter-spacing: 0.2px;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.race-diagram__avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  border: 2px solid #eef0f5;
+  box-sizing: border-box;
+}
+
+.race-diagram__avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  border: 0;
+}
+
+.race-diagram__place {
+  margin-left: auto;
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: 20px;
+  background: #eef1f8;
+  color: #46536b;
+}
+
+.race-diagram__place--1 { background: #fff3d6; color: #8a5f04; }
+.race-diagram__place--2 { background: #e8ecf3; color: #46536b; }
+.race-diagram__place--3 { background: #f6e6da; color: #8a4a1f; }
+
+/* Champion slot — same trophy / label / gold box (TBA until decided) as the
+   Champion column of the other formats. Centered on the joining line. */
+.race-diagram__champion {
+  position: absolute;
+  transform: translateY(-50%);
+}
+
+.race-diagram__champion-head {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* No result yet and the TBA box not wanted (admin generator view): just the
+   trophy + label sitting on the line, like the other formats. */
+.race-diagram__champion--bare .race-diagram__champion-box {
+  visibility: hidden;
+}
+
+.race-diagram__champion--bare .race-diagram__champion-head {
+  bottom: calc(50% - 2px);
+}
+
+.race-diagram__trophy {
+  color: var(--c-gold, #fcbf19);
+  font-size: 30px;
+  margin-bottom: 4px;
+}
+
+.race-diagram__champion-label {
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--c-dark, #001529);
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  margin-bottom: 0;
+}
+
+.race-diagram__champion-box {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 46px;
+  background: #fff;
+  border: 2px solid var(--c-gold, #fcbf19);
+  border-radius: 10px;
+  padding: 8px 12px;
+}
+
+.race-diagram__champion-tba {
+  font-size: 18px;
+  font-weight: 700;
+  color: #ccc;
+}
+
+.race-diagram__champion-name {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--c-dark, #001529);
+  text-transform: uppercase;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.race-diagram__champion-avatar {
+  width: 26px;
+  height: 26px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid #eef0f5;
+  box-sizing: border-box;
+}
+
+.race-diagram__champion-avatar--fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-weight: 800;
+  font-size: 11px;
+  border: 0;
+}
+
+/* Finishing order shown under the diagram once a result is recorded. */
+.race-results {
+  margin-top: 14px;
+  border: 1px solid #e6e9f2;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.race-results__title {
+  margin: 0;
+  padding: 9px 14px;
+  background: var(--c-dark, #001529);
+  color: var(--c-gold-2, #f5a623);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.race-results__row {
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 14px;
+  border-top: 1px solid #f1f2f6;
+  font-size: 13px;
+}
+
+.race-results__row:first-of-type {
+  border-top: 0;
+}
+
+.race-results__place {
+  font-weight: 800;
+  color: #5b678a;
+}
+
+.race-results__row--first .race-results__place,
+.race-results__row--first .race-results__team {
+  color: #b57a00;
+}
+
+.race-results__team {
+  font-weight: 700;
+  color: var(--c-dark, #001529);
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.race-results__score {
+  font-variant-numeric: tabular-nums;
+  color: #46536b;
+  font-weight: 600;
+}
+
+/* Compact lane list used in summaries (before any result exists). */
+.race-lanes {
+  border: 1px solid #e6e9f2;
+  border-radius: 10px;
+  overflow: hidden;
+  background: #fff;
+}
+
+.race-lanes__head {
+  padding: 9px 14px;
+  background: var(--c-dark, #001529);
+  color: var(--c-gold-2, #f5a623);
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.5px;
+  text-transform: uppercase;
+}
+
+.race-lanes__row {
+  display: grid;
+  grid-template-columns: 34px 1fr;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  border-top: 1px solid #f1f2f6;
+  font-size: 13px;
+}
+
+.race-lanes__num {
+  color: #5b678a;
+  font-weight: 700;
+}
+
+.race-lanes__team {
+  font-weight: 700;
+  color: var(--c-dark, #001529);
+}
+

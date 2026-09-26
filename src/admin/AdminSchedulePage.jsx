@@ -17,6 +17,11 @@ import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../shared/components/LevelTabs';
 import StudentRegistrationDetails from '../superadmin/StudentRegistrationDetails';
+import RaceDiagram, { RaceLanes, RaceResults } from '../shared/components/RaceDiagram/RaceDiagram';
+import {
+  RACE_FORMAT_ID, RACE_FORMAT_LABEL, isRaceMatch, raceParticipants, buildRaceFields,
+  raceStandingsFromRecord, raceWinnerName, recordCoversRace,
+} from '../shared/utils/raceFormat';
 
 
 /* ─── Grade-level bucketing ───────────────────────── */
@@ -108,6 +113,7 @@ const FORMATS = [
   { id: 'double-rr', label: 'Double Round-Robin' },
   { id: 'bracket',   label: 'Single Bracket' },
   { id: 'double-bracket', label: 'Double Bracket' },
+  { id: RACE_FORMAT_ID, label: RACE_FORMAT_LABEL },
 ];
 
 const uid = () => Math.random().toString(36).slice(2, 10);
@@ -208,6 +214,7 @@ function recordMatchesSchedule(record, schedule) {
   const rc = normText(stripFormatSuffix(record.category));
   const sc = normText(stripFormatSuffix(schedule.category));
   if (rc && sc && rc !== sc && !rc.endsWith(` ${sc}`) && !sc.endsWith(` ${rc}`)) return false;
+  if (isRaceMatch(schedule)) return recordCoversRace(record, schedule);
   const roster = record.participants?.length ? record.participants : [record.teamA, record.teamB];
   const names = roster.map(p => normText(p?.name)).filter(Boolean);
   return names.includes(normText(schedule.teamA)) && names.includes(normText(schedule.teamB));
@@ -1170,6 +1177,10 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
       date: '', time: '', location: '',
       matchLabel: pendingRequest.reason || '',
       pairs: [{ teamA: pendingRequest.teamA || '', teamB: pendingRequest.teamB || '' }],
+      // 3+ teams requested: every team, scheduled together as one race.
+      raceTeams: pendingRequest.extraTeams?.length
+        ? [pendingRequest.teamA, pendingRequest.teamB, ...pendingRequest.extraTeams.map(t => t.name)].filter(Boolean)
+        : [],
     });
     setFulfillingRequestId(pendingRequest.id);
     setAddModalOpen(true);
@@ -1262,14 +1273,23 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
      "MEN (Senior)" — while the Add Schedule select is keyed by the group
      label ("MEN"). Map a requested category onto the matching option's label
      so the select actually shows it. Unmatched values pass through. */
-  const resolveCategoryLabel = (sportObj, category) => {
+  /* The full division option ({ value: divisionId, label, display }) a category
+     string refers to. Tries the full display ("MALE (Butterfly)") BEFORE the
+     bare group label ("MALE"): several divisions can share a label, and only
+     the display tells them apart — matching the label first silently picked
+     whichever division came first. */
+  const resolveCategoryOption = (sportObj, category) => {
     const c = (category || '').trim().toLowerCase();
-    if (!c) return '';
+    if (!c) return null;
     const opts = categoryOptionsFor(sportObj);
-    const hit = opts.find(o => o.label.trim().toLowerCase() === c)
-      || opts.find(o => (o.display || o.label).trim().toLowerCase() === c)
-      || opts.find(o => stripFormatSuffix(o.label).toLowerCase() === stripFormatSuffix(c).toLowerCase());
-    return hit ? hit.label : category;
+    return opts.find(o => (o.display || o.label).trim().toLowerCase() === c)
+      || opts.find(o => o.label.trim().toLowerCase() === c)
+      || opts.find(o => stripFormatSuffix(o.label).toLowerCase() === stripFormatSuffix(c).toLowerCase())
+      || null;
+  };
+  const resolveCategoryLabel = (sportObj, category) => {
+    if (!(category || '').trim()) return '';
+    return resolveCategoryOption(sportObj, category)?.label ?? category;
   };
 
   /* Category/division caption for a schedule row, e.g. "MEN (Senior) · Single
@@ -1341,6 +1361,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   const isBracket = selFormat?.id === 'bracket';
   const isDoubleBracket = selFormat?.id === 'double-bracket';
   const isDoubleLeg = selFormat?.id === 'double-rr';
+  const isRace = selFormat?.id === RACE_FORMAT_ID;
 
   /* ── Regeneration lock ──
      Once a schedule has been saved for a (sport, category), generating
@@ -1419,7 +1440,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     }
   };
 
-  const rounds = ready && !isBracket && !isDoubleBracket
+  const rounds = ready && !isBracket && !isDoubleBracket && !isRace
     ? generateRounds(eligibleTeams.map(t => t.name), isDoubleLeg)
     : [];
   const bracket = ready && isBracket
@@ -1429,11 +1450,13 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     ? generateDoubleBracket(eligibleTeams.map(t => t.name))
     : null;
 
-  const totalMatches = isBracket
-    ? (bracket?.totalMatches || 0)
-    : isDoubleBracket
-      ? (doubleBracket?.totalMatches || 0)
-      : rounds.reduce((s, r) => s + r.length, 0);
+  const totalMatches = isRace
+    ? 1
+    : isBracket
+      ? (bracket?.totalMatches || 0)
+      : isDoubleBracket
+        ? (doubleBracket?.totalMatches || 0)
+        : rounds.reduce((s, r) => s + r.length, 0);
   const legSize = isDoubleLeg ? rounds.length / 2 : rounds.length;
 
   const teamByName = (name) => eligibleTeams.find(t => t.name === name);
@@ -1459,7 +1482,11 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     });
 
     let matches;
-    if (isBracket) {
+    if (isRace) {
+      // One fixture for the whole field. No `stage`: every bracket helper
+      // keys off it, so leaving it unset keeps a race from being read as one.
+      matches = [buildMatch(buildRaceFields(eligibleTeams))];
+    } else if (isBracket) {
       matches = bracket.stages.flatMap((stage, stageIdx) =>
         stage.matches
           .filter(m => !m.isBye) // a bye has no actual game — the team just advances
@@ -1502,7 +1529,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
         category: selCategory.label,
         format: selFormat.label,
         teams: eligibleTeams.length,
-        rounds: isBracket ? bracket.stages.length : isDoubleBracket ? doubleBracket.wbStages.length + doubleBracket.lbRounds.length + 1 : rounds.length,
+        rounds: isRace ? 1 : isBracket ? bracket.stages.length : isDoubleBracket ? doubleBracket.wbStages.length + doubleBracket.lbRounds.length + 1 : rounds.length,
         matches: totalMatches,
       });
     } catch (e) {
@@ -1571,29 +1598,55 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     const pool = teamsList.filter(t => (t.sportIds || []).includes(addForm.sport));
     const addSportObj = sportsList.find(s => s.name === addForm.sport) || null;
     const addCategory = resolveCategoryLabel(addSportObj, addForm.category);
-    const matchedDivision = categoryOptionsFor(addSportObj).find(o => o.label === addCategory);
+    // The division this fixture belongs to. It has to be saved on the match:
+    // the moderator rates results per sport + division (a multi-division
+    // group like MALE → Butterfly is its own scope), so without the right
+    // divisionId a rematch is looked up under a different scope and every
+    // team starts again from 1200 instead of its updated rating.
+    const matchedDivision = resolveCategoryOption(addSportObj, addForm.category)
+      || categoryOptionsFor(addSportObj).find(o => o.label === addCategory);
     const presetFormat = FORMATS.find(f => f.id === matchedDivision?.format);
 
-    let merged = savedSchedules;
-    for (const pair of validPairs) {
-      const match = {
+    const common = {
+      sport: addForm.sport,
+      category: addCategory,
+      divisionId: matchedDivision?.value,
+      date: addForm.date,
+      time: addForm.time,
+      location: addForm.location,
+      matchLabel: addForm.matchLabel.trim() || null,
+      status: 'scheduled',
+      source: 'manual',
+      requestId: fulfillingRequestId || null,
+    };
+
+    // A request for 3+ teams is ONE race, not several head-to-heads. `round`
+    // stays null (like any manual fixture) so it isn't mistaken for the
+    // generated schedule's own race.
+    const raceNames = addForm.raceTeams || [];
+    const matchesToAdd = raceNames.length >= 3
+      ? [{
         id: uid(),
-        sport: addForm.sport,
-        category: addCategory,
+        ...common,
+        format: RACE_FORMAT_LABEL,
+        ...buildRaceFields(raceNames.map(name => ({ name, logo: pool.find(t => t.name === name)?.logo || null }))),
+        round: null,
+        teamALogo: pool.find(t => t.name === raceNames[0])?.logo || null,
+        teamBLogo: pool.find(t => t.name === raceNames[1])?.logo || null,
+      }]
+      : validPairs.map(pair => ({
+        id: uid(),
+        ...common,
         format: presetFormat?.label || '',
         round: null,
         teamA: pair.teamA,
         teamB: pair.teamB,
         teamALogo: pool.find(t => t.name === pair.teamA)?.logo || null,
         teamBLogo: pool.find(t => t.name === pair.teamB)?.logo || null,
-        date: addForm.date,
-        time: addForm.time,
-        location: addForm.location,
-        matchLabel: addForm.matchLabel.trim() || null,
-        status: 'scheduled',
-        source: 'manual',
-        requestId: fulfillingRequestId || null,
-      };
+      }));
+
+    let merged = savedSchedules;
+    for (const match of matchesToAdd) {
       merged = await upsertMatchSchedule(level, match, actorRole);
     }
     setSavedSchedules(merged);
@@ -1674,6 +1727,9 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
      it's always reachable via Edit to add the date/time/venue. */
   const recordForMatch = (match) => matchRecords.find(r => recordMatchesSchedule(r, match)) || null;
 
+  // Same "A vs B" row as any other match; a race just chains every team in the field.
+  const matchTeamsText = (m) => raceParticipants(m).map(p => p.name).join(' vs ');
+
   const sportSlug = (s) => (s || 'other').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
   const scheduleSportOrder = useMemo(() => sportsList.map(s => s.name), [sportsList]);
@@ -1731,12 +1787,15 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     let cursorY = titleY + 50;
     sportSections.forEach(({ sport, undated, groupedByDate }) => {
       const rows = [];
-      undated.forEach(m => rows.push(['TBD', 'TBD', m.teamA, m.teamB, m.location || '—']));
+      const teamCells = (m) => (isRaceMatch(m)
+        ? [{ content: matchTeamsText(m), colSpan: 2 }]
+        : [m.teamA, m.teamB]);
+      undated.forEach(m => rows.push(['TBD', 'TBD', ...teamCells(m), m.location || '—']));
       Object.entries(groupedByDate)
         .sort(([a], [b]) => a.localeCompare(b))
         .forEach(([date, matches]) => {
           const dateLabel = new Date(date).toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-          matches.forEach(m => rows.push([dateLabel, m.time || '—', m.teamA, m.teamB, m.location || '—']));
+          matches.forEach(m => rows.push([dateLabel, m.time || '—', ...teamCells(m), m.location || '—']));
         });
 
       if (rows.length === 0) return;
@@ -1912,6 +1971,10 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   const addPool = teamsForSport(addForm.sport);
   const addCategoryOptions = categoryOptionsFor(sportsList.find(s => s.name === addForm.sport) || null);
 
+  const lockedRace = lockedMatches.find(isRaceMatch) || null;
+  const lockedRaceRecord = lockedRace ? recordForMatch(lockedRace) : null;
+  const lockedRaceStandings = raceStandingsFromRecord(lockedRaceRecord);
+
   return (
     <div className="msf-wrap">
       <div className="msf-level-banner">
@@ -1987,6 +2050,18 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
           </>
         )}
 
+        {lockedRace && (
+          <>
+            <RaceDiagram
+              teams={raceParticipants(lockedRace)}
+              standings={lockedRaceStandings}
+              championName={raceWinnerName(lockedRaceRecord)}
+              showTba={false}
+            />
+            <RaceResults standings={lockedRaceStandings} />
+          </>
+        )}
+
         {isLocked && lockedMatches[0]?.format === 'Double Bracket' && (
           <div className="msf-dbracket">
             <div className="msf-dbracket__scroll">
@@ -2009,21 +2084,25 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               <div>
                 <h3>{selFormat.label}</h3>
                 <p className="msf-muted">
-                  {isBracket || isDoubleBracket
-                    ? "Lose twice and you're out."
-                    : `Every team plays against each other team ${isDoubleLeg ? 'twice' : 'once'}.`}
+                  {isRace
+                    ? 'All teams compete together in one race — the winner is the champion.'
+                    : isBracket || isDoubleBracket
+                      ? "Lose twice and you're out."
+                      : `Every team plays against each other team ${isDoubleLeg ? 'twice' : 'once'}.`}
                 </p>
               </div>
               <div className="msf-stats">
                 <div className="msf-stat"><span>Teams</span><b>{eligibleTeams.length}</b></div>
                 <div className="msf-stat">
-                  <span>Total matches</span>
+                  <span>{isRace ? 'Total races' : 'Total matches'}</span>
                   <b>{totalMatches}{isDoubleBracket ? ` (up to ${totalMatches + 1})` : ''}</b>
                 </div>
               </div>
             </div>
 
-            {isDoubleBracket ? (
+            {isRace ? (
+              <RaceDiagram teams={eligibleTeams} showTba={false} />
+            ) : isDoubleBracket ? (
               <div className="msf-dbracket">
                 <div className="msf-dbracket__scroll">
                   <DoubleBracketTree
@@ -2146,9 +2225,9 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               </div>
             </div>
             <p className="msf-form-note">
-              Matches are auto-scheduled from here, 1h30m apart per round/stage (matches in the same
-              round or stage share a slot). You can still change the date, time, or venue of any match
-              afterward from the list below.
+              {isRace
+                ? 'The race starts at this date and time, with every team in the same event. You can still change the date, time, or venue afterward from the list below.'
+                : 'Matches are auto-scheduled from here, 1h30m apart per round/stage (matches in the same round or stage share a slot). You can still change the date, time, or venue of any match afterward from the list below.'}
             </p>
 
             <div className="msf-savebar">
@@ -2176,7 +2255,9 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               <div className="msf-tsummary__row"><span>Category</span><b>{selCategory.label.toUpperCase()}</b></div>
               <div className="msf-tsummary__row"><span>Format</span><b>{selFormat.label.toUpperCase()}</b></div>
               <div className="msf-tsummary__row"><span>Total Teams</span><b>{eligibleTeams.length}</b></div>
-              {isBracket ? (
+              {isRace ? (
+                <div className="msf-tsummary__row"><span>Races</span><b>1</b></div>
+              ) : isBracket ? (
                 bracket.stages.map((stage, i) => (
                   <div key={i} className="msf-tsummary__row">
                     <span>{stage.name === 'Finals' ? 'Final Matches' : stage.name}</span>
@@ -2194,7 +2275,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <div className="msf-tsummary__row"><span>Rounds</span><b>{rounds.length}</b></div>
               )}
               <div className="msf-tsummary__total">
-                <span>Total Matches</span>
+                <span>{isRace ? 'Total Races' : 'Total Matches'}</span>
                 <b>{totalMatches}</b>
                 {isDoubleBracket && <em>(up to {totalMatches + 1} if necessary)</em>}
               </div>
@@ -2223,7 +2304,9 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <h4 className="msf-summary__heading">Match Schedule Summary</h4>
 
                 <div className="msf-summary__table">
-                  {isDoubleBracket ? (
+                  {isRace ? (
+                    <RaceLanes teams={eligibleTeams} title={`Race 1 — ${eligibleTeams.length} teams`} />
+                  ) : isDoubleBracket ? (
                     <>
                       <div className="msf-summary__leg">UPPER BRACKET (WINNER'S BRACKET)</div>
                       <table className="msf-bsummary">
@@ -2430,7 +2513,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                         <div key={m.id} className="msf-matchrow">
                           <div className="msf-matchrow__time msf-matchrow__time--muted">TBD</div>
                           <div className="msf-matchrow__mid">
-                            <div className="msf-matchrow__teams">{m.teamA} vs {m.teamB}</div>
+                            <div className="msf-matchrow__teams">{matchTeamsText(m)}</div>
                             {matchCaption(m) && <div className="msf-matchrow__cat">{matchCaption(m)}</div>}
                           </div>
                           <button className="msf-icon-edit" onClick={() => openEditModal(m)}><FaEdit /></button>
@@ -2450,7 +2533,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                             <div className="msf-matchrow__time">{m.time}</div>
                             <div className="msf-matchrow__mid">
                               {m.matchLabel && <div className="msf-matchrow__label">{m.matchLabel}</div>}
-                              <div className="msf-matchrow__teams">{m.teamA} vs {m.teamB}</div>
+                              <div className="msf-matchrow__teams">{matchTeamsText(m)}</div>
                               {matchCaption(m) && <div className="msf-matchrow__cat">{matchCaption(m)}</div>}
                               {m.location
                                 ? <div className="msf-matchrow__loc"><FaMapMarkerAlt /> {m.location}</div>
@@ -2602,12 +2685,12 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               <div className="msf-form-group">
                 <label>Category/Division</label>
                 <select
-                  value={resolveCategoryLabel(sportsList.find(s => s.name === addForm.sport) || null, addForm.category)}
-                  onChange={e => setAddForm(f => ({ ...f, category: e.target.value }))}
+                  value={resolveCategoryOption(sportsList.find(s => s.name === addForm.sport) || null, addForm.category)?.value ?? ''}
+                  onChange={e => setAddForm(f => ({ ...f, category: (() => { const o = addCategoryOptions.find(x => x.value === e.target.value); return o ? (o.display || o.label) : ''; })() }))}
                   disabled={!addForm.sport}
                 >
                   <option value="">Select a category</option>
-                  {addCategoryOptions.map(o => <option key={o.value} value={o.label}>{o.display || o.label}</option>)}
+                  {addCategoryOptions.map(o => <option key={o.value} value={o.value}>{o.display || o.label}</option>)}
                 </select>
               </div>
 
@@ -2622,7 +2705,16 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 </div>
               </div>
 
-              {addForm.pairs.map((pair, idx) => {
+              {addForm.raceTeams?.length >= 3 && (
+                <div className="msf-form-group">
+                  <RaceLanes teams={addForm.raceTeams.map(name => ({ name }))} title={`Race — ${addForm.raceTeams.length} teams`} />
+                  <p className="msf-form-note" style={{ marginTop: 6 }}>
+                    The moderator asked for all of these teams together, so they're scheduled as one race.
+                  </p>
+                </div>
+              )}
+
+              {!(addForm.raceTeams?.length >= 3) && addForm.pairs.map((pair, idx) => {
                 const isLast = idx === addForm.pairs.length - 1;
                 return (
                   <div className="msf-form-row msf-form-row--vs" key={idx}>
@@ -2714,14 +2806,21 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 {isGeneratedMatch(editForm) ? (
                   <input type="text" value={editForm.category || ''} disabled />
                 ) : (
+                  /* Keyed by the division id, and saving it sets divisionId too:
+                     results are rated per sport + division, so a fixture needs
+                     the right division (not just the shared "MALE" label) to
+                     pick up its teams' current ratings. */
                   <select
-                    value={editForm.category || ''}
-                    onChange={e => setEditForm(f => ({ ...f, category: e.target.value }))}
+                    value={editCategoryOptions.some(o => o.value === editForm.divisionId) ? editForm.divisionId : (editForm.category ? '__current' : '')}
+                    onChange={e => {
+                      const o = editCategoryOptions.find(x => x.value === e.target.value);
+                      setEditForm(f => (o ? { ...f, category: o.label, divisionId: o.value } : f));
+                    }}
                   >
                     <option value="">Select a category</option>
-                    {editCategoryOptions.map(o => <option key={o.value} value={o.label}>{o.display || o.label}</option>)}
-                    {editForm.category && !editCategoryOptions.some(o => o.label === editForm.category) && (
-                      <option value={editForm.category}>{editForm.category}</option>
+                    {editCategoryOptions.map(o => <option key={o.value} value={o.value}>{o.display || o.label}</option>)}
+                    {editForm.category && !editCategoryOptions.some(o => o.value === editForm.divisionId) && (
+                      <option value="__current">{editForm.category} (no division set — pick one)</option>
                     )}
                   </select>
                 )}
@@ -2738,6 +2837,16 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 </div>
               </div>
 
+              {isRaceMatch(editForm) ? (
+                <div className="msf-form-group">
+                  <RaceLanes teams={raceParticipants(editForm)} title={`Race — ${raceParticipants(editForm).length} teams`} />
+                  <p className="msf-form-note" style={{ marginTop: 6 }}>
+                    All teams race together in this one event. Teams are locked because this came from the schedule
+                    generator — delete and re-generate to change who takes part.
+                  </p>
+                </div>
+              ) : (
+              <>
               <div className="msf-form-group">
                 <label>Teams</label>
               </div>
@@ -2778,6 +2887,8 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <p className="msf-form-note">
                   Teams are locked because this match came from the schedule generator. Delete and re-generate to change matchups.
                 </p>
+              )}
+              </>
               )}
               {recordForMatch(editForm) && (
                 <p className="msf-form-note" style={{ color: '#a83218', fontWeight: 700 }}>
@@ -2843,7 +2954,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               <div className="msf-confirm-delete" onClick={e => e.stopPropagation()}>
                 <h3>Delete this schedule?</h3>
                 <p>
-                  This will permanently remove <b>{editForm.teamA} vs {editForm.teamB}</b>
+                  This will permanently remove <b>{isRaceMatch(editForm) ? `the ${raceParticipants(editForm).length}-team race` : `${editForm.teamA} vs ${editForm.teamB}`}</b>
                   {editForm.date ? ` on ${editForm.date}` : ''}. This can't be undone.
                 </p>
                 {recordForMatch(editForm) && (
@@ -3362,6 +3473,12 @@ const fetchSummary = useCallback(async () => {
                         </span>
                       </div>
 
+                      {r.teamA && r.teamB && (
+                        <p style={{ margin: '8px 0 0', fontSize: '0.85rem' }}>
+                          <b>Teams:</b> {[r.teamA, r.teamB, ...(r.extraTeams || []).map(t => t.name)].join(' vs ')}
+                          {r.extraTeams?.length > 0 && ` (${2 + r.extraTeams.length}-team race)`}
+                        </p>
+                      )}
                       <p style={{ margin: '8px 0 0', fontSize: '0.85rem' }}><b>Reason:</b> {r.reason}</p>
 
                       {r.status === 'declined' && r.declineReason && (

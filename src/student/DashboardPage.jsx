@@ -23,6 +23,7 @@ import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel, getSchoolLevel } from '../shared/utils/schoolLevel';
 import { resizeImageToBlob } from '../shared/utils/resizeImage';
+import { isRaceMatch, raceParticipants, raceStandingsFromRecord, recordCoversRace } from '../shared/utils/raceFormat';
 import {
   resolveGrade,
   resolveRegistration,
@@ -92,6 +93,7 @@ function recordMatchesSchedule(record, schedule) {
   if (recordCategory && scheduleCategory && recordCategory !== scheduleCategory
       && !recordCategory.endsWith(` ${scheduleCategory}`)
       && !scheduleCategory.endsWith(` ${recordCategory}`)) return false;
+  if (isRaceMatch(schedule)) return recordCoversRace(record, schedule);
   const participants = record.participants?.length ? record.participants : [record.teamA, record.teamB];
   const names = participants.map(p => p?.name).filter(Boolean);
   return names.length >= 2
@@ -101,17 +103,26 @@ function recordMatchesSchedule(record, schedule) {
 
 function finishedCardFrom(schedule, record, teamsByName) {
   const participants = record.participants?.length ? record.participants : [record.teamA, record.teamB];
-  const a = participants.find(p => sameTeam(p?.name, schedule.teamA)) || record.teamA || {};
-  const b = participants.find(p => sameTeam(p?.name, schedule.teamB)) || record.teamB || {};
+  /* A race has many teams but the card has two slots, so it shows the race's
+     top two finishers (1st on the left) rather than an arbitrary pair. */
+  const race = isRaceMatch(schedule);
+  const podium = race ? raceStandingsFromRecord(record) : [];
+  const byName = (name) => participants.find(p => sameTeam(p?.name, name));
+  const nameA = race ? podium[0]?.name : schedule.teamA;
+  const nameB = race ? podium[1]?.name : schedule.teamB;
+  const a = (race ? byName(nameA) : byName(schedule.teamA)) || record.teamA || {};
+  const b = (race ? byName(nameB) : byName(schedule.teamB)) || record.teamB || {};
   const team = (name, scheduleLogo, saved) => ({
     label: (name || '').toUpperCase(),
     banner: saved?.logo || scheduleLogo || teamsByName[name]?.logo || null,
   });
-  const winner = record.draw || record.winner === 'DRAW'
-    ? 'DRAW'
-    : record.winner === 'A' || record.winner === 'B'
-      ? record.winner
-      : (a.place === 1 ? 'A' : b.place === 1 ? 'B' : null);
+  const winner = race
+    ? (podium[0] && podium[1] && podium[0].place === podium[1].place ? 'DRAW' : 'A')
+    : record.draw || record.winner === 'DRAW'
+      ? 'DRAW'
+      : record.winner === 'A' || record.winner === 'B'
+        ? record.winner
+        : (a.place === 1 ? 'A' : b.place === 1 ? 'B' : null);
   /* Only the details the dashboard is meant to show: final score, violation
      count, comeback flag, and each team's chance of winning (who won is
      already conveyed by the WIN/LOSE badge above). */
@@ -125,11 +136,14 @@ function finishedCardFrom(schedule, record, teamsByName) {
     id: `${schedule.id}-${record.id}`,
     sport: (schedule.sport || record.sportName || '').toUpperCase(),
     gender: displayCategory(schedule.category || record.category || '').toUpperCase(),
-    round: (schedule.stage || (schedule.round != null ? `Round ${schedule.round}` : '')).toUpperCase(),
+    round: race
+      ? `${raceParticipants(schedule).length}-TEAM RACE`
+      : (schedule.stage || (schedule.round != null ? `Round ${schedule.round}` : '')).toUpperCase(),
+    race,
     date: formatDatePill(schedule.date),
     time: formatTimePill(schedule.date, schedule.time),
-    teamA: team(schedule.teamA, schedule.teamALogo, a),
-    teamB: team(schedule.teamB, schedule.teamBLogo, b),
+    teamA: race ? team(nameA, null, a) : team(schedule.teamA, schedule.teamALogo, a),
+    teamB: race ? team(nameB, null, b) : team(schedule.teamB, schedule.teamBLogo, b),
     winner,
     teamAStats: stat(a, b),
     teamBStats: stat(b, a),
@@ -160,6 +174,14 @@ function winChance(team, opponent) {
   if (!Number.isFinite(own) || !Number.isFinite(opp)) return '—';
   const expected = 1 / (1 + Math.pow(10, (opp - own) / 400));
   return `${(expected * 100).toFixed(1)}%`;
+}
+
+/* Extra card fields for a Single-Race fixture: how many teams are in it and
+   who they are (the card itself only has room for two banners). */
+function raceCardFields(schedule) {
+  if (!isRaceMatch(schedule)) return {};
+  const names = raceParticipants(schedule).map(p => p.name.toUpperCase());
+  return { raceCount: names.length, raceTeams: names };
 }
 
 function formatDatePill(dateStr) {
@@ -217,9 +239,15 @@ function OngoingCard({ match }) {
       <div className="oc-footer">
         <div className="oc-date-row"><span className="date-pill">{match.date}</span></div>
         <div className="oc-teams-row">
-          <span className="ft-label">{match.teamA.label}</span>
-          <span className="ft-vs">VS</span>
-          <span className="ft-label">{match.teamB.label}</span>
+          {match.raceCount ? (
+            <span className="ft-label">{match.raceCount}-TEAM RACE</span>
+          ) : (
+            <>
+              <span className="ft-label">{match.teamA.label}</span>
+              <span className="ft-vs">VS</span>
+              <span className="ft-label">{match.teamB.label}</span>
+            </>
+          )}
         </div>
         <div className="ft-venue">{match.sport} | {match.venue}</div>
       </div>
@@ -239,15 +267,23 @@ function UpcomingCard({ match }) {
       </div>
       <div className="uc-date-row"><span className="date-pill">{match.date}</span></div>
       <div className="uc-teams-row">
-        <span className="ft-label">{match.teamA.label}</span>
-        <span className="ft-vs">VS</span>
-        {match.teamB && <span className="ft-label">{match.teamB.label}</span>}
+        {match.raceCount ? (
+          <span className="ft-label">{match.raceCount}-TEAM RACE</span>
+        ) : (
+          <>
+            <span className="ft-label">{match.teamA.label}</span>
+            <span className="ft-vs">VS</span>
+            {match.teamB && <span className="ft-label">{match.teamB.label}</span>}
+          </>
+        )}
       </div>
       <div className="uc-sport-row"><span className="sport-pill">{match.sport}</span></div>
 
       <div className="uc-hover-info">
         <div className="uc-hover-info__teams">
-          {match.teamA.label}{match.teamB ? ` VS ${match.teamB.label}` : ''}
+          {match.raceTeams
+            ? match.raceTeams.join(', ')
+            : `${match.teamA.label}${match.teamB ? ` VS ${match.teamB.label}` : ''}`}
         </div>
         <div className="uc-hover-info__row"><FiClock /> {match.date} &middot; {match.time}</div>
         <div className="uc-hover-info__row"><FiMapPin /> {match.venue}</div>
@@ -277,7 +313,9 @@ function FinishedCard({ match, isActive, width }) {
   const drawn = match.winner === 'DRAW' || match.winner == null;
   const winnerA = match.winner === 'A';
   const winnerB = match.winner === 'B';
-  const resultLabel = (isWinner) => (drawn ? 'DRAW' : isWinner ? 'WIN' : 'LOSE');
+  const resultLabel = (isWinner) => (match.race
+    ? (drawn ? 'TIE' : isWinner ? '1ST' : '2ND')
+    : (drawn ? 'DRAW' : isWinner ? 'WIN' : 'LOSE'));
   const resultClass = (isWinner) => (drawn ? 'fc-result--draw' : isWinner ? 'fc-result--win' : 'fc-result--lose');
   const hasTime = match.time && match.time !== 'TBA';
 
@@ -738,6 +776,7 @@ function HomeView({ onOpenRegistration }) {
         sport: (m.sport || '').toUpperCase(),
         venue: (m.location || 'TBA').toUpperCase(),
         matchLabel: m.matchLabel || null,
+        ...raceCardFields(m),
       }));
 
     const upcomingList = withWindow
@@ -753,6 +792,7 @@ function HomeView({ onOpenRegistration }) {
         teamB: toCardTeam(m.teamB, m.teamBLogo),
         sport: (m.sport || '').toUpperCase(),
         matchLabel: m.matchLabel || null,
+        ...raceCardFields(m),
       }));
 
     const finishedList = finishedMatches

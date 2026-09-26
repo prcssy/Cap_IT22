@@ -3251,12 +3251,24 @@ input.mp-text-input:disabled {
 /* ═══════════════════════════════════════════
    CONFIRMATION RECEIPT
    ═══════════════════════════════════════════ */
+/* Rounded, clipped shell + separately-scrolling body (border-radius and a
+   scrollbar on the same element square off the corners — see CLAUDE.md). */
 .mp-modal--receipt {
   max-width: 680px;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.mp-receipt__body {
+  padding: 26px;
+  overflow-y: auto;
+  min-height: 0;
 }
 
 .mp-modal--wide {
-  max-width: 1040px;
+  max-width: 1080px;
   position: relative;
 }
 
@@ -3301,9 +3313,12 @@ input.mp-text-input:disabled {
   gap: 10px;
 }
 
+/* 1 vs many: a wrapping grid — as many cards per row as fit, so every team
+   and all of its details are visible without sideways scrolling. */
 .mp-receipt__teams--multi {
-  overflow-x: auto;
-  padding-bottom: 8px;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(236px, 1fr));
+  gap: 14px;
 }
 
 .mp-receipt__team-slot {
@@ -3311,7 +3326,39 @@ input.mp-text-input:disabled {
   align-items: stretch;
   gap: 10px;
   flex: 1;
-  min-width: 220px;
+  min-width: 0;
+}
+
+.mp-receipt__teams--multi .mp-receipt__team-slot {
+  flex: none;
+}
+
+/* Compact cards so four teams sit side by side without any value spilling out. */
+.mp-receipt__teams--multi .mp-rteam {
+  min-width: 0;
+  padding: 12px 10px;
+}
+
+.mp-receipt__teams--multi .mp-rteam__row {
+  gap: 6px;
+}
+
+.mp-receipt__teams--multi .mp-rteam__logo {
+  width: 38px;
+  height: 38px;
+}
+
+.mp-receipt__teams--multi .mp-rteam__pts {
+  gap: 4px;
+  min-width: 0;
+}
+
+.mp-receipt__teams--multi .mp-rteam__pt {
+  min-width: 0;
+}
+
+.mp-receipt__teams--multi .mp-rteam__pt-num {
+  font-size: 0.78rem;
 }
 
 .mp-receipt__vs {
@@ -3769,4 +3816,304 @@ input.mp-text-input:disabled {
 
 @keyframes mp-spin {
   to { transform: rotate(360deg); }
+}
+
+/* ═══════════════════════════════════════════
+   1-VS-MANY RECEIPT: per-team gained-points box + SUMMARY COMPUTATION popup
+   ═══════════════════════════════════════════ */
+.mp-gainbox {
+  margin-top: 10px;
+  border: 1px solid #e6ebf5;
+  border-radius: 9px;
+  background: #fff;
+  padding: 8px 10px;
+  font-size: 0.68rem;
+}
+
+.mp-gainbox__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 5px;
+  font-size: 0.55rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8593ad;
+}
+
+.mp-gainbox__info {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid #d5dcec;
+  border-radius: 50%;
+  background: #f4f6fb;
+  color: #4a5b80;
+  font-size: 0.6rem;
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mp-gainbox__info:hover {
+    background: var(--c-navy-2, #0b2447);
+    color: #fff;
+    border-color: var(--c-navy-2, #0b2447);
+  }
+}
+
+.mp-gainbox__row,
+.mp-gainbox__sum {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 2px 0;
+  color: #56637c;
+}
+
+.mp-gainbox__sum {
+  padding-top: 4px;
+  margin-top: 3px;
+  border-top: 1px solid #e6ebf5;
+  color: var(--c-navy-2, #0b2447);
+  font-weight: 800;
+}
+
+.mp-gainbox__sum + .mp-gainbox__sum {
+  border-top: 0;
+  margin-top: 0;
+}
+
+.mp-modal-overlay--top {
+  z-index: 210;
+}
+
+/* Rounded, clipped shell + separately-scrolling body (see CLAUDE.md). */
+.mp-modal--calc {
+  max-width: 1180px;
+  padding: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+}
+
+.mp-calc__body {
+  padding: 30px 32px 30px;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.mp-calc__kicker {
+  margin: 0 0 6px;
+  font-size: 0.68rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8593ad;
+}
+
+.mp-calc__title {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 900;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--c-navy-2, #0b2447);
+}
+
+.mp-calc__sub {
+  margin: 4px 0 18px;
+  font-size: 0.74rem;
+  color: #56637c;
+}
+
+.mp-calc__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  gap: 16px;
+}
+
+.mp-calc__pair {
+  background: #f6f7fa;
+  border: 1px solid #edf0f6;
+  border-radius: 10px;
+  padding: 16px 18px 18px;
+  font-size: 0.74rem;
+  color: #2b3a57;
+  min-width: 0;
+}
+
+.mp-calc__pair-title {
+  margin: 0 0 10px;
+  font-size: 0.78rem;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--c-navy-2, #0b2447);
+}
+
+.mp-calc__step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 12px 0 6px;
+  font-size: 0.66rem;
+  font-weight: 800;
+  color: var(--c-navy-2, #0b2447);
+}
+
+.mp-calc__step-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 15px;
+  height: 15px;
+  border-radius: 4px;
+  background: var(--c-navy-2, #0b2447);
+  color: #fff;
+  font-size: 0.58rem;
+}
+
+.mp-calc__formula {
+  display: inline-block;
+  padding: 8px 12px;
+  margin-bottom: 8px;
+  background: #fff;
+  border: 1px solid #e6ebf5;
+  border-radius: 6px;
+  font-size: 0.82rem;
+  font-weight: 800;
+  color: var(--c-navy-2, #0b2447);
+}
+
+.mp-calc__legend {
+  margin: 0 0 8px;
+  padding-left: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  font-size: 0.68rem;
+  color: #56637c;
+}
+
+.mp-calc__lines {
+  margin: 6px 0 8px 4px;
+  font-weight: 700;
+}
+
+.mp-calc__lines > div {
+  padding: 3px 0;
+  line-height: 1.5;
+}
+
+.mp-calc__result {
+  display: inline-block;
+  padding: 7px 12px;
+  background: #fff;
+  border: 1px solid #e6ebf5;
+  border-radius: 6px;
+  font-weight: 900;
+  color: var(--c-navy-2, #0b2447);
+}
+
+.mp-frac {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  line-height: 1.25;
+}
+
+.mp-frac__top {
+  padding: 0 4px;
+  border-bottom: 1.5px solid currentColor;
+}
+
+.mp-frac__bottom {
+  padding: 0 4px;
+}
+
+.mp-calc__total {
+  margin-top: 18px;
+  padding: 14px 18px;
+  border: 1.5px solid #f4d98a;
+  border-radius: 10px;
+  background: #fffdf6;
+  font-size: 0.78rem;
+  color: var(--c-navy-2, #0b2447);
+}
+
+.mp-calc__total-title {
+  font-size: 0.66rem;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #8a5f04;
+}
+
+@media (max-width: 640px) {
+  .mp-calc__body {
+    padding: 24px 16px 20px;
+  }
+
+  .mp-calc__grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Request a schedule: all teams in one horizontal row (A VS B VS C …). */
+.mp-request-teams {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px 8px;
+}
+
+.mp-request-team {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.mp-request-team__pick {
+  flex: 1 1 110px;
+  min-width: 110px;
+}
+
+.mp-request-team__vs {
+  flex-shrink: 0;
+  font-weight: 800;
+  font-size: 0.8rem;
+  opacity: 0.6;
+}
+
+.mp-request-extra__remove {
+  flex-shrink: 0;
+  width: 26px;
+  height: 26px;
+  border: 1px solid #e0e5f0;
+  border-radius: 50%;
+  background: #f4f6fb;
+  color: #6c7a94;
+  font-size: 0.65rem;
+  cursor: pointer;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .mp-request-extra__remove:hover {
+    background: #fdeeea;
+    color: #a83218;
+    border-color: #f0c4b9;
+  }
+}
+
+.mp-request-addteam {
+  flex: 0 0 auto;
 }
