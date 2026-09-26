@@ -1972,6 +1972,25 @@
   text-align: center;
 }
 
+.reg-template-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin-top: 8px;
+  font-family: "Inter", sans-serif;
+  font-size: 10px;
+  font-weight: 600;
+  color: #1a5fb4;
+  text-decoration: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+.reg-template-link:hover {
+  text-decoration: underline;
+}
+}
+
 .reg-upload-preview {
   display: flex;
   align-items: center;
