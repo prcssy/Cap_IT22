@@ -1118,6 +1118,32 @@
   color: rgba(255, 255, 255, 0.3);
 }
 
+/* Timed events ("05:01 – 10:30") are about twice as wide as a points
+   score, so the chip shrinks to stay between the two team discs. */
+.fc-score.fc-score--time {
+  gap: 3px;
+  padding: 6px 7px;
+  border-radius: 10px;
+}
+
+.fc-score--time .fc-score-val {
+  font-size: 13px;
+  letter-spacing: -0.02em;
+}
+
+.fc-score--time .fc-score-sep {
+  font-size: 10px;
+}
+
+/* Over an hour ("2:10:20 – 1:58:45"). */
+.fc-score.fc-score--long {
+  padding: 5px 6px;
+}
+
+.fc-score--long .fc-score-val {
+  font-size: 11px;
+}
+
 /* Highlight callouts — full-width bold banners (one per notable stat a
    team actually has), instead of a plain mirrored "Yes/No" or "3 | 2"
    comparison row. A team with nothing to call out (no comeback, zero

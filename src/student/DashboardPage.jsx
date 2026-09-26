@@ -162,6 +162,14 @@ function formatMinutes(mins) {
   return h > 0 ? `${h}:${pad(m)}:${pad(sec)}` : `${pad(m)}:${pad(sec)}`;
 }
 
+/* Times are wider than a points score, and hh:mm:ss wider still — shrink the
+   score chip so both values stay between the two team discs. */
+function scoreSizeClass(...scores) {
+  const colons = Math.max(...scores.map((v) => (String(v ?? '').match(/:/g) || []).length));
+  if (colons >= 2) return ' fc-score--time fc-score--long';
+  return colons === 1 ? ' fc-score--time' : '';
+}
+
 /* "Chance of winning" is the Elo expected score the moderator's own
    computation already saved with the record — the same E used in
    K(S − E). Older records without it are recomputed from both ratings. */
@@ -376,7 +384,7 @@ function FinishedCard({ match, isActive, width }) {
             <span className="fc-team-name">{match.teamA.label}</span>
             <span className={`fc-result ${resultClass(winnerA)}`}>{resultLabel(winnerA)}</span>
           </div>
-          <div className="fc-score">
+          <div className={`fc-score${scoreSizeClass(match.teamAStats.score, match.teamBStats.score)}`}>
             <span className={`fc-score-val ${winnerA ? 'fc-score-val--win' : !drawn ? 'fc-score-val--lose' : ''}`}>{match.teamAStats.score}</span>
             <span className="fc-score-sep">–</span>
             <span className={`fc-score-val ${winnerB ? 'fc-score-val--win' : !drawn ? 'fc-score-val--lose' : ''}`}>{match.teamBStats.score}</span>
