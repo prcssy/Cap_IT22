@@ -1193,34 +1193,43 @@
    Word icon + its original filename) — both link out to the file in a
    new tab, replacing the old plain "View photo"/"View waiver" text
    links so the file type is obvious before clicking. */
-.asp-attach-photo {
-  display: block;
-  width: fit-content;
-  border-radius: 10px;
-  overflow: hidden;
-  border: 1.5px solid #e2e8f0;
-  text-decoration: none;
-  position: relative;
+/* Player photo pinned at the top of the Student Details modal body. */
+.asp-modal-photo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
 }
 
-.asp-attach-photo img {
-  display: block;
+.asp-modal-photo__frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 140px;
   height: 140px;
+  border-radius: 50%;
+  overflow: hidden;
+  border: 3px solid var(--c-gold, #fcbf19);
+  background: #eaf1fb;
+  box-sizing: border-box;
+}
+
+.asp-modal-photo__frame img {
+  display: block;
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 
-.asp-attach-photo__hint {
-  display: flex;
-  align-items: center;
-  gap: 5px;
-  justify-content: center;
-  padding: 6px 8px;
+.asp-modal-photo__frame--empty {
+  color: #a9bedd;
+  font-size: 3.4rem;
+}
+
+.asp-modal-photo__caption {
   font-size: 0.7rem;
-  font-weight: 700;
-  color: #1d4ed8;
-  background: #f1f5fb;
-  border-top: 1px solid #e2e8f0;
+  font-weight: 600;
+  color: #94a3b8;
 }
 
 .asp-attach-file {
@@ -1481,9 +1490,9 @@
     padding: 5px 0 1px;
   }
 
-  .asp-attach-photo img {
-    width: 96px;
-    height: 96px;
+  .asp-modal-photo__frame {
+    width: 104px;
+    height: 104px;
   }
 
   .asp-sched-topbar {

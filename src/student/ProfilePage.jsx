@@ -10,7 +10,7 @@ import {
   FaUserCircle, FaTrophy, FaMedal, FaClipboardList, FaChevronRight,
   FaEnvelope,
   FaUserGraduate, FaUsers, FaBasketballBall, FaUserTag,
-  FaKey, FaClock, FaHashtag, FaEdit,
+  FaKey, FaClock, FaHashtag, FaEdit, FaUser,
 } from 'react-icons/fa';
 import { AuthContext } from '../shared/context/AuthContext';
 import { getMyRegistrations } from '../shared/services/firestoreService';
@@ -26,6 +26,28 @@ function formatRegDate(value) {
 // to student/player accounts. Anyone whose resolved role falls in here
 // never sees the Events / Awards / Registrations stat cards at all.
 const STAFF_ROLES = ['admin', 'moderator', 'superadmin'];
+
+// Shows the player's photo when we have one, otherwise a generic silhouette.
+// `failedSrc` tracks a URL that errored (deleted/expired) so we drop back to
+// the placeholder instead of leaving a broken-image icon in the card.
+function ProfileAvatar({ src, name }) {
+  const [failedSrc, setFailedSrc] = useState(null);
+  const showPhoto = src && src !== failedSrc;
+  return (
+    <div className="profile-avatar" aria-label={name ? `${name}'s photo` : 'Profile photo'}>
+      {showPhoto ? (
+        <img
+          className="profile-avatar__img"
+          src={src}
+          alt={name ? `${name}'s photo` : 'Profile photo'}
+          onError={() => setFailedSrc(src)}
+        />
+      ) : (
+        <FaUser className="profile-avatar__placeholder" aria-hidden="true" />
+      )}
+    </div>
+  );
+}
 
 function InfoRow({ icon: Icon, label, value }) {
   return (
@@ -111,6 +133,10 @@ export default function ProfilePage() {
   const position      = userProfile?.position      || latestReg?.position || '';
   const email         = currentUser?.email         || '';
   const lastUpdate    = userProfile?.lastUpdate    || '';
+  // The profile photo is the one the student attached to their most recent
+  // registration. Staff accounts have no registration, so they get the
+  // placeholder silhouette.
+  const photoURL      = latestReg?.photoURL || '';
 
   // "Submitted Registrations" = every registration this student has ever
   // filed, regardless of decision. "Events Joined" = the subset staff has
@@ -170,6 +196,7 @@ export default function ProfilePage() {
 
         {/* Identity card */}
         <div className="profile-identity-card">
+          <ProfileAvatar src={photoURL} name={displayName} />
           <div className="profile-identity-left">
             <h2 className="profile-full-name">{displayName.toUpperCase()}</h2>
             <p className="profile-student-number">

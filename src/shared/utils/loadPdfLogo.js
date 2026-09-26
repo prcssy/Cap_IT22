@@ -40,6 +40,44 @@ export async function loadPdfLogo(logoUrl) {
   }
 }
 
+// Loads a student photo for embedding in a PDF: downscaled to `maxDim` on
+// its longest side and re-encoded as JPEG so a phone-camera photo doesn't
+// bloat the file. Same best-effort contract as loadPdfLogo — resolves null
+// (never throws) when the image can't be read back out, most commonly
+// because the Storage bucket has no CORS rule allowing this origin, in
+// which case the caller falls back to a plain link. A cache-busting query
+// param is added so the browser doesn't reuse the copy the page's own
+// <img> tag already cached WITHOUT CORS headers, which would fail here.
+export async function loadPdfPhoto(photoUrl, maxDim = 500) {
+  if (!photoUrl) return null;
+  try {
+    const bustedUrl = `${photoUrl}${photoUrl.includes('?') ? '&' : '?'}pdf=${Date.now()}`;
+    const img = await new Promise((resolve, reject) => {
+      const el = new Image();
+      el.crossOrigin = 'anonymous';
+      el.onload = () => resolve(el);
+      el.onerror = () => reject(new Error('Could not load photo.'));
+      el.src = bustedUrl;
+    });
+
+    const scale = Math.min(maxDim / img.naturalWidth, maxDim / img.naturalHeight, 1);
+    const width = Math.max(1, Math.round(img.naturalWidth * scale));
+    const height = Math.max(1, Math.round(img.naturalHeight * scale));
+    const canvas = document.createElement('canvas');
+    canvas.width = width;
+    canvas.height = height;
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = '#ffffff';
+    ctx.fillRect(0, 0, width, height);
+    ctx.drawImage(img, 0, 0, width, height);
+
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.85), width, height };
+  } catch (e) {
+    console.warn('PDF export: skipping photo —', e);
+    return null;
+  }
+}
+
 // Draws `title` centered on the page at `y`, with the logo (if loaded)
 // placed just to its left, vertically centered against the title text.
 // The title itself always stays centered on the page — the logo doesn't

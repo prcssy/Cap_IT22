@@ -1,0 +1,14 @@
+[
+  {
+    "origin": [
+      "http://localhost:5173",
+      "https://www.srcsportsportal.com",
+      "https://srcsportsportal.com",
+      "https://srccapstone.web.app",
+      "https://srccapstone.firebaseapp.com"
+    ],
+    "method": ["GET", "HEAD"],
+    "responseHeader": ["Content-Type"],
+    "maxAgeSeconds": 3600
+  }
+]

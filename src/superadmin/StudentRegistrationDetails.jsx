@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useContext, useMemo, useRef } from 'react';
-import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf, FaFileWord, FaFileAlt, FaExternalLinkAlt, FaDownload } from 'react-icons/fa';
+import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf, FaFileWord, FaFileAlt, FaDownload, FaUser } from 'react-icons/fa';
 // jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf below),
 // not imported statically here.
 import { db } from '../shared/firebase';
@@ -171,15 +171,28 @@ function WaiverAttachment({ url, fileName }) {
   );
 }
 
-/* Photo attachment — a real thumbnail instead of a text link, so Admin
-   can see who's in the photo without leaving the modal; still opens the
-   full-size image in a new tab on click. */
-function PhotoAttachment({ url }) {
+/* Player photo pinned at the top of the details modal (both Admin's
+   registration view and Super Admin's account view) so it's visible
+   without scrolling down to Attachments. Falls back to a silhouette when
+   there's no photo, or the stored link no longer loads. */
+function ModalPhoto({ url, name }) {
+  const [failedUrl, setFailedUrl] = useState(null);
+  const showPhoto = url && url !== failedUrl;
   return (
-    <a href={url} target="_blank" rel="noreferrer" className="asp-attach-photo">
-      <img src={url} alt="Uploaded student photo" />
-      <span className="asp-attach-photo__hint"><FaExternalLinkAlt /> View full size</span>
-    </a>
+    <div className="asp-modal-photo">
+      {showPhoto ? (
+        <a href={url} target="_blank" rel="noreferrer" className="asp-modal-photo__frame" title="View full size">
+          <img src={url} alt={name ? `${name}'s photo` : 'Student photo'} onError={() => setFailedUrl(url)} />
+        </a>
+      ) : (
+        <div className="asp-modal-photo__frame asp-modal-photo__frame--empty" title="No photo uploaded">
+          <FaUser aria-hidden="true" />
+        </div>
+      )}
+      <span className="asp-modal-photo__caption">
+        {showPhoto ? 'Click photo to view full size' : 'No photo uploaded'}
+      </span>
+    </div>
   );
 }
 
@@ -520,14 +533,15 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
      Same jsPDF + jspdf-autotable combo AdminSchedulePage already uses for
      match schedule/bracket exports (see handleDownloadPdf there) — a plain
      key/value table per section, laid out like the Student Details modal
-     above. Photo/waiver aren't embedded as images: fetching a Firebase
-     Storage URL into a canvas for jsPDF's addImage can fail on CORS, and a
-     clickable link the reviewer can open is more reliable than a PDF
-     export that silently breaks. */
+     above. The player's photo is embedded beside the first two sections;
+     reading a Firebase Storage URL into a canvas fails unless the bucket
+     has a CORS rule for this origin, so when it can't be loaded the PDF
+     falls back to a clickable "View uploaded photo" link instead of
+     breaking. The waiver is always just a link. */
   const handleDownloadPdf = async (reg) => {
     const { jsPDF } = await import('jspdf');
     const { default: autoTable } = await import('jspdf-autotable');
-    const { loadPdfLogo, drawLogoTitleRow, drawSignatureBlock } = await import('../shared/utils/loadPdfLogo');
+    const { loadPdfLogo, loadPdfPhoto, drawLogoTitleRow, drawSignatureBlock } = await import('../shared/utils/loadPdfLogo');
     const doc = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'letter' });
     const pageWidth = doc.internal.pageSize.getWidth();
 
@@ -544,9 +558,34 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
     doc.setTextColor(0);
 
     let cursorY = titleY + 52;
+
+    // Photo sits at the right edge beside the first sections; those
+    // sections get a wider right margin so their tables stop short of it.
+    const photoInfo = await loadPdfPhoto(reg.photoURL);
+    const PHOTO_BOX_W = 100;
+    const PHOTO_BOX_H = 125;
+    const PHOTO_GAP = 16;
+    let sectionRightMargin = 40;
+    let photoBottom = 0;
+    if (photoInfo) {
+      const scale = Math.min(PHOTO_BOX_W / photoInfo.width, PHOTO_BOX_H / photoInfo.height);
+      const w = photoInfo.width * scale;
+      const h = photoInfo.height * scale;
+      const x = pageWidth - 40 - PHOTO_BOX_W + (PHOTO_BOX_W - w) / 2;
+      doc.addImage(photoInfo.dataUrl, 'JPEG', x, cursorY, w, h);
+      doc.setDrawColor(200);
+      doc.setLineWidth(0.5);
+      doc.rect(x, cursorY, w, h);
+      sectionRightMargin = 40 + PHOTO_BOX_W + PHOTO_GAP;
+      photoBottom = cursorY + PHOTO_BOX_H;
+    }
+
     const section = (title, rows) => {
       const body = rows.filter(([, value]) => value !== undefined);
       if (body.length === 0) return;
+
+      // Once the tables have cleared the photo, go back to full width.
+      if (sectionRightMargin !== 40 && cursorY >= photoBottom) sectionRightMargin = 40;
 
       autoTable(doc, {
         startY: cursorY,
@@ -554,7 +593,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
         body: [],
         theme: 'plain',
         styles: { fontSize: 11, fontStyle: 'bold' },
-        margin: { left: 40, right: 40 },
+        margin: { left: 40, right: sectionRightMargin },
       });
       autoTable(doc, {
         startY: doc.lastAutoTable.finalY,
@@ -562,7 +601,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
         theme: 'grid',
         styles: { fontSize: 10, cellPadding: 6 },
         columnStyles: { 0: { fontStyle: 'bold', cellWidth: 150 } },
-        margin: { left: 40, right: 40 },
+        margin: { left: 40, right: sectionRightMargin },
       });
       cursorY = doc.lastAutoTable.finalY + 20;
     };
@@ -600,10 +639,10 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
       section('Message', [['Message', reg.message]]);
     }
 
-    if (reg.photoURL || reg.waiverURL) {
+    if ((reg.photoURL && !photoInfo) || reg.waiverURL) {
       doc.setFontSize(10);
       doc.setTextColor(29, 78, 216);
-      if (reg.photoURL) {
+      if (reg.photoURL && !photoInfo) {
         doc.textWithLink('View uploaded photo', 40, cursorY, { url: reg.photoURL });
         cursorY += 16;
       }
@@ -859,6 +898,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
               <button className="asp-modal__close" onClick={() => setSelectedStudent(null)}><FaTimes /></button>
             </div>
             <div className="asp-modal__body">
+              <ModalPhoto url={selectedStudent.photoURL} name={selectedStudent.fullName} />
               {scope === 'allUsers' ? (
                 <>
                   {/* Super Admin's audit view: account identity + login
@@ -962,22 +1002,12 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                     </section>
                   )}
 
-                  {(selectedStudent.photoURL || selectedStudent.waiverURL) && (
+                  {selectedStudent.waiverURL && (
                     <section className="asp-modal__section-group">
                       <h3 className="asp-modal__section">Attachments</h3>
-                      <div className="asp-form-row">
-                        {selectedStudent.photoURL && (
-                          <div className="asp-form-group">
-                            <label>Photo</label>
-                            <PhotoAttachment url={selectedStudent.photoURL} />
-                          </div>
-                        )}
-                        {selectedStudent.waiverURL && (
-                          <div className="asp-form-group">
-                            <label>Waiver / Consent Form</label>
-                            <WaiverAttachment url={selectedStudent.waiverURL} fileName={selectedStudent.waiverFileName} />
-                          </div>
-                        )}
+                      <div className="asp-form-group">
+                        <label>Waiver / Consent Form</label>
+                        <WaiverAttachment url={selectedStudent.waiverURL} fileName={selectedStudent.waiverFileName} />
                       </div>
                     </section>
                   )}
