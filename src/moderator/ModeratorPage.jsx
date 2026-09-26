@@ -2332,11 +2332,15 @@ export default function ModeratorPage() {
          its order fell to 0, every saved game looked "later", and the form
          showed the 1200 baseline instead of the team's saved rating. */
       const sc = rec?.scheduleId ? schedById.get(rec.scheduleId) : (rec?.date ? rec : null);
+      /* A moderator-requested fixture (rematch, tie-break) always comes after
+         the regular games, whatever date it got — same rule as the server's
+         scheduleOrder, so it adopts each team's current rating. */
+      const offset = sc?.requestId && sc.round == null && !sc.stage ? 1e15 : 0;
       if (sc?.date) {
         const t = new Date(`${sc.date}T${sc.time || '00:00'}`).getTime();
-        if (!Number.isNaN(t)) return t;
+        if (!Number.isNaN(t)) return offset + t;
       }
-      return rec?.createdAt || 0;
+      return offset + (rec?.createdAt || 0);
     };
     /* A brand-new (unrecorded) game starts from each team's CURRENT rating in
        this sport + division — the same number the Ranking page shows. Only a
@@ -2532,7 +2536,12 @@ export default function ModeratorPage() {
       applyFormat(formatById(autoId)?.multi ? autoId : 'many-time', s);
       return;
     }
-    if (autoId && applyFormat(autoId, s)) return;
+    /* A head-to-head fixture (e.g. a requested 1v1 rematch in a race
+       division) is only ever these two teams: keep the division's scoring
+       mode but use the 1V1 layout, not four panels with blank extra slots. */
+    const autoFormat = formatById(autoId);
+    const pairId = autoFormat?.multi ? (autoFormat.mode === 'time' ? '1v1-time' : '1v1-points') : autoId;
+    if (pairId && applyFormat(pairId, s)) return;
 
     setEntries([
       { ...mkEntry(), teamId: teamIdByName(s.teamA) },

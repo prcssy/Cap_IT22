@@ -198,15 +198,25 @@ function computeEditFinalPoints({ ratingA, ratingB, violA, violB, comebackA, com
 /* Builds the "which game came first" ordering used by replayScope: the
    fixture's scheduled date/time when the record came from the Match
    Schedule, else the moment it was recorded. */
+/* A fixture a moderator asked for (rematch, tie-break, …) always follows the
+   regular schedule it was requested from, whatever date the admin gave it —
+   otherwise a rematch dated on/before the original game replays first and its
+   teams start again from 1200 instead of the rating they just earned. */
+const REQUESTED_FIXTURE_OFFSET = 1e15;
+function isRequestedFixture(s) {
+  return !!(s && s.requestId && s.round == null && !s.stage);
+}
+
 function scheduleOrder(schedules) {
   const byId = new Map((schedules || []).map((s) => [s.id, s]));
   return (rec) => {
     const s = rec.scheduleId ? byId.get(rec.scheduleId) : null;
+    const offset = isRequestedFixture(s) ? REQUESTED_FIXTURE_OFFSET : 0;
     if (s && s.date) {
       const t = new Date(`${s.date}T${s.time || '00:00'}`).getTime();
-      if (!Number.isNaN(t)) return t;
+      if (!Number.isNaN(t)) return offset + t;
     }
-    return rec.createdAt || 0;
+    return offset + (rec.createdAt || 0);
   };
 }
 

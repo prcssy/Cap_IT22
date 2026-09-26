@@ -200,6 +200,25 @@ test('replayScope orders by schedule, even when recorded out of order', () => {
   assert.equal(r2.teamA.prevPoints, r1.teamA.finalPoints);    // later game adopts it
 });
 
+test('a requested rematch follows the regular game even when dated earlier', () => {
+  const mk = (id, createdAt, sid, winner) => ({
+    id, createdAt, scheduleId: sid, sportName: 'Basketball', category: 'Women', mode: 'points', winner,
+    teamA: { id: 'Fox', name: 'Fox', points: winner === 'A' ? 40 : 30, prevPoints: 1200 },
+    teamB: { id: 'Blue', name: 'Blue', points: winner === 'A' ? 30 : 40, prevPoints: 1200 },
+    participants: [],
+  });
+  const schedules = [
+    { id: 's1', date: '2026-09-30', time: '08:00' },
+    { id: 's2', date: '2026-09-26', time: '08:00', requestId: 'req1', round: null },
+  ];
+  const recs = [mk('r1', 1, 's1', 'A'), mk('r2', 2, 's2', 'B')];
+  const { records } = replayScope(recs, rankingScopeKey('Basketball', 'Women'), scheduleOrder(schedules));
+  const r1 = records.find((r) => r.id === 'r1');
+  const r2 = records.find((r) => r.id === 'r2');
+  assert.equal(r1.teamA.prevPoints, 1200);
+  assert.equal(r2.teamA.prevPoints, r1.teamA.finalPoints);
+});
+
 test('DRAW sentinel: equal ratings and scores leave both teams unchanged, both place 1st', () => {
   const rows = [
     { id: 'a', name: 'A', score: 11, totalViolations: 0, comeback: false, prevPoints: 1200 },

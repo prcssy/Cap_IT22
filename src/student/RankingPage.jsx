@@ -816,17 +816,70 @@ export default function RankingPage() {
       && inPickedDivision(record)
     ));
 
+    /* A fixture a moderator requested (rematch / tie-break) that only
+       re-plays teams from an earlier race in the same sport + division is
+       NOT a new event: it re-decides the places those teams were contesting
+       (e.g. a 2nd-vs-3rd rematch). The winner takes the better of their
+       places, the loser the worse — no extra medals are handed out. */
+    const isRequestedRecord = (record) => {
+      const sched = record.scheduleId ? schedById.get(String(record.scheduleId)) : null;
+      return !!(sched?.requestId && sched.round == null && !sched.stage);
+    };
+    const scopeOf = (record) => `${norm(record.sportName)}::${norm(recordLabel(record).label)}`;
+    const finishOrder = (record) => {
+      const field = record.participants || [];
+      if (field.length > 2) return [...field].sort((a, b) => (a.place || 99) - (b.place || 99)).map((p) => p.name);
+      if (record.draw || record.winner === 'DRAW') return null;
+      if (record.winner === 'A') return [record.teamA?.name, record.teamB?.name];
+      if (record.winner === 'B') return [record.teamB?.name, record.teamA?.name];
+      return null;
+    };
+    const baseRaces = relevantRecords.filter((r) => (r.participants || []).length > 2 && !isRequestedRecord(r));
+    const consumedRematches = new Set();
+    const racePlaces = new Map(); // race record id -> Map(norm(name) -> place)
+    baseRaces.forEach((race) => {
+      const places = new Map(race.participants.map((p) => [norm(p.name), p.place]));
+      relevantRecords
+        .filter((r) => r !== race && isRequestedRecord(r) && scopeOf(r) === scopeOf(race))
+        .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0))
+        .forEach((rematch) => {
+          const order = finishOrder(rematch);
+          if (!order || order.some((n) => !n || !places.has(norm(n)))) return;
+          const contested = order.map((n) => places.get(norm(n))).sort((a, b) => a - b);
+          order.forEach((n, i) => places.set(norm(n), contested[i]));
+          consumedRematches.add(rematch);
+        });
+      // A rematch that's scheduled but not recorded yet: the places it will
+      // decide stay unawarded until its result is in.
+      const raceSched = race.scheduleId ? schedById.get(String(race.scheduleId)) : null;
+      schedules
+        .filter((s) => s.requestId && s.round == null && !s.stage && String(s.id) !== String(race.scheduleId)
+          && norm(s.sport) === norm(race.sportName)
+          && norm(labelFor(s.sport, s.category, s.divisionId).label)
+            === norm(labelFor(race.sportName, race.category, race.divisionId || raceSched?.divisionId).label)
+          && !records.some((r) => String(r.scheduleId) === String(s.id)))
+        .forEach((s) => {
+          const names = (s.participants?.length ? s.participants.map((p) => p.name) : [s.teamA, s.teamB]).filter(Boolean);
+          if (names.length && names.every((n) => places.has(norm(n)))) {
+            names.forEach((n) => places.set(norm(n), null));
+          }
+        });
+      racePlaces.set(race.id, places);
+    });
+
     // 1-vs-many events (races): each record is its own event, so the saved
     // finishing place awards its medal immediately, one race at a time.
     relevantRecords.forEach((record) => {
       const participants = record.participants || [];
-      if (participants.length <= 2) return;
+      if (participants.length <= 2 || consumedRematches.has(record)) return;
+      const places = racePlaces.get(record.id);
       participants.forEach((participant) => {
         const row = ensureTeam(participant);
         if (!row) return;
-        if (participant.place === 1) row.gold += 1;
-        else if (participant.place === 2) row.silver += 1;
-        else if (participant.place === 3) row.bronze += 1;
+        const place = places?.has(norm(participant.name)) ? places.get(norm(participant.name)) : participant.place;
+        if (place === 1) row.gold += 1;
+        else if (place === 2) row.silver += 1;
+        else if (place === 3) row.bronze += 1;
       });
     });
 
@@ -836,7 +889,7 @@ export default function RankingPage() {
     const scopes = new Map(); // scopeKey -> { sportName, category, standings: Map }
     relevantRecords.forEach((record) => {
       const participants = record.participants || [];
-      if (participants.length > 2) return;
+      if (participants.length > 2 || consumedRematches.has(record)) return;
       if (record.draw || record.winner === 'DRAW') return;
       const winnerTeam = record.winner === 'A' ? record.teamA : record.winner === 'B' ? record.teamB : null;
       const loserTeam = record.winner === 'A' ? record.teamB : record.winner === 'B' ? record.teamA : null;
