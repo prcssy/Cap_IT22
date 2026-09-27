@@ -18,4 +18,14 @@ export default defineConfig([
       parserOptions: { ecmaFeatures: { jsx: true } },
     },
   },
+  // Cloud Functions are CommonJS Node code (require/exports), not browser
+  // modules — same as the root *.cjs scripts, which ESLint already treats
+  // as CommonJS by extension.
+  {
+    files: ['functions/**/*.js'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: globals.node,
+    },
+  },
 ])

@@ -83,7 +83,12 @@ async function main() {
   const db = getFirestore();
 
   const startedAt = new Date();
-  const stamp = startedAt.toISOString().replace(/[:.]/g, '-').replace('T', '_').slice(0, 19);
+  // File name uses the computer's LOCAL time (Philippine time here), so
+  // "firestore-2026-09-27_14-30-27.json" reads as 2:30:27 PM. The exact UTC
+  // time is still stored inside the file and manifest as `createdAt`.
+  const pad = (n) => String(n).padStart(2, '0');
+  const stamp = `${startedAt.getFullYear()}-${pad(startedAt.getMonth() + 1)}-${pad(startedAt.getDate())}`
+    + `_${pad(startedAt.getHours())}-${pad(startedAt.getMinutes())}-${pad(startedAt.getSeconds())}`;
   const outFile = path.resolve(args.out || path.join(__dirname, 'backups', `firestore-${stamp}.json`));
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
 

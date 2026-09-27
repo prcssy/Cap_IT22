@@ -39,6 +39,15 @@ gcloud firestore databases restore --source-backup=<backup name> --destination-d
 ```
 A restore always goes into a new database, so the live one is never overwritten blindly.
 
+### Don't know when it was deleted?
+Search every backup for the item's name. It shows which backups still have it,
+where it's missing from the live database, any matching delete entries in the
+activity log, and prints the restore command for the newest backup that has it:
+```
+node find-in-backups.cjs "Gym"
+node find-in-backups.cjs "Swimming" --only=sportsTeamsConfig
+```
+
 ### C. Restore an on-demand JSON export
 `latest` picks the newest file in `backups/`; a specific file such as
 `backups/firestore-2026-09-27_05-20-03.json` works too.
