@@ -35,8 +35,12 @@ function levelFieldsForRole(role, level) {
   return { level: FieldValue.delete() };
 }
 
+/** Random temporary password for new staff accounts. The fixed "Aa1" tail
+ *  guarantees it satisfies the app's password policy (8+ chars with an
+ *  uppercase letter, a lowercase letter and a number) whatever the random
+ *  part happens to contain. */
 function randomPassword() {
-  return crypto.randomBytes(16).toString("base64url");
+  return `${crypto.randomBytes(16).toString("base64url")}Aa1`;
 }
 
 function randomId() {

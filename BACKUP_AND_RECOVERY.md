@@ -1,0 +1,59 @@
+# Backup and Recovery
+
+Firestore database: `projects/srccapstone/databases/(default)` (region `asia-east1`).
+
+## Protection layers
+
+| Layer | What it covers | Setting |
+|---|---|---|
+| **Managed daily backups** | Whole database, taken automatically by Google every day | Daily, kept **14 days** |
+| **Point-in-time recovery (PITR)** | Read/restore the database as it was at any minute in the past 7 days (e.g. undo an accidental bulk delete) | Enabled, **7-day** window |
+| **Delete protection** | Blocks deleting the whole database by mistake | Enabled |
+| **On-demand JSON export** | Offline copy on a staff computer, with SHA-256 checksum | `node backup-firestore.cjs` |
+| **Multi-zone replication** | Firestore stores every write in several zones, so a server/zone failure loses no data | Built into Firestore |
+| **Transactions** | Match results, rankings and every list edit commit all-or-nothing, so a crash mid-save can't leave half-written data | `runTransaction` in the app and Cloud Functions |
+
+## Routine
+
+- **Automatic:** nothing to do. Check the schedule with
+  `firebase firestore:backups:schedules:list --database "(default)"`, and see
+  the backups taken with `firebase firestore:backups:list`.
+- **Before a risky change** (a season reset, bulk import, factory reset): run
+  `node backup-firestore.cjs` first. The file lands in `backups/` (gitignored,
+  since it contains personal data; never commit or share it).
+
+## Recovery procedures
+
+### A. Undo a recent mistake (last 7 days): PITR
+Restore the database as of a timestamp into a **new** database, check it, then copy back what was lost:
+```
+gcloud firestore databases clone --source-database="projects/srccapstone/databases/(default)" \
+  --snapshot-time="2026-09-27T05:00:00Z" --destination-database="recovered"
+```
+(or Firebase Console → Firestore → Disaster recovery).
+
+### B. Restore a daily managed backup
+```
+firebase firestore:backups:list
+gcloud firestore databases restore --source-backup=<backup name> --destination-database="restored"
+```
+A restore always goes into a new database, so the live one is never overwritten blindly.
+
+### C. Restore an on-demand JSON export
+`latest` picks the newest file in `backups/`; a specific file such as
+`backups/firestore-2026-09-27_05-20-03.json` works too.
+```
+node restore-firestore.cjs latest                  # dry run: checksum + contents
+node restore-firestore.cjs latest --verify         # compare with live data
+node restore-firestore.cjs latest --yes            # restore to original paths
+node restore-firestore.cjs latest --yes --only=venuesConfig   # one collection
+```
+
+## Recovery test log
+
+| Date | Test | Result |
+|---|---|---|
+| 2026-09-27 | `backup-firestore.cjs`: full export | 279 documents, 15 collections, SHA-256 `cb18a2c1…` |
+| 2026-09-27 | `restore-firestore.cjs --drill`: restored the export into temporary `__restoreDrill_*` collections, read every document back, compared field by field, then removed them | **Passed**: 279/279 identical, 49.4 s |
+
+Repeat the drill (`--drill`) once per season and add a row above.

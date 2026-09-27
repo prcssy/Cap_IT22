@@ -23,7 +23,8 @@ import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel, getSchoolLevel } from '../shared/utils/schoolLevel';
 import { resizeImageToBlob } from '../shared/utils/resizeImage';
-import { isRaceMatch, raceParticipants, raceStandingsFromRecord, recordCoversRace } from '../shared/utils/raceFormat';
+import { LIMITS, validatePersonName, validateSection, validateMessage } from '../shared/utils/validation';
+import { isRaceMatch, raceParticipants, raceStandingsFromRecord, recordCoversRace, ordinal } from '../shared/utils/raceFormat';
 import {
   resolveGrade,
   resolveRegistration,
@@ -103,8 +104,9 @@ function recordMatchesSchedule(record, schedule) {
 
 function finishedCardFrom(schedule, record, teamsByName) {
   const participants = record.participants?.length ? record.participants : [record.teamA, record.teamB];
-  /* A race has many teams but the card has two slots, so it shows the race's
-     top two finishers (1st on the left) rather than an arbitrary pair. */
+  /* teamA/teamB below are the race's top two finishers (kept for code that
+     expects a pair); the race card itself renders `standings`, the whole
+     field in finishing order, so a 3- or 5-team race shows every team. */
   const race = isRaceMatch(schedule);
   const podium = race ? raceStandingsFromRecord(record) : [];
   const byName = (name) => participants.find(p => sameTeam(p?.name, name));
@@ -147,7 +149,27 @@ function finishedCardFrom(schedule, record, teamsByName) {
     winner,
     teamAStats: stat(a, b),
     teamBStats: stat(b, a),
+    standings: race ? raceStandingsForCard(schedule, podium, byName, team) : null,
   };
+}
+
+/* Every finisher of a race, best first, with what the card shows per row. */
+function raceStandingsForCard(schedule, podium, byName, team) {
+  const field = raceParticipants(schedule);
+  const winners = podium.filter((s) => s.place === 1).length;
+  return podium.map((s) => {
+    const saved = byName(s.name) || {};
+    const fixture = field.find((p) => sameTeam(p.name, s.name));
+    return {
+      ...team(s.name, fixture?.logo, saved),
+      place: s.place,
+      // A shared 1st place is a tie, not a win.
+      isWinner: s.place === 1 && winners === 1,
+      score: s.scoreLabel || '—',
+      violation: saved.totalViolations ?? 0,
+      comeback: !!saved.comeback,
+    };
+  });
 }
 
 /* A time-scored record stores minutes as a float; show it the way the
@@ -375,6 +397,10 @@ function FinishedCard({ match, isActive, width }) {
         <div className="fc-datetime">{match.date}{hasTime ? ` · ${match.time}` : ''}</div>
         {match.round && <div className="fc-round">{match.round}</div>}
 
+        {match.standings ? (
+          <RaceStandings standings={match.standings} isActive={isActive} />
+        ) : (
+        <>
         <div className="fc-match">
           <div className={`fc-team ${winnerA ? 'fc-team--winner' : !drawn ? 'fc-team--loser' : ''}`}>
             <div className="fc-banner-wrap">
@@ -426,8 +452,48 @@ function FinishedCard({ match, isActive, width }) {
             )}
           </div>
         )}
+        </>
+        )}
       </div>
     </div>
+  );
+}
+
+/* Finished race (3, 5, … teams): the whole field in finishing order, one
+   row per team, instead of the two-team face-off layout. Violations and
+   comebacks are small chips on the row so a big field still fits the card. */
+function RaceStandings({ standings, isActive }) {
+  return (
+    <ol className="fc-race" aria-label="Race results">
+      {standings.map((t, i) => (
+        <li
+          key={`${t.label}-${i}`}
+          className={`fc-race-row${t.isWinner ? ' fc-race-row--winner' : ''}${t.place === 1 ? ' fc-race-row--first' : ''}`}
+        >
+          <span className={`fc-race-place fc-race-place--${Math.min(t.place || 99, 4)}`}>
+            {t.place ? ordinal(t.place).toUpperCase() : '—'}
+          </span>
+          <div className="fc-banner-wrap">
+            {t.isWinner && <span className="fc-crown fc-crown--race"><FaCrown /></span>}
+            <TeamBanner team={t} size={isActive ? 'fc-race' : 'fc-race-small'} />
+          </div>
+          <div className="fc-race-info">
+            <span className="fc-race-name">{t.label}</span>
+            {(t.comeback || t.violation > 0) && (
+              <span className="fc-race-chips">
+                {t.comeback && <span className="fc-race-chip fc-race-chip--comeback"><FiTrendingUp /> COMEBACK</span>}
+                {t.violation > 0 && (
+                  <span className="fc-race-chip fc-race-chip--violation">
+                    <FiAlertTriangle /> {t.violation} VIOLATION{t.violation > 1 ? 'S' : ''}
+                  </span>
+                )}
+              </span>
+            )}
+          </div>
+          <span className="fc-race-score">{t.score}</span>
+        </li>
+      ))}
+    </ol>
   );
 }
 
@@ -1758,7 +1824,8 @@ function PlayerRegistration({ onBack }) {
   const validate = () => {
     const errs = {};
     if (!form.event)                  errs.event            = 'Please select an event to register for';
-    if (!form.fullName.trim())        errs.fullName        = 'Full name is required';
+    const fullNameError = validatePersonName(form.fullName, 'Full name', { lastNameFirst: true });
+    if (fullNameError)                errs.fullName         = fullNameError;
     if (!form.dob)                    errs.dob              = 'Date of birth is required';
     if (!form.age)                    errs.age              = 'Age is required';
     else if (Number(form.age) <= 0)   errs.age              = 'Enter a valid age';
@@ -1784,8 +1851,8 @@ function PlayerRegistration({ onBack }) {
     if (!addr.municipalityCode)       errs.municipality     = 'Please select a city / municipality';
     if (!noBarangaysForMunicipality && !addr.barangayCode)
                                        errs.barangay         = 'Please select a barangay';
-    if (!form.emergencyContactName.trim())
-                                       errs.emergencyContact = 'Emergency contact name is required';
+    const emergencyNameError = validatePersonName(form.emergencyContactName, 'Emergency contact name');
+    if (emergencyNameError)           errs.emergencyContact = emergencyNameError;
     else if (!form.emergencyContactNational)
                                        errs.emergencyContact = 'Emergency contact number is required';
     else {
@@ -1793,7 +1860,10 @@ function PlayerRegistration({ onBack }) {
       if (err) errs.emergencyContact = err;
     }
     if (!form.gradeLevel)             errs.gradeLevel       = 'Please select a grade / year level';
-    if (!form.section.trim())         errs.section          = 'Please enter a section';
+    const sectionError = validateSection(form.section);
+    if (sectionError)                 errs.section          = sectionError;
+    const messageError = validateMessage(form.message);
+    if (messageError)                 errs.message          = messageError;
     if (!form.teamName)               errs.teamName         = 'Please select a team';
     if (!form.sport)                  errs.sport            = 'Please select a sport';
     if (!form.position)               errs.position         = 'Please select a position';
@@ -2087,7 +2157,7 @@ function PlayerRegistration({ onBack }) {
             <div className="reg-row reg-row--3">
               <Field label="Full Name" required error={errors.fullName}>
                 <input className="reg-input" placeholder="Last Name, First Name, Middle Name"
-                  value={form.fullName} onChange={set('fullName')} required />
+                  value={form.fullName} onChange={set('fullName')} maxLength={LIMITS.name} required />
               </Field>
               <Field label="Date of Birth" required error={errors.dob}>
                 <input className="reg-input" type="date"
@@ -2122,7 +2192,7 @@ function PlayerRegistration({ onBack }) {
               </Field>
               <Field label="Emergency Contact" required error={errors.emergencyContact}>
                 <input className="reg-input" placeholder="Contact person's name"
-                  value={form.emergencyContactName} onChange={onEmergencyNameChange} required />
+                  value={form.emergencyContactName} onChange={onEmergencyNameChange} maxLength={LIMITS.name} required />
                 <div className="reg-phone-row">
                   <span className="reg-phone-prefix">+{getCountryCallingCode(form.phoneCountry)}</span>
                   <input className="reg-input" type="tel" inputMode="numeric" placeholder="National number"
@@ -2192,7 +2262,7 @@ function PlayerRegistration({ onBack }) {
               </Field>
               <Field label="House No. / Street / Unit">
                 <input className="reg-input" placeholder="e.g. 123 Rizal St., Purok 2 (optional)"
-                  value={addr.street} onChange={onStreetChange} />
+                  value={addr.street} onChange={onStreetChange} maxLength={LIMITS.street} />
               </Field>
             </div>
 
@@ -2210,6 +2280,7 @@ function PlayerRegistration({ onBack }) {
                   placeholder="e.g. Section A"
                   value={form.section}
                   onChange={set('section')}
+                  maxLength={LIMITS.section}
                   required
                 />
               </Field>
@@ -2329,11 +2400,11 @@ function PlayerRegistration({ onBack }) {
                 </a>
               </Field>
 
-              <Field label="Message">
+              <Field label="Message" error={errors.message}>
                 <textarea className="reg-textarea"
                   placeholder="Any additional information (optional)"
                   value={form.message} onChange={set('message')}
-                  rows={4} />
+                  maxLength={LIMITS.message} rows={4} />
               </Field>
             </div>
 

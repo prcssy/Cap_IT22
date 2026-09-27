@@ -1,5 +1,7 @@
 import { useState, useEffect } from 'react';
 import { FaTimes, FaEye, FaEyeSlash, FaSave } from 'react-icons/fa';
+import { validatePassword } from '../../utils/validation';
+import { friendlyAuthError } from '../../utils/authErrors';
 import './ChangePasswordModal.css';
 
 /* ── Password strength calculator ── */
@@ -127,7 +129,8 @@ export default function ChangePasswordModal({ isOpen, onClose, onSave }) {
   const handleSave = async () => {
     setError('');
     if (!current)               return setError('Please enter your current password.');
-    if (newPass.length < 8)     return setError('New password must be at least 8 characters.');
+    const weak = validatePassword(newPass);
+    if (weak)                    return setError(`${weak}.`);
     if (newPass !== confirm)     return setError('Passwords do not match.');
     if (newPass === current)     return setError('New password must differ from current password.');
 
@@ -138,7 +141,7 @@ export default function ChangePasswordModal({ isOpen, onClose, onSave }) {
       /* Auto-close after 2.4 s */
       setTimeout(() => { onClose(); }, 2400);
     } catch (err) {
-      setError(err?.message || 'Failed to update password. Please try again.');
+      setError(friendlyAuthError(err, 'Failed to update password. Please try again.'));
     } finally {
       setSaving(false);
     }

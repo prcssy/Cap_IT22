@@ -27,6 +27,9 @@ dist-ssr
 *.sw?
 serviceAccountKey.json
 
+# Firestore exports from backup-firestore.cjs — contain personal data
+backups/
+
 # Environment variables (Firebase config etc.) — never commit
 .env
 .env.*

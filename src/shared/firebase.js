@@ -54,7 +54,12 @@ try {
           return `${h.slice(0, 4).join('')}-${h.slice(4, 6).join('')}-${h.slice(6, 8).join('')}-${h.slice(8, 10).join('')}-${h.slice(10).join('')}`;
         };
       }
-      self.FIREBASE_APPCHECK_DEBUG_TOKEN = true;
+      // A fixed token from .env is shared by every browser/profile on the
+      // dev machine, so it only has to be registered in the console once.
+      // Without it, each new browser generates (and logs) its own random
+      // token, and every callable fails as "unauthenticated" until that
+      // token is registered too.
+      self.FIREBASE_APPCHECK_DEBUG_TOKEN = import.meta.env.VITE_FIREBASE_APPCHECK_DEBUG_TOKEN || true;
     }
     initializeAppCheck(app, {
       provider: new ReCaptchaEnterpriseProvider(recaptchaSiteKey),

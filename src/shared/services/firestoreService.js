@@ -439,19 +439,21 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
     uid,
     email,
 
-    // Personal info
-    fullName:         formData.fullName         || '',
+    // Personal info — trimmed and typed here to match the field types/
+    // lengths firestore.rules enforces on create (age is a number, dob is
+    // yyyy-mm-dd, contactNumber is E.164 like +639171234567).
+    fullName:         (formData.fullName || '').trim().replace(/\s+/g, ' '),
     dob:              formData.dob              || '',
-    age:              formData.age              || '',
+    age:              Number(formData.age)      || 0,
     gender:           formData.gender           || '',
     contactNumber:    formData.contactNumber    || '',
     studentEmail:     formData.email            || '',
-    address:          formData.address          || '',
-    emergencyContact: formData.emergencyContact || '',
+    address:          (formData.address || '').trim(),
+    emergencyContact: (formData.emergencyContact || '').trim(),
 
     // Academic info
     gradeLevel: formData.gradeLevel || '',
-    section:    formData.section    || '',
+    section:    (formData.section || '').trim(),
 
     // Event the student is registering for
     // (Intramurals / Sportsfest / Prisaa — all share this same form)
@@ -464,7 +466,7 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
     position: formData.position || '',
 
     // Extra
-    message: formData.message || '',
+    message: (formData.message || '').trim(),
 
     // File URLs — null if student skipped the upload
     photoURL,

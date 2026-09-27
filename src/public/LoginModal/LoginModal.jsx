@@ -3,8 +3,15 @@ import { useNavigate } from 'react-router-dom';
 import { AuthContext } from '../../shared/context/AuthContext';
 import { BrandingContext } from '../../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../../shared/context/LevelLabelsContext';
-import { FaTimes, FaEye, FaEyeSlash, FaArrowLeft } from 'react-icons/fa';
+import { FaTimes, FaEye, FaEyeSlash, FaArrowLeft, FaCheck } from 'react-icons/fa';
+import { friendlyAuthError } from '../../shared/utils/authErrors';
+import { LIMITS, NAME_FORMAT_HINT, PASSWORD_RULES, validatePassword, validatePersonName, validateSection } from '../../shared/utils/validation';
 import './LoginModal.css';
+
+function FormError({ message }) {
+  if (!message) return null;
+  return <p className="auth-error" role="alert">{message}</p>;
+}
 
 // Every one of these is a React.lazy() page in App.jsx, so the very first
 // time a session visits one, the browser has to fetch its JS chunk before
@@ -33,20 +40,24 @@ function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification 
   const [submitting, setSubmitting] = useState(false);
   const [needsVerification, setNeedsVerification] = useState(false);
   const [resending, setResending] = useState(false);
+  const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setNeedsVerification(false);
+    setError('');
+    setNotice('');
     prefetchPostLoginRoutes();
     try {
       const { role } = await onLogin(email, password);
       onSuccess(role);
-    } catch (error) {
-      if (error.code === 'auth/email-not-verified') {
+    } catch (err) {
+      if (err.code === 'auth/email-not-verified') {
         setNeedsVerification(true);
       }
-      alert(error.message || 'Login failed. Please try again.');
+      setError(friendlyAuthError(err, 'Login failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -54,11 +65,12 @@ function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification 
 
   const handleResend = async () => {
     setResending(true);
+    setError('');
     try {
       await onResendVerification(email, password);
-      alert(`Verification email re-sent to ${email}. Please check your gmail inbox.`);
-    } catch (error) {
-      alert(error.message || 'Could not resend verification email.');
+      setNotice(`Verification email re-sent to ${email}. Please check your gmail inbox.`);
+    } catch (err) {
+      setError(friendlyAuthError(err, 'Could not resend verification email.'));
     } finally {
       setResending(false);
     }
@@ -106,6 +118,9 @@ function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification 
             </button>
           </div>
         </div>
+
+        <FormError message={error} />
+        {notice && <p className="auth-notice" role="status">{notice}</p>}
 
         <button type="submit" className="auth-btn auth-btn-primary" disabled={submitting}>
           {submitting ? 'Signing in…' : 'Log In'}
@@ -180,6 +195,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e) => {
     setFormData({
@@ -188,12 +204,18 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
     });
   };
 
+  const validateSignUp = () => (
+    validatePersonName(formData.name, 'Full name', { lastNameFirst: true })
+    || validateSection(formData.section)
+    || validatePassword(formData.password)
+    || (formData.password !== formData.confirmPassword ? 'Passwords do not match' : null)
+  );
+
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (formData.password !== formData.confirmPassword) {
-      alert('Passwords do not match');
-      return;
-    }
+    const validationError = validateSignUp();
+    setError(validationError || '');
+    if (validationError) return;
 
     setSubmitting(true);
     try {
@@ -211,11 +233,11 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
       // create-staff-account.cjs), the same trusted, console/CLI-only
       // process already used for the admins/moderators/superadmins
       // allowlist docs themselves.
-      const { verificationEmailSent } = await onSignUp(formData.name, formData.email, formData.password, {
+      const { verificationEmailSent } = await onSignUp(formData.name.trim().replace(/\s+/g, ' '), formData.email.trim(), formData.password, {
         role: 'student',
         gender: formData.gender,
         gradeLevel: formData.gradeLevel,
-        section: formData.section,
+        section: formData.section.trim(),
       });
 
       if (verificationEmailSent) {
@@ -231,8 +253,8 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
         );
       }
       onSuccess();
-    } catch (error) {
-      alert(error.message || 'Sign up failed. Please try again.');
+    } catch (err) {
+      setError(friendlyAuthError(err, 'Sign up failed. Please try again.'));
     } finally {
       setSubmitting(false);
     }
@@ -263,9 +285,10 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
                 type="text"
                 id="name"
                 name="name"
-                placeholder="Enter your name"
+                placeholder={NAME_FORMAT_HINT}
                 value={formData.name}
                 onChange={handleChange}
+                maxLength={LIMITS.name}
                 required
               />
             </div>
@@ -330,6 +353,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
                   placeholder="Enter your section"
                   value={formData.section}
                   onChange={handleChange}
+                  maxLength={LIMITS.section}
                   required
                 />
               </div>
@@ -382,16 +406,27 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
                 </div>
               </div>
             </div>
+
+            {formData.password && (
+              <ul className="auth-password-rules" aria-label="Password requirements">
+                {PASSWORD_RULES.map((rule) => {
+                  const ok = rule.test(formData.password);
+                  return (
+                    <li key={rule.id} className={ok ? 'is-met' : ''}>
+                      <FaCheck aria-hidden="true" /> {rule.label}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
         </div>
+
+        <FormError message={error} />
 
         <button type="submit" className="auth-btn auth-btn-primary" disabled={submitting}>
           {submitting ? 'Submitting…' : 'Submit'}
         </button>
       </form>
-
-      <p className="auth-staff-note">
-        Staff account? Ask your Super Admin to set one up for you.
-      </p>
     </div>
   );
 }
@@ -400,16 +435,18 @@ function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
   const { logo } = useContext(BrandingContext);
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
+    setError('');
     try {
-      await onResetPassword(email);
+      await onResetPassword(email.trim());
       alert('Password reset email sent. Please check your inbox.');
       onSwitchScreen('login');
-    } catch (error) {
-      alert(error.message || 'Could not send reset email.');
+    } catch (err) {
+      setError(friendlyAuthError(err, 'Could not send reset email.'));
     } finally {
       setSubmitting(false);
     }
@@ -435,6 +472,8 @@ function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
             required
           />
         </div>
+
+        <FormError message={error} />
 
         <button type="submit" className="auth-btn auth-btn-primary" disabled={submitting}>
           {submitting ? 'Sending…' : 'Continue'}
@@ -462,6 +501,7 @@ function NewPasswordScreen({ onSwitchScreen, onUpdatePassword }) {
   });
   const [showNewPassword, setShowNewPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [error, setError] = useState('');
 
   const handleChange = (e) => {
     setPasswords({
@@ -472,17 +512,17 @@ function NewPasswordScreen({ onSwitchScreen, onUpdatePassword }) {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
-    if (passwords.newPassword !== passwords.confirmPassword) {
-      alert('Passwords do not match');
-      return;
-    }
+    const validationError = validatePassword(passwords.newPassword)
+      || (passwords.newPassword !== passwords.confirmPassword ? 'Passwords do not match' : null);
+    setError(validationError || '');
+    if (validationError) return;
 
     try {
       await onUpdatePassword(passwords.newPassword);
       alert('Password changed successfully. Please log in again.');
       onSwitchScreen('login');
-    } catch (error) {
-      alert(error.message || 'Unable to update password.');
+    } catch (err) {
+      setError(friendlyAuthError(err, 'Unable to update password.'));
     }
   };
 
@@ -540,6 +580,8 @@ function NewPasswordScreen({ onSwitchScreen, onUpdatePassword }) {
             </button>
           </div>
         </div>
+
+        <FormError message={error} />
 
         <button type="submit" className="auth-btn auth-btn-primary">
           Change
