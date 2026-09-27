@@ -175,10 +175,10 @@ function mapScheduleToCardMatch(schedule) {
    that first snapshot arrives / while Firestore is unavailable. */
 
 const STATS = [
-  { icon: FaTrophy, value: 120, label: "Total Matches" },
-  { icon: FaBullseye, value: 8, label: "Sports" },
-  { icon: FaUsers, value: 15, label: "Teams" },
-  { icon: FaUserFriends, value: 350, label: "Players" },
+  { icon: FaTrophy, value: 0, label: "Total Matches" },
+  { icon: FaBullseye, value: 0, label: "Sports" },
+  { icon: FaUsers, value: 0, label: "Teams" },
+  { icon: FaUserFriends, value: 0, label: "Players" },
 ];
 
 const SPORTS = [
@@ -394,7 +394,9 @@ function LandingPage() {
         .sort((a, b) => a.name.localeCompare(b.name));
 
       const computed = { 'Total Matches': matchCount, Sports: sportEntries.length, Teams: teamNames.size };
-      if (typeof liveCounters.players === 'number') computed.Players = liveCounters.players;
+      // No counter doc (never published, or wiped by a reset) means no
+      // players yet — show 0, not the STATS placeholder.
+      computed.Players = typeof liveCounters.players === 'number' ? liveCounters.players : 0;
       setStats((prev) => prev.map((s) => (s.label in computed ? { ...s, value: computed[s.label] } : s)));
       setSports(sportEntries);
 
