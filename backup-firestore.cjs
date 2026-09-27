@@ -22,6 +22,13 @@
  *   node backup-firestore.cjs                     # writes backups/firestore-<timestamp>.json
  *   node backup-firestore.cjs --out=my-copy.json  # custom output file
  *
+ *   # Export a point-in-time clone (made from Firebase Console → Disaster
+ *   # recovery, or `gcloud firestore databases clone`) so compare-backup.cjs,
+ *   # find-in-backups.cjs and restore-firestore.cjs can use it like any other
+ *   # backup. --as-of is the clone's snapshot time: the file is named and
+ *   # dated by it, so it sorts in the right place among the other backups.
+ *   node backup-firestore.cjs --database=recovered --as-of=2026-09-27T13:00:00+08:00
+ *
  * Read-only: this script never writes to Firestore.
  */
 
@@ -80,9 +87,14 @@ async function main() {
   }
   const serviceAccount = require(keyPath);
   initializeApp({ credential: cert(serviceAccount) });
-  const db = getFirestore();
+  const databaseId = args.database || '(default)';
+  const db = databaseId === '(default)' ? getFirestore() : getFirestore(databaseId);
 
-  const startedAt = new Date();
+  const startedAt = args['as-of'] ? new Date(args['as-of']) : new Date();
+  if (Number.isNaN(startedAt.getTime())) {
+    console.error(`Invalid --as-of time "${args['as-of']}". Use e.g. 2026-09-27T13:00:00+08:00`);
+    process.exit(1);
+  }
   // File name uses the computer's LOCAL time (Philippine time here), so
   // "firestore-2026-09-27_14-30-27.json" reads as 2:30:27 PM. The exact UTC
   // time is still stored inside the file and manifest as `createdAt`.
@@ -92,19 +104,24 @@ async function main() {
   const outFile = path.resolve(args.out || path.join(__dirname, 'backups', `firestore-${stamp}.json`));
   fs.mkdirSync(path.dirname(outFile), { recursive: true });
 
-  console.log(`Backing up project "${serviceAccount.project_id}"...`);
+  console.log(`Backing up project "${serviceAccount.project_id}", database "${databaseId}"...`);
   const counts = {};
   const collections = {};
-  for (const col of await db.listCollections()) {
+  const topLevel = await db.listCollections();
+  if (!topLevel.length) {
+    console.error(`Database "${databaseId}" is empty or doesn't exist — nothing written.`);
+    process.exit(1);
+  }
+  for (const col of topLevel) {
     collections[col.id] = await exportCollection(col, counts);
     console.log(`  ${col.id.padEnd(22)} ${counts[col.path]} doc(s)`);
   }
 
-  const body = JSON.stringify({ projectId: serviceAccount.project_id, createdAt: startedAt.toISOString(), collections });
+  const body = JSON.stringify({ projectId: serviceAccount.project_id, sourceDatabase: databaseId, createdAt: startedAt.toISOString(), collections });
   fs.writeFileSync(outFile, body);
   const sha256 = crypto.createHash('sha256').update(body).digest('hex');
   const totalDocs = Object.values(counts).reduce((a, b) => a + b, 0);
-  const manifest = { file: path.basename(outFile), projectId: serviceAccount.project_id, createdAt: startedAt.toISOString(), totalDocs, counts, sha256 };
+  const manifest = { file: path.basename(outFile), projectId: serviceAccount.project_id, sourceDatabase: databaseId, createdAt: startedAt.toISOString(), totalDocs, counts, sha256 };
   fs.writeFileSync(outFile.replace(/\.json$/, '.manifest.json'), JSON.stringify(manifest, null, 2));
 
   console.log(`\nDone: ${totalDocs} document(s) in ${Object.keys(counts).length} collection(s).`);
@@ -113,6 +130,11 @@ async function main() {
 }
 
 main().catch((err) => {
+  if (err.code === 5) {
+    console.error(`Backup failed: database "${parseArgs().database || '(default)'}" was not found in this project.`);
+    console.error('List databases with: gcloud firestore databases list');
+    process.exit(1);
+  }
   console.error('Backup failed:', err);
   process.exit(1);
 });

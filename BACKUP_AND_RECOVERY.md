@@ -30,7 +30,24 @@ Restore the database as of a timestamp into a **new** database, check it, then c
 gcloud firestore databases clone --source-database="projects/srccapstone/databases/(default)" \
   --snapshot-time="2026-09-27T05:00:00Z" --destination-database="recovered"
 ```
-(or Firebase Console → Firestore → Disaster recovery).
+(or Firebase Console → Firestore → Disaster recovery). `--snapshot-time` must be a whole
+minute, no earlier than the "Earliest version time" shown on that page.
+
+Then turn the clone into a normal backup file, so the scripts below can compare and restore it:
+```
+node backup-firestore.cjs --database=recovered --as-of=2026-09-27T13:00:00+08:00
+node compare-backup.cjs                                  # what's in the clone but gone now
+node restore-firestore.cjs backups/firestore-2026-09-27_13-00-00.json --verify --only=venuesConfig
+```
+`--as-of` is the clone's snapshot time: the file is named after it, so it sorts correctly
+among the other backups. Delete the clone when you're done (it's billed like a database):
+`gcloud firestore databases delete --database=recovered`.
+
+**Restores overwrite whole documents, they don't merge.** Sports, venues, schedules, results
+and rankings are one list document per school level, so restoring e.g. `sportsTeamsConfig`
+brings back the deleted sport *and* undoes every other change to that level's list since the
+backup. Run `node backup-firestore.cjs` first, restore with `--only=`, and for a single lost
+item in a busy list consider re-adding it by hand from the values the compare output shows.
 
 ### B. Restore a daily managed backup
 ```
@@ -38,6 +55,14 @@ firebase firestore:backups:list
 gcloud firestore databases restore --source-backup=<backup name> --destination-database="restored"
 ```
 A restore always goes into a new database, so the live one is never overwritten blindly.
+
+### Don't know what was deleted?
+Compare every backup with the live database and list everything that's gone (whole documents
+and items inside lists, such as a sport, team, venue or match), with the restore command:
+```
+node compare-backup.cjs
+node compare-backup.cjs --only=venuesConfig,sportsTeamsConfig
+```
 
 ### Don't know when it was deleted?
 Search every backup for the item's name. It shows which backups still have it,
