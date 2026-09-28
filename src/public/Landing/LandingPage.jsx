@@ -9,7 +9,7 @@ import { AuthContext } from '../../shared/context/AuthContext';
 import { BrandingContext } from '../../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../../shared/context/LevelLabelsContext';
 import { FaArrowRightLong } from "react-icons/fa6";
-import { fetchCollectionData, getMatchSchedules, subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchSchedules, subscribeMatchRecords, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
+import { fetchCollectionData, subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchSchedules, subscribeMatchRecords, subscribeLiveStatsCounters, subscribeLandingPageConfig, DEFAULT_LANDING_PAGE } from '../../shared/services/firestoreService';
 import { applyPointDifferentialTieBreakers } from '../../shared/utils/tieBreakers';
 import { isRaceMatch, raceParticipants } from '../../shared/utils/raceFormat';
 import Contact from './Contact/Contact';
@@ -438,33 +438,52 @@ function LandingPage() {
   const shownChampionsByLevel = previewEmpty ? {} : topChampionsByLevel;
 
   const activeLevelKey = selectedLevelKey;
+  /* Live: a schedule the admin adds/edits/deletes updates the card right
+     away, and the list is re-filtered every minute so a match drops in
+     (or out) as it starts and ends — not only when the page is reloaded. */
   useEffect(() => {
     let cancelled = false;
-    (async () => {
-      if (!activeLevelKey) {
+    if (!activeLevelKey) {
+      Promise.resolve().then(() => {
         if (!cancelled) { setMatches([]); setMatchIndex(0); }
-        return;
-      }
-      try {
-        const schedules = await getMatchSchedules(activeLevelKey);
-        const upcoming = (schedules || [])
-          .filter((s) => s.teamA && s.teamB && scheduleIsOngoing(s))
-          .map(mapScheduleToCardMatch)
-          .sort((a, b) => {
-            if (!a._start && !b._start) return 0;
-            if (!a._start) return 1;
-            if (!b._start) return -1;
-            return a._start - b._start;
-          });
-        if (cancelled) return;
-        setMatches(upcoming);
-        setMatchIndex(0);
-      } catch (error) {
-        console.error('Failed to load match schedules for the landing page:', error);
-        if (!cancelled) { setMatches([]); setMatchIndex(0); }
-      }
-    })();
-    return () => { cancelled = true; };
+      });
+      return () => { cancelled = true; };
+    }
+    let latest = [];
+    let first = true;
+    const apply = () => {
+      const upcoming = latest
+        .filter((s) => s.teamA && s.teamB && scheduleIsOngoing(s))
+        .map(mapScheduleToCardMatch)
+        .sort((a, b) => {
+          if (!a._start && !b._start) return 0;
+          if (!a._start) return 1;
+          if (!b._start) return -1;
+          return a._start - b._start;
+        });
+      setMatches(upcoming);
+      // Only jump back to the first card on a level switch; later updates
+      // keep the visitor's place (clamped if the list got shorter).
+      const reset = first;
+      first = false;
+      setMatchIndex((i) => (reset || i >= upcoming.length ? 0 : i));
+    };
+    const unsubscribe = subscribeMatchSchedules(activeLevelKey, (schedules) => {
+      if (cancelled) return;
+      latest = schedules || [];
+      apply();
+    }, (error) => {
+      console.error('Failed to load match schedules for the landing page:', error);
+      if (cancelled) return;
+      latest = [];
+      apply();
+    });
+    const tick = setInterval(apply, 60000);
+    return () => {
+      cancelled = true;
+      unsubscribe();
+      clearInterval(tick);
+    };
   }, [activeLevelKey]);
 
   const currentMatch = matches[matchIndex] || matches[0] || null;

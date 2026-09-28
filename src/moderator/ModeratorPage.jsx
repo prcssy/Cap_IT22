@@ -10,11 +10,14 @@ import {
   getSportsTeamsConfig,
   getMatchSchedules,
   subscribeMatchSchedules,
+  subscribeSportsTeamsConfig,
   getMatchRecords,
+  subscribeMatchRecords,
   submitMatchRecord,
   editMatchRecord,
   recalculateRatings,
   getTeamRankings,
+  subscribeTeamRankings,
   createScheduleRequest,
   markMatchScheduleFinished,
 } from '../shared/services/firestoreService';
@@ -331,24 +334,27 @@ function scopedCategory(schedule, sports) {
   return scheduleDivisionLabel(schedule, sports) || schedule.category || '';
 }
 
-/* A schedule's category (MEN) and division (Senior) as separate values, for
-   the Match schedules filters. division is '' when the group has just one. */
+/* A schedule's category (MEN) and division (100M SPRINT, 5 V 5) as separate
+   values, for the Match schedules filters. Every configured division is
+   listed, even when it's the only one in its group. */
 function scheduleParts(schedule, sports) {
   const sport = (sports || []).find((s) => norm(s.name) === norm(schedule.sport));
-  const group = (sport?.categoryGroups || []).find((g) => (g.divisions || []).some((d) => d.id === schedule.divisionId));
+  const groups = sport?.categoryGroups || [];
+  const group = groups.find((g) => (g.divisions || []).some((d) => d.id === schedule.divisionId));
   if (group) {
     const div = group.divisions.find((d) => d.id === schedule.divisionId);
     const category = displayCategory((group.label || '').trim());
     const dName = (div?.name || '').trim();
-    return {
-      category,
-      division: group.divisions.length > 1 && norm(dName) !== norm(category) ? dName : '',
-    };
+    return { category, division: norm(dName) !== norm(category) ? dName : '' };
   }
   const m = String(schedule.category || '').match(/^(.*?)\s*\(([^)]*)\)\s*$/);
-  return m
-    ? { category: displayCategory(m[1]), division: m[2].trim() }
-    : { category: displayCategory(schedule.category), division: '' };
+  if (m) return { category: displayCategory(m[1]), division: m[2].trim() };
+  // Older schedules without a divisionId: a group with a single division
+  // still tells us which division the match belongs to.
+  const category = displayCategory(schedule.category);
+  const byLabel = groups.find((g) => norm(displayCategory((g.label || '').trim())) === norm(category));
+  const only = byLabel?.divisions?.length === 1 ? (byLabel.divisions[0].name || '').trim() : '';
+  return { category, division: only && norm(only) !== norm(category) ? only : '' };
 }
 
 /* One row per sport (no division baked in) — feeds the "Select sport" dropdown. */
@@ -956,6 +962,18 @@ function ConfirmModal({ pending, levelLabel, onCancel, onConfirm, saving }) {
                   {!multi && <li><FaCalculator /> {diffLabel}: <b>{fmtSigned(t.totalF1, 2)}</b></li>}
                 </ul>
 
+                {/* 1V1: same step-by-step popup as 1-vs-many, just one pairing. */}
+                {!multi && (
+                  <button
+                    type="button"
+                    className="mp-rteam__calc-btn"
+                    onClick={() => setCalcFor(t)}
+                    aria-label={`Show the computation for ${t.name}`}
+                  >
+                    <FaInfo /> Show computation
+                  </button>
+                )}
+
                 {multi && (
                   <>
                     <div className="mp-diff-list">
@@ -1113,15 +1131,18 @@ function PairComputation({ team, pair, mode }) {
 
 function ComputationModal({ team, number, mode, onClose }) {
   const gained = team.change >= 0;
+  const single = team.pairings.length === 1; // 1V1: one opponent, nothing to add up
   return (
     <div className="mp-modal-overlay mp-modal-overlay--top" onClick={onClose}>
-      <div className="mp-modal mp-modal--calc" onClick={(e) => e.stopPropagation()}>
+      <div className={`mp-modal mp-modal--calc ${single ? 'mp-modal--calc-single' : ''}`} onClick={(e) => e.stopPropagation()}>
         <button className="mp-modal-close-x" onClick={onClose} aria-label="Close"><FaTimes /></button>
         <div className="mp-calc__body">
           <p className="mp-calc__kicker">{number}. For {team.name} ({mode === 'time' ? 'Time' : 'Points'})</p>
           <h2 className="mp-calc__title">Summary computation</h2>
           <p className="mp-calc__sub">
-            The rating formula runs once against every opponent; the results are added together and applied to the previous rating once.
+            {single
+              ? 'The rating formula runs once against the opponent, and the result is applied to the previous rating.'
+              : 'The rating formula runs once against every opponent; the results are added together and applied to the previous rating once.'}
           </p>
 
           <div className="mp-calc__grid">
@@ -1133,13 +1154,15 @@ function ComputationModal({ team, number, mode, onClose }) {
           <div className="mp-calc__total">
             <div className="mp-calc__total-title">Total for {team.name}</div>
             <div className="mp-calc__lines">
+              {!single && (
+                <div>
+                  ΔR total = {team.pairings.map((p, i) => (
+                    <span key={p.oppId}>{i > 0 ? ' + ' : ''}{paren(p.change)}</span>
+                  ))} = <b className={gained ? 'mp-gain' : 'mp-loss'}>{fmtSigned(team.change)}</b>
+                </div>
+              )}
               <div>
-                ΔR total = {team.pairings.map((p, i) => (
-                  <span key={p.oppId}>{i > 0 ? ' + ' : ''}{paren(p.change)}</span>
-                ))} = <b className={gained ? 'mp-gain' : 'mp-loss'}>{fmtSigned(team.change)}</b>
-              </div>
-              <div>
-                Final rating = R + ΔR total = {fmtPts(team.prevPoints)} {gained ? '+' : '−'} {num(Math.abs(team.change))} = <b>{fmtPts(team.finalPoints)}</b>
+                Final rating = R + ΔR{single ? '' : ' total'} = {fmtPts(team.prevPoints)} {gained ? '+' : '−'} {num(Math.abs(team.change))} = <b>{fmtPts(team.finalPoints)}</b>
               </div>
             </div>
           </div>
@@ -2072,6 +2095,24 @@ export default function ModeratorPage() {
     return unsubscribe;
   }, [level]);
 
+  // Same for records, ratings and the Sports & Teams config: another
+  // moderator's result (or a recalculation) moves the Elo baseline this
+  // form computes from, and an admin setting a division's format should
+  // skip the "how was this played?" picker without a reload. Errors keep
+  // the last good data instead of blanking it — the fetch above reports them.
+  useEffect(() => {
+    const keep = () => {};
+    const unsubs = [
+      subscribeMatchRecords(level, (recs) => setRecords(recs || []), keep),
+      subscribeTeamRankings(level, (points) => setRankings(points || {}), keep),
+      subscribeSportsTeamsConfig(level, (cfg) => {
+        setSports(cfg.sports || []);
+        setTeams(cfg.teams || []);
+      }, keep),
+    ];
+    return () => unsubs.forEach((u) => u());
+  }, [level]);
+
   const resetForm = useCallback((teamCount) => {
     const n = teamCount ?? entries.length;
     setEntries(Array.from({ length: Math.max(2, n) }, () => mkEntry()));
@@ -2500,6 +2541,37 @@ export default function ModeratorPage() {
       || null;
   }
 
+  /* The Sports Format the admin set for this fixture's own division.
+     findDivisionForSchedule above works on deduped category labels (one
+     entry per "MALE"), so it can hand back a sibling division's format — or
+     miss entirely for a category saved as "MALE (1 v 1)" — and the moderator
+     was asked "how was this played?" for a division that already has one.
+     Resolve by the schedule's divisionId first, then by name. */
+  function formatForSchedule(s) {
+    const sport = effectiveSports.find((x) => norm(x.name) === norm(s.sport));
+    const groups = sport?.categoryGroups || [];
+    if (s.divisionId) {
+      for (const g of groups) {
+        const d = (g.divisions || []).find((x) => x.id === s.divisionId);
+        if (d) return d.format || '';
+      }
+    }
+    // Older schedules without a divisionId: "MALE (1 v 1)" → group MALE,
+    // division "1 v 1"; plain "MALE" → the group's format if it only has
+    // one (or all of its divisions agree).
+    const m = String(s.category || '').match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+    const groupLabel = displayCategory(m ? m[1] : s.category);
+    const group = groups.find((g) => categoriesMatch(g.label, groupLabel));
+    const divs = group?.divisions || [];
+    if (m) {
+      const d = divs.find((x) => norm(x.name) === norm(m[2]));
+      if (d?.format) return d.format;
+    }
+    const formats = [...new Set(divs.map((d) => d.format).filter(Boolean))];
+    if (formats.length === 1) return formats[0];
+    return findDivisionForSchedule(s)?.format || '';
+  }
+
   function selectScopeFromSchedule(s) {
     const sport = effectiveSports.find((x) => norm(x.name) === norm(s.sport));
     if (!sport) return;
@@ -2534,8 +2606,8 @@ export default function ModeratorPage() {
        Falls back to the "how was this played?" picker only when the
        division has no format configured. */
     setEditingRecord(null);
-    const div = findDivisionForSchedule(s);
-    const autoId = div?.format ? choiceIdForDivisionFormat(div.format) : null;
+    const divFormat = formatForSchedule(s);
+    const autoId = divFormat ? choiceIdForDivisionFormat(divFormat) : null;
 
     /* A race is always many teams at once, so it can only use a 1-vs-many
        format: the division's own if it has one, else time-based (races are

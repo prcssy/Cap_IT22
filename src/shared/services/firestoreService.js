@@ -714,7 +714,7 @@ export async function getSportsTeamsConfig(level) {
  * away, the same way subscribeMatchSchedules already does for matches.
  * Returns an unsubscribe function.
  */
-export function subscribeSportsTeamsConfig(level, callback) {
+export function subscribeSportsTeamsConfig(level, callback, onError) {
   if (!db) {
     console.warn('Firestore not initialized. Cannot subscribe to sports/teams config.');
     callback({ sports: [], teams: [] });
@@ -726,7 +726,7 @@ export function subscribeSportsTeamsConfig(level, callback) {
     callback({ sports: data.sports || [], teams: data.teams || [] });
   }, (error) => {
     console.warn('Sports/teams config listener failed:', error);
-    callback({ sports: [], teams: [] });
+    if (onError) onError(error); else callback({ sports: [], teams: [] });
   });
 }
 
@@ -859,7 +859,7 @@ export async function getMatchSchedules(level) {
  * the Moderator page and the public/home dashboards both read schedules
  * this way. Returns an unsubscribe function.
  */
-export function subscribeMatchSchedules(level, callback) {
+export function subscribeMatchSchedules(level, callback, onError) {
   if (!db) {
     console.warn('Firestore not initialized. Cannot subscribe to match schedules.');
     callback([]);
@@ -870,7 +870,7 @@ export function subscribeMatchSchedules(level, callback) {
     callback(snapshot.exists() ? (snapshot.data().matches || []) : []);
   }, (error) => {
     console.warn('Match schedules listener failed:', error);
-    callback([]);
+    if (onError) onError(error); else callback([]);
   });
 }
 
@@ -1452,7 +1452,7 @@ export async function getTeamRankings(level) {
  * subscribeSportsTeamsConfig already does for the Sports Available cards.
  * Returns an unsubscribe function.
  */
-export function subscribeTeamRankings(level, callback) {
+export function subscribeTeamRankings(level, callback, onError) {
   if (!db) {
     console.warn('Firestore not initialized. Cannot subscribe to team rankings.');
     callback({});
@@ -1463,7 +1463,7 @@ export function subscribeTeamRankings(level, callback) {
     callback(snapshot.exists() ? (snapshot.data().points || {}) : {});
   }, (error) => {
     console.warn('Team rankings listener failed:', error);
-    callback({});
+    if (onError) onError(error); else callback({});
   });
 }
 
@@ -1476,7 +1476,7 @@ export function subscribeTeamRankings(level, callback) {
  * (see firestore.rules) since it only holds rating changes, not personal
  * data. Returns an unsubscribe function.
  */
-export function subscribeMatchRecords(level, callback) {
+export function subscribeMatchRecords(level, callback, onError) {
   if (!db) {
     console.warn('Firestore not initialized. Cannot subscribe to match records.');
     callback([]);
@@ -1487,7 +1487,7 @@ export function subscribeMatchRecords(level, callback) {
     callback(snapshot.exists() ? (snapshot.data().records || []) : []);
   }, (error) => {
     console.warn('Match records listener failed:', error);
-    callback([]);
+    if (onError) onError(error); else callback([]);
   });
 }
 

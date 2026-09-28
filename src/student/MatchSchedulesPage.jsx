@@ -7,7 +7,7 @@ import './MatchSchedulesPage.css';
 import '../admin/AdminSchedulePage.css';
 import Contact from '../public/Landing/Contact/Contact';
 import { FaSearch, FaTrophy } from 'react-icons/fa';
-import { getMatchSchedules, getMatchRecords, getTeamRankings } from '../shared/services/firestoreService';
+import { subscribeMatchSchedules, subscribeMatchRecords, subscribeTeamRankings } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
 import RaceDiagram, { RaceResults } from '../shared/components/RaceDiagram/RaceDiagram';
@@ -925,65 +925,46 @@ export default function MatchSchedulesPage() {
   const [rankingsByLevel, setRankingsByLevel] = useState({}); // { [level]: { [scopeKey]: { [team]: rating } } }
   const contactRef = React.useRef(null);
 
-  /* ── Load real data from Firestore for every level ── */
+  /* ── Live data from Firestore for every level ──
+     Listeners rather than one-shot reads, so a new/edited schedule, a
+     moderator's result (WIN/LOSE badges) and the ratings that decide a
+     bracket's champion all show up without refreshing the page. */
   useEffect(() => {
-    let cancelled = false;
+    const LEVEL_KEYS = ['elementary', 'highSchool', 'college'];
+    const pendingSchedules = new Set(LEVEL_KEYS);
+    const recordsByLevel = {};
 
-    async function load() {
-      setLoading(true);
-      try {
-        const [elementary, highSchool, college] = await Promise.all([
-          getMatchSchedules('elementary'),
-          getMatchSchedules('highSchool'),
-          getMatchSchedules('college'),
-        ]);
-        if (cancelled) return;
+    const tag = (levelKey, matches) =>
+      (matches || [])
+        .filter(m => m && m.teamA && m.teamB)
+        .map(m => ({ ...m, level: levelKey }));
 
-        /* Results are optional: if the moderator's records can't be read,
-           the schedule still renders, just without WIN/LOSE badges. */
-        const recordLists = await Promise.all(
-          ['elementary', 'highSchool', 'college'].map(levelKey =>
-            getMatchRecords(levelKey).catch(() => [])),
-        );
-        if (cancelled) return;
-        setRecords(recordLists.flat().filter(Boolean));
-
-        /* Team ratings decide an elimination bracket's champion. Optional:
-           without them the champion falls back to the game results. */
-        const rankingLists = await Promise.all(
-          ['elementary', 'highSchool', 'college'].map(levelKey =>
-            getTeamRankings(levelKey).catch(() => ({}))),
-        );
-        if (cancelled) return;
-        setRankingsByLevel({
-          elementary: rankingLists[0] || {},
-          highSchool: rankingLists[1] || {},
-          college: rankingLists[2] || {},
-        });
-
-        const tag = (levelKey, matches) =>
-          (matches || [])
-            .filter(m => m && m.teamA && m.teamB)
-            .map(m => ({ ...m, level: levelKey }));
-
-        setMatchesByLevel({
-          elementary: tag('elementary', elementary),
-          highSchool: tag('highSchool', highSchool),
-          college: tag('college', college),
-        });
-      } catch (e) {
-        console.error('Failed to load match schedules:', e);
-        if (!cancelled) {
-          setMatchesByLevel({ elementary: [], highSchool: [], college: [] });
-          setRecords([]);
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => { cancelled = true; };
+    const unsubs = LEVEL_KEYS.flatMap((levelKey) => {
+      const setLevelMatches = (matches) => {
+        setMatchesByLevel(prev => ({ ...prev, [levelKey]: tag(levelKey, matches) }));
+        if (pendingSchedules.delete(levelKey) && pendingSchedules.size === 0) setLoading(false);
+      };
+      /* Results are optional: if the moderator's records can't be read,
+         the schedule still renders, just without WIN/LOSE badges. */
+      const setLevelRecords = (recs) => {
+        recordsByLevel[levelKey] = recs || [];
+        setRecords(LEVEL_KEYS.flatMap(k => recordsByLevel[k] || []).filter(Boolean));
+      };
+      /* Team ratings decide an elimination bracket's champion. Optional:
+         without them the champion falls back to the game results. */
+      const setLevelRankings = (points) => {
+        setRankingsByLevel(prev => ({ ...prev, [levelKey]: points || {} }));
+      };
+      return [
+        subscribeMatchSchedules(levelKey, setLevelMatches, (e) => {
+          console.error('Failed to load match schedules:', e);
+          setLevelMatches([]);
+        }),
+        subscribeMatchRecords(levelKey, setLevelRecords, () => setLevelRecords([])),
+        subscribeTeamRankings(levelKey, setLevelRankings, () => setLevelRankings({})),
+      ];
+    });
+    return () => unsubs.forEach(u => u());
   }, []);
 
   /* ── Matches visible for the selected level filter ── */

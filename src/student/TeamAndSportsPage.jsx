@@ -3,7 +3,7 @@ import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './TeamAndSportsPage.css';
 import Contact from '../public/Landing/Contact/Contact';
-import { getSportsTeamsConfig } from '../shared/services/firestoreService';
+import { subscribeSportsTeamsConfig } from '../shared/services/firestoreService';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
 
@@ -68,41 +68,29 @@ export default function TeamsAndSportsPage() {
   const [teamsByLevel, setTeamsByLevel] = useState({ elementary: [], highSchool: [], college: [] });
   const contactRef = React.useRef(null);
 
-  /* ── Load real data from Firestore for every level ── */
+  /* ── Live data from Firestore for every level ──
+     Listeners, so a team or sport the admin adds/edits shows up here
+     without a page refresh. */
   useEffect(() => {
-    let cancelled = false;
+    const LEVEL_KEYS = ['elementary', 'highSchool', 'college'];
+    const pending = new Set(LEVEL_KEYS);
 
-    async function load() {
-      setLoading(true);
-      try {
-        const [elementary, highSchool, college] = await Promise.all([
-          getSportsTeamsConfig('elementary'),
-          getSportsTeamsConfig('highSchool'),
-          getSportsTeamsConfig('college'),
-        ]);
+    const tag = (levelKey, cfg) =>
+      (cfg.teams || [])
+        .filter(t => t && t.name && t.name.trim())
+        .map(t => ({ ...t, level: levelKey }));
 
-        if (cancelled) return;
-
-        const tag = (levelKey, cfg) =>
-          (cfg.teams || [])
-            .filter(t => t && t.name && t.name.trim())
-            .map(t => ({ ...t, level: levelKey }));
-
-        setTeamsByLevel({
-          elementary: tag('elementary', elementary),
-          highSchool: tag('highSchool', highSchool),
-          college: tag('college', college),
-        });
-      } catch (e) {
+    const unsubs = LEVEL_KEYS.map((levelKey) => {
+      const setLevelTeams = (cfg) => {
+        setTeamsByLevel(prev => ({ ...prev, [levelKey]: tag(levelKey, cfg) }));
+        if (pending.delete(levelKey) && pending.size === 0) setLoading(false);
+      };
+      return subscribeSportsTeamsConfig(levelKey, setLevelTeams, (e) => {
         console.error('Failed to load teams & sports:', e);
-        if (!cancelled) setTeamsByLevel({ elementary: [], highSchool: [], college: [] });
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    }
-
-    load();
-    return () => { cancelled = true; };
+        setLevelTeams({ teams: [] });
+      });
+    });
+    return () => unsubs.forEach(u => u());
   }, []);
 
   /* ── Teams visible for the selected level filter ── */

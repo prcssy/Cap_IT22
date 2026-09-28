@@ -3479,6 +3479,33 @@ input.mp-text-input:disabled {
   color: var(--c-navy-2, #0b2447);
 }
 
+.mp-rteam__calc-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 5px 10px;
+  border: 1px solid #d5dcec;
+  border-radius: 999px;
+  background: #f4f6fb;
+  color: #4a5b80;
+  font-size: 0.68rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.mp-rteam__calc-btn svg {
+  font-size: 0.58rem;
+}
+
+@media (hover: hover) {
+  .mp-rteam__calc-btn:hover {
+    background: var(--c-navy-2, #0b2447);
+    border-color: var(--c-navy-2, #0b2447);
+    color: #fff;
+  }
+}
+
 .mp-diff-list {
   margin-top: 10px;
   border-top: 1px dashed #dde4f0;
@@ -3930,6 +3957,11 @@ input.mp-text-input:disabled {
   margin: 4px 0 18px;
   font-size: 0.74rem;
   color: #56637c;
+}
+
+/* 1V1 has a single pairing — no need for the wide multi-column layout. */
+.mp-modal--calc-single {
+  max-width: 600px;
 }
 
 .mp-calc__grid {

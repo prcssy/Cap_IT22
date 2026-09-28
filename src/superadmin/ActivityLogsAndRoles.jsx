@@ -1,7 +1,7 @@
 import React, { useContext, useMemo, useState } from 'react';
 import {
-  FaSearch, FaFilter, FaUndo, FaSync, FaChevronLeft, FaChevronRight,
-  FaEllipsisV, FaUserShield, FaUserTie, FaUserCog, FaUserSlash,
+  FaSearch, FaUndo, FaSync, FaChevronLeft, FaChevronRight,
+  FaUserShield, FaUserTie, FaUserCog, FaUserSlash,
   FaUserPlus, FaCopy,
 } from 'react-icons/fa';
 import { auth } from '../shared/firebase';
@@ -70,20 +70,11 @@ function parseLocalDate(yyyyMmDd) {
 export default function ActivityLogsAndRoles({ users, logs, loading, error, onRefresh, onUserRoleChanged, actorRole }) {
   const levelLabels = useContext(LevelLabelsContext);
   const levelLabel = (key) => levelLabels[key] || key;
-  /* ── Filters (draft vs. applied — a Filter button commits them, like
-     the reference design, rather than filtering live on every keystroke) ── */
-  const [draftType, setDraftType] = useState('All Types');
-  const [draftRole, setDraftRole] = useState('All Roles');
-  const [draftDate, setDraftDate] = useState('');
-  // Search filters live (matches this app's convention elsewhere, e.g.
-  // AdminSchedulePage's registration search) — it's visually separate from
-  // the Activity Type/Role/Date row, which stay explicit-apply like the
-  // reference design's Filter button.
-  const [search, setSearch] = useState('');
-
+  /* ── Filters — Activity Type/Role/Date and search all apply live, the
+     moment they change; there's no separate Filter button to press. ── */
   const [applied, setApplied] = useState({ type: 'All Types', role: 'All Roles', date: '' });
+  const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
-  const [expandedId, setExpandedId] = useState(null);
 
   const activityTypeOptions = useMemo(() => {
     const seen = new Set();
@@ -91,15 +82,12 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
     return ['All Types', ...[...seen].sort()];
   }, [logs]);
 
-  const applyFilters = () => {
-    setApplied({ type: draftType, role: draftRole, date: draftDate });
+  const setFilter = (key, value) => {
+    setApplied((f) => ({ ...f, [key]: value }));
     setPage(1);
   };
 
   const resetFilters = () => {
-    setDraftType('All Types');
-    setDraftRole('All Roles');
-    setDraftDate('');
     setSearch('');
     setApplied({ type: 'All Types', role: 'All Roles', date: '' });
     setPage(1);
@@ -297,13 +285,13 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
         <div className="arl-filters">
           <div className="arl-field">
             <label>Activity Type</label>
-            <select className="sa-select" value={draftType} onChange={(e) => setDraftType(e.target.value)}>
+            <select className="sa-select" value={applied.type} onChange={(e) => setFilter('type', e.target.value)}>
               {activityTypeOptions.map((t) => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div className="arl-field">
             <label>User Role</label>
-            <select className="sa-select" value={draftRole} onChange={(e) => setDraftRole(e.target.value)}>
+            <select className="sa-select" value={applied.role} onChange={(e) => setFilter('role', e.target.value)}>
               {ROLE_FILTER_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
             </select>
           </div>
@@ -312,13 +300,10 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
             <input
               type="date"
               className="arl-date-input"
-              value={draftDate}
-              onChange={(e) => setDraftDate(e.target.value)}
+              value={applied.date}
+              onChange={(e) => setFilter('date', e.target.value)}
             />
           </div>
-          <button className="sa-export arl-filter-btn" onClick={applyFilters}>
-            <FaFilter /> Filter
-          </button>
           <button className="sa-icon-btn" onClick={resetFilters} title="Reset filters">
             <FaUndo />
           </button>
@@ -354,15 +339,14 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
                 <th>Role</th>
                 <th>Activity/Action</th>
                 <th>Details</th>
-                <th aria-label="Row actions" />
               </tr>
             </thead>
             <tbody>
               {loading ? (
-                <tr><td colSpan={6}><p className="sa-loading">Loading…</p></td></tr>
+                <tr><td colSpan={5}><p className="sa-loading">Loading…</p></td></tr>
               ) : pageRows.length === 0 ? (
                 <tr>
-                  <td colSpan={6}>
+                  <td colSpan={5}>
                     <p className="sa-loading">
                       {logs.length === 0
                         ? 'No activity recorded yet — actions taken around the app will start showing up here.'
@@ -380,26 +364,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
                     </td>
                     <td data-label="Activity/Action">{log.type}</td>
                     <td data-label="Details" className="arl-details">{log.details}</td>
-                    <td data-label="">
-                      <button
-                        className="arl-row-menu"
-                        onClick={() => setExpandedId(expandedId === log.id ? null : log.id)}
-                        aria-label="Toggle details"
-                      >
-                        <FaEllipsisV />
-                      </button>
-                    </td>
                   </tr>
-                  {expandedId === log.id && (
-                    <tr className="arl-expanded-row">
-                      <td colSpan={6}>
-                        <div className="arl-expanded">
-                          <span><strong>Target:</strong> {log.targetType || '—'}{log.targetLabel ? ` (${log.targetLabel})` : ''}</span>
-                          <span><strong>Actor email:</strong> {log.actorEmail || '—'}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  )}
                 </React.Fragment>
               ))}
             </tbody>

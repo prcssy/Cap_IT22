@@ -12,7 +12,7 @@ import { FaTimes, FaSync, FaUsers, FaChevronDown, FaCheck, FaEdit, FaPlus, FaMap
 // jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf /
 // handleDownloadBracketPdf below), not imported statically here.
 import { db } from '../shared/firebase';
-import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getMatchSchedules, getMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, inScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, EVENT_TYPES, getVenues, getAllMatchSchedules, updateScheduleRequest, deleteScheduleRequest } from '../shared/services/firestoreService';
+import { getAllRegistrations, getAllUsers, subscribeSportsTeamsConfig, subscribeMatchSchedules, subscribeMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, inScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, EVENT_TYPES, getVenues, getAllMatchSchedules, updateScheduleRequest, deleteScheduleRequest } from '../shared/services/firestoreService';
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../shared/components/LevelTabs';
@@ -1130,7 +1130,10 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   const LEVEL_LABELS = useContext(LevelLabelsContext);
   const [sportsList, setSportsList] = useState([]);
   const [teamsList,  setTeamsList]  = useState([]);
-  const [loading,    setLoading]    = useState(false);
+  // Level whose Sports & Teams config has arrived — `loading` is derived
+  // from it so switching levels shows the loader until that level answers.
+  const [loadedLevel, setLoadedLevel] = useState(null);
+  const loading = loadedLevel !== level;
 
   const [selSport,    setSelSport]    = useState(null); // sport object
   const [selCategory, setSelCategory] = useState(null); // { label, value, format }
@@ -1210,44 +1213,53 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   const [editModalOpen, setEditModalOpen] = useState(false);
   const [editForm, setEditForm] = useState(null); // full match object being edited, or null
 
-  /* ── Load Sports & Teams config (admin-entered, per level) ── */
-  const load = useCallback(async () => {
-    setLoading(true);
-    try {
-      const cfg = await getSportsTeamsConfig(level);
-      setSportsList(cfg.sports || []);
-      setTeamsList(cfg.teams || []);
-      const schedules = await getMatchSchedules(level);
-      setSavedSchedules(schedules);
+  /* ── Sports & Teams config, schedules and match records (per level) ──
+     Live listeners: a moderator recording a match, another admin editing
+     Sports & Teams, or a schedule change made in another tab all show up
+     here without switching levels or refreshing. */
+  useEffect(() => {
+    const unsubs = [
+      subscribeSportsTeamsConfig(level, (cfg) => {
+        setSportsList(cfg.sports || []);
+        setTeamsList(cfg.teams || []);
+        setLoadedLevel(level);
+      }, (e) => {
+        console.error('Failed to load sports/teams:', e);
+        setLoadedLevel(level);
+      }),
+      subscribeMatchSchedules(level, (schedules) => setSavedSchedules(schedules || []), (e) => {
+        console.error('Failed to load match schedules:', e);
+      }),
       /* Optional: the schedule manager still works if results can't be
          read, it just won't show which fixtures are already recorded. */
-      try {
-        setMatchRecords(await getMatchRecords(level) || []);
-      } catch (recordError) {
+      subscribeMatchRecords(level, (recs) => setMatchRecords(recs || []), (recordError) => {
         console.warn('Match records unavailable:', recordError);
         setMatchRecords([]);
-      }
-      /* Venues + every level's schedules — needed to disable an
-         already-booked venue in the Add/Edit Schedule dropdowns. Optional
-         in the same spirit as match records: a failure here shouldn't
-         block the rest of the page, it just means venues show unrestricted. */
-      try {
-        const [v, all] = await Promise.all([getVenues(), getAllMatchSchedules()]);
-        setVenues(v);
-        setAllSchedules(all);
-      } catch (venueError) {
-        console.warn('Venues unavailable:', venueError);
-        setVenues([]);
-        setAllSchedules([]);
-      }
-    } catch (e) {
-      console.error('Failed to load sports/teams/schedules:', e);
-    } finally {
-      setLoading(false);
-    }
+      }),
+    ];
+    return () => unsubs.forEach(u => u());
   }, [level]);
 
-  useEffect(() => { load(); }, [load]);
+  /* Venues + every level's schedules — needed to disable an
+     already-booked venue in the Add/Edit Schedule dropdowns. Optional in
+     the same spirit as match records: a failure here shouldn't block the
+     rest of the page, it just means venues show unrestricted. */
+  useEffect(() => {
+    let cancelled = false;
+    Promise.all([getVenues(), getAllMatchSchedules()])
+      .then(([v, all]) => {
+        if (cancelled) return;
+        setVenues(v);
+        setAllSchedules(all);
+      })
+      .catch((venueError) => {
+        console.warn('Venues unavailable:', venueError);
+        if (cancelled) return;
+        setVenues([]);
+        setAllSchedules([]);
+      });
+    return () => { cancelled = true; };
+  }, [level]);
 
   useEffect(() => {
     if (!toast) return;
@@ -2680,8 +2692,8 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
               {fulfillingRequestId && (
                 <p className="msf-form-note" style={{ marginTop: -8, marginBottom: 14 }}>
-                  Fulfilling a moderator's schedule request — sport, division, and both teams are already filled
-                  in below. Just add the time, date, and venue.
+                  Fulfilling a moderator's schedule request — sport, division, both teams, and the reason are
+                  locked to what they asked for. Just add the time, date, and venue.
                 </p>
               )}
 
@@ -2690,6 +2702,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <select
                   value={addForm.sport}
                   onChange={e => setAddForm(f => ({ ...f, sport: e.target.value, category: '', pairs: [{ teamA: '', teamB: '' }] }))}
+                  disabled={!!fulfillingRequestId}
                 >
                   <option value="">Select a sport</option>
                   {sportOptions.map(s => <option key={s} value={s}>{s}</option>)}
@@ -2701,7 +2714,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <select
                   value={resolveCategoryOption(sportsList.find(s => s.name === addForm.sport) || null, addForm.category)?.value ?? ''}
                   onChange={e => setAddForm(f => ({ ...f, category: (() => { const o = addCategoryOptions.find(x => x.value === e.target.value); return o ? (o.display || o.label) : ''; })() }))}
-                  disabled={!addForm.sport}
+                  disabled={!addForm.sport || !!fulfillingRequestId}
                 >
                   <option value="">Select a category</option>
                   {addCategoryOptions.map(o => <option key={o.value} value={o.value}>{o.display || o.label}</option>)}
@@ -2734,7 +2747,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                   <div className="msf-form-row msf-form-row--vs" key={idx}>
                     <div className="msf-form-group">
                       <label>Teams</label>
-                      <select value={pair.teamA} onChange={e => handlePairChange(idx, 'teamA', e.target.value)}>
+                      <select value={pair.teamA} onChange={e => handlePairChange(idx, 'teamA', e.target.value)} disabled={!!fulfillingRequestId}>
                         <option value="">Select a teams</option>
                         {addPool.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                       </select>
@@ -2742,7 +2755,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                     <span className="msf-vs">VS</span>
                     <div className="msf-form-group">
                       <label>Teams</label>
-                      <select value={pair.teamB} onChange={e => handlePairChange(idx, 'teamB', e.target.value)}>
+                      <select value={pair.teamB} onChange={e => handlePairChange(idx, 'teamB', e.target.value)} disabled={!!fulfillingRequestId}>
                         <option value="">Select a teams</option>
                         {addPool.map(t => <option key={t.id} value={t.name}>{t.name}</option>)}
                       </select>
@@ -2767,6 +2780,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                   value={addForm.matchLabel}
                   onChange={e => setAddForm(f => ({ ...f, matchLabel: e.target.value }))}
                   maxLength={60}
+                  disabled={!!fulfillingRequestId}
                 />
                 <p className="msf-form-note" style={{ marginTop: 6 }}>Shown wherever this match appears — moderators and the public schedule both see it.</p>
               </div>

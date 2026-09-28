@@ -6,7 +6,9 @@ import { FaSearch, FaCrown, FaMedal, FaChevronDown } from 'react-icons/fa';
 import Contact from '../public/Landing/Contact/Contact';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
-import { getSportsTeamsConfig, getTeamRankings, getMatchRecords, getMatchSchedules } from '../shared/services/firestoreService';
+import {
+  subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchRecords, subscribeMatchSchedules,
+} from '../shared/services/firestoreService';
 import { applyPointDifferentialTieBreakers } from '../shared/utils/tieBreakers';
 
 /* ── Sport filter tabs (shared by both tables) ──
@@ -71,9 +73,11 @@ function matchesPick(label, pick) {
   if (norm(label) === norm(pick)) return true;
   return !/\(/.test(pick) && norm(baseDivision(label)) === norm(pick);
 }
-/* Category (group: MEN, WOMEN) and Division (Senior, Junior, …) are separate
-   filters. Categories come from every group of the chosen sport; divisions
-   only exist within one sport + category that has more than one division. */
+/* Category (group: MEN, WOMEN) and Division (Senior, Junior, 100M SPRINT, …)
+   are separate filters. Categories come from every group of the chosen sport;
+   divisions are listed for one sport + category, including a group's only
+   division. That one is flagged `single`: its matches are saved under the
+   plain category, so picking it filters exactly like picking the category. */
 function categoryOptionsFor(sports, sportName) {
   const list = sportName === 'All Sports'
     ? sports
@@ -94,19 +98,23 @@ function divisionNamesFor(sports, sportName, category) {
   (sport?.categoryGroups || []).forEach((g) => {
     if (norm(displayCategory(g.label)) !== norm(category)) return;
     const divs = g.divisions || [];
-    if (divs.length < 2) return;
     divs.forEach((d) => {
       const name = (d.name || '').trim();
-      if (name && !byName.has(norm(name))) byName.set(norm(name), { key: d.id, label: name });
+      // A lone division named like its group ("MEN" in MEN) adds nothing.
+      if (!name || (divs.length === 1 && norm(name) === norm(category))) return;
+      if (!byName.has(norm(name))) byName.set(norm(name), { key: d.id, label: name, single: divs.length === 1 });
     });
   });
   return [...byName.values()];
 }
 /* Category + division → the single label the filters below understand
-   ("All Divisions", "MEN" or "MEN (Senior)"). */
-function combineDivision(category, divisionName) {
+   ("All Divisions", "MEN" or "MEN (Senior)"). A group's only division is
+   stored under the plain category, so it maps to that. */
+function combineDivision(category, divisionName, divisionOptions = []) {
   if (category === 'All Categories') return 'All Divisions';
-  return divisionName === 'All Divisions' ? category : `${category} (${divisionName})`;
+  if (divisionName === 'All Divisions') return category;
+  const opt = divisionOptions.find((o) => norm(o.label) === norm(divisionName));
+  return opt?.single ? category : `${category} (${divisionName})`;
 }
 
 /* "MEN (Senior)" → "MEN" — the plain category that records/tie-breakers use. */
@@ -348,14 +356,6 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
             <div className="rk-cell rk-cell-team" role="cell">{t.team}</div>
             <div className="rk-cell rk-cell-num" role="cell" data-label="Rating">
               {t.rating}
-              {t.carriedOver && (
-                <span
-                  title="Carried over from this team's other divisions — no match played here yet"
-                  style={{ marginLeft: 4, fontSize: '0.72em', opacity: 0.55 }}
-                >
-                  *
-                </span>
-              )}
             </div>
             <div className="rk-cell rk-cell-num" role="cell" data-label="Win-Loss">{t.wins}-{t.losses}</div>
           </div>
@@ -437,7 +437,6 @@ export default function RankingPage() {
   const [medalSport, setMedalSport] = useState('All Sports');
   const [medalCategory, setMedalCategory] = useState('All Categories');
   const [medalDivName, setMedalDivName] = useState('All Divisions');
-  const medalDivision = combineDivision(medalCategory, medalDivName);
   const [search, setSearch] = useState('');
   const contactRef = React.useRef(null);
 
@@ -446,56 +445,53 @@ export default function RankingPage() {
   const [rankingPoints, setRankingPoints] = useState({}); // { [scopeKey]: { [teamName]: points } }
   const [records, setRecords] = useState([]);
   const [schedules, setSchedules] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [loadError, setLoadError] = useState(null);
+  // Both are tagged with the level they belong to, so switching levels
+  // shows the loader (and drops the old level's error) without resetting
+  // state inside the effect.
+  const [readyLevel, setReadyLevel] = useState(null);
+  const loading = readyLevel !== levelKey;
+  const [levelError, setLevelError] = useState(null); // { level, message }
+  const loadError = levelError?.level === levelKey ? levelError.message : null;
   const [championCategory, setChampionCategory] = useState('All Categories');
   const [championDivName, setChampionDivName] = useState('All Divisions');
-  const championDivision = combineDivision(championCategory, championDivName);
 
+  /* Live listeners, not one-shot reads: a moderator confirming a match
+     rewrites teamRankings/matchRecords, and the Elo table here must move
+     with it without a page refresh (same approach as the landing page's
+     Potential Champion spotlight). */
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setLoadError(null);
-    (async () => {
-      const [configR, ranksR, recsR, schedR] = await Promise.allSettled([
-        getSportsTeamsConfig(levelKey),
-        getTeamRankings(levelKey),
-        getMatchRecords(levelKey),
-        getMatchSchedules(levelKey),
-      ]);
-      if (cancelled) return;
+    // Loading ends once config, rankings and records have each answered
+    // once (schedules only gate medals, so they don't hold the table back).
+    const pending = new Set(['config', 'rankings', 'records']);
+    const arrived = (key) => {
+      if (pending.delete(key) && pending.size === 0) setReadyLevel(levelKey);
+    };
+    const failed = (key) => (err) => {
+      console.error(`Failed to load ranking ${key}:`, err);
+      setLevelError({ level: levelKey, message: "Couldn't load some ranking data — check your connection and try refreshing." });
+      arrived(key);
+    };
+
+    const unsubs = [
+      subscribeSportsTeamsConfig(levelKey, (cfg) => {
+        setTeams(cfg.teams || []);
+        setSports(cfg.sports || []);
+        arrived('config');
+      }, failed('config')),
+      subscribeTeamRankings(levelKey, (points) => {
+        const loadedRankings = points || {};
+        setRankingPoints(loadedRankings.rankings || loadedRankings.scopes || loadedRankings);
+        arrived('rankings');
+      }, failed('rankings')),
+      subscribeMatchRecords(levelKey, (recs) => {
+        setRecords(recs || []);
+        arrived('records');
+      }, failed('records')),
       // Schedules only gate when medals are handed out; if they fail to load
       // we fall back to the old behaviour rather than hiding every medal.
-      setSchedules(schedR.status === 'fulfilled' ? (schedR.value || []) : []);
-
-      if (configR.status === 'fulfilled') {
-        setTeams(configR.value.teams || []);
-        setSports(configR.value.sports || []);
-      } else {
-        console.error('Failed to load teams:', configR.reason);
-        setTeams([]);
-        setSports([]);
-      }
-      if (ranksR.status === 'fulfilled') {
-        const loadedRankings = ranksR.value || {};
-        setRankingPoints(loadedRankings.rankings || loadedRankings.scopes || loadedRankings);
-      } else {
-        console.error('Failed to load team rankings:', ranksR.reason);
-        setRankingPoints({});
-      }
-      if (recsR.status === 'fulfilled') {
-        setRecords(recsR.value || []);
-      } else {
-        console.error('Failed to load match records:', recsR.reason);
-        setRecords([]);
-      }
-
-      if ([configR, ranksR, recsR].some(r => r.status === 'rejected')) {
-        setLoadError("Couldn't load some ranking data — check your connection and try refreshing.");
-      }
-      setLoading(false);
-    })();
-    return () => { cancelled = true; };
+      subscribeMatchSchedules(levelKey, (matches) => setSchedules(matches || []), () => setSchedules([])),
+    ];
+    return () => unsubs.forEach((u) => u());
   }, [levelKey]);
 
   /* Divisions available for the currently selected sport tab — hidden
@@ -513,6 +509,8 @@ export default function RankingPage() {
     () => divisionNamesFor(sports, medalSport, medalCategory),
     [sports, medalSport, medalCategory],
   );
+  const championDivision = combineDivision(championCategory, championDivName, championDivisionOptions);
+  const medalDivision = combineDivision(medalCategory, medalDivName, medalDivisionOptions);
 
   // Changing a parent filter clears the ones under it.
   const pickChampionSport = (v) => { setChampionSport(v); setChampionCategory('All Categories'); setChampionDivName('All Divisions'); };
@@ -646,46 +644,23 @@ export default function RankingPage() {
       const sportAverages = [...bySportRatings.values()]
         .map((points) => points.reduce((sum, p) => sum + p, 0) / points.length);
 
-      /* Nothing recorded in THIS scope yet. Rather than dropping the team
-         to a flat 1200, carry over the standing it already holds in another
-         DIVISION OF THE SAME SPORT — that is exactly the rating Moderator
-         will use as its "previous points" when this team finally plays
-         here, so the two pages never disagree about where a team starts.
-         Must stay scoped to championSport: without that filter, picking the
-         Tennis tab for a team that has only ever played Badminton pulled in
-         its Badminton rating instead of showing the untouched 1200 baseline.
-         Only a team with no rating anywhere (or none in this sport, when a
-         specific sport tab is active) shows the new-team baseline. */
-      const carried = [];
-      if (!sportAverages.length) {
-        const bySportAll = new Map();
-        Object.entries(activeRankings).forEach(([scopeKey, teamMap]) => {
-          const [scopeSport] = String(scopeKey).split('::');
-          if (championSport !== 'All Sports' && norm(scopeSport) !== norm(championSport)) return;
-          const savedPoints = savedPointsForTeam(teamMap, t);
-          if (savedPoints == null) return;
-          if (!bySportAll.has(scopeSport)) bySportAll.set(scopeSport, []);
-          bySportAll.get(scopeSport).push(savedPoints);
-        });
-        bySportAll.forEach((list) => carried.push(list.reduce((sum, p) => sum + p, 0) / list.length));
-      }
+      /* Every sport + category + division has its own 1200 baseline. A team
+         with no rating in the scope being viewed shows exactly 1200 — never
+         a rating borrowed from another division — which is also the
+         "previous points" Moderator uses for its first match there.
 
-      /* Each individual sport keeps its own 1200 baseline (Men's Badminton
+         Each individual sport keeps its own 1200 baseline (Men's Badminton
          1200 -> 1230 stays 1230 on that tab). "All Sports" must NOT average
          those absolute values together — a team strong in one sport and
          untouched (1200) in another would get dragged toward 1200 forever.
          Instead it accumulates each sport's CHANGE from 1200, so Badminton
          +30 and Chess +0 combine into 1200 + 30 = 1230 overall. */
-      const source = sportAverages.length ? sportAverages : carried;
-      const rating = source.length
+      const rating = sportAverages.length
         ? (championSport === 'All Sports'
-          ? Math.round(DEFAULT_POINTS + source.reduce((sum, avg) => sum + (avg - DEFAULT_POINTS), 0))
-          : Math.round(source.reduce((sum, avg) => sum + avg, 0) / source.length))
+          ? Math.round(DEFAULT_POINTS + sportAverages.reduce((sum, avg) => sum + (avg - DEFAULT_POINTS), 0))
+          : Math.round(sportAverages.reduce((sum, avg) => sum + avg, 0) / sportAverages.length))
         : DEFAULT_POINTS;
       const played = [...bySportRatings.values()].reduce((n, points) => n + points.length, 0);
-      /* True when the number above was inherited from another sport or
-         division rather than earned in the one being viewed. */
-      const carriedOver = !sportAverages.length && carried.length > 0;
 
       // Win/loss: count from actual saved match records for this team,
       // narrowed to the selected sport tab and division (if chosen).
@@ -715,7 +690,7 @@ export default function RankingPage() {
 
       return {
         id: t.id, team: (t.name || '').toUpperCase(), logo: t.logo || null,
-        color: colorForTeam(t.name), rating, wins, losses, played, carriedOver,
+        color: colorForTeam(t.name), rating, wins, losses, played,
       };
     });
   }, [teams, sports, schedules, activeRankings, records, championSport, championDivision]);

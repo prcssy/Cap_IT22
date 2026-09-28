@@ -33,7 +33,8 @@ import {
 } from './registrationImport';
 import {
   subscribeMatchSchedules,
-  getMatchRecords,
+  subscribeMatchRecords,
+  subscribeSportsTeamsConfig,
   getSportsTeamsConfig,
   createRegistration,
   getEventRegistrationCounts,
@@ -765,9 +766,8 @@ function HomeView({ onOpenRegistration }) {
   const [matches, setMatches] = useState([]);
   const [records, setRecords] = useState([]);
   const [teamsByName, setTeamsByName] = useState({});
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState('');
-  const [refreshKey, setRefreshKey] = useState(0);
   // Global, page-wide sport filter — every section (Ongoing/Upcoming/
   // Finished) reads from this same value, so there is exactly one source
   // of truth for "which sport am I looking at" across the whole Dashboard.
@@ -775,68 +775,43 @@ function HomeView({ onOpenRegistration }) {
   const [availableSports, setAvailableSports] = useState([]);
   const [now, setNow] = useState(() => new Date());
 
-  // Reload whenever the selected level changes (or the 30s poll below
-  // ticks). `matches` itself is NOT fetched here — the live listener right
-  // below already keeps it current from the moment it subscribes (onSnapshot
-  // fires immediately with the current data, then again on every change),
-  // so re-fetching schedules here on every poll would just be the exact
-  // same read the listener already made, twice over for every user, every
-  // 30 seconds.
+  // Live listeners for the selected level: schedules, the moderator's
+  // results and the Sports & Teams config all update the dashboard the
+  // moment they change — no polling, no refresh. The spinner only waits on
+  // the config (team logos + the sport filter list).
   useEffect(() => {
-    let cancelled = false;
-    setLoading(true);
-    setLoadError('');
-    (async () => {
-      try {
-        const cfg = await getSportsTeamsConfig(levelKey);
-        if (cancelled) return;
-        let matchRecords = [];
-        try {
-          matchRecords = await getMatchRecords(levelKey);
-        } catch (recordError) {
-          // A schedule should remain visible even when records are unavailable
-          // because of permissions, an older service build, or a transient error.
-          console.warn('Finished match records unavailable:', recordError);
-        }
-        setRecords(matchRecords || []);
+    const unsubs = [
+      // An admin deleting/editing a schedule (or fulfilling a moderator's
+      // request) drops off the dashboard right away.
+      subscribeMatchSchedules(levelKey, setMatches),
+      // A schedule should remain visible even when records are unavailable
+      // because of permissions or a transient error — no error banner.
+      subscribeMatchRecords(levelKey, (recs) => setRecords(recs || []), (recordError) => {
+        console.warn('Finished match records unavailable:', recordError);
+        setRecords([]);
+      }),
+      subscribeSportsTeamsConfig(levelKey, (cfg) => {
         const byName = {};
         (cfg.teams || []).forEach(t => { byName[t.name] = t; });
         setTeamsByName(byName);
         setAvailableSports((cfg.sports || []).map(sport => (sport.name || '').trim().toUpperCase()).filter(Boolean).sort());
-      } catch (e) {
+        setLoadError('');
+        setLoading(false);
+      }, (e) => {
         console.error('Failed to load dashboard data:', e);
-        if (!cancelled) {
-          setRecords([]);
-          setTeamsByName({});
-          setAvailableSports([]);
-          setLoadError('Unable to load the match schedule. Please refresh and try again.');
-        }
-      } finally {
-        if (!cancelled) setLoading(false);
-      }
-    })();
-    return () => { cancelled = true; };
-  }, [levelKey, refreshKey]);
-
-  // The sole source of `matches` — an admin deleting/editing a schedule (or
-  // fulfilling a moderator's request) drops off the dashboard right away
-  // rather than waiting for the next 30s poll.
-  useEffect(() => {
-    const unsubscribe = subscribeMatchSchedules(levelKey, setMatches);
-    return unsubscribe;
+        setTeamsByName({});
+        setAvailableSports([]);
+        setLoadError('Unable to load the match schedule. Please refresh and try again.');
+        setLoading(false);
+      }),
+    ];
+    return () => unsubs.forEach(u => u());
   }, [levelKey]);
 
   // Re-check the clock periodically so a match flips from Upcoming to
   // Ongoing (and out of Ongoing once it's over) without a page refresh.
   useEffect(() => {
     const t = setInterval(() => setNow(new Date()), 30000);
-    return () => clearInterval(t);
-  }, []);
-
-  // Moderator saves records independently from the schedule page. Refresh
-  // both sources periodically so a newly finished match appears promptly.
-  useEffect(() => {
-    const t = setInterval(() => setRefreshKey(value => value + 1), 30000);
     return () => clearInterval(t);
   }, []);
 
