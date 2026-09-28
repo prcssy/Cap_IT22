@@ -25,8 +25,47 @@ function TeamLogo({ name, logo }) {
   );
 }
 
+const norm = (v) => String(v || '').trim().toLowerCase();
+
+/* Every category/division of one sport, as display rows:
+   { category: 'MALE', division: '5 V 5' }.
+   A division named like its group ("MEN" in MEN) shows just the category. */
+function divisionRows(sport) {
+  return (sport?.categoryGroups || []).flatMap((g) => {
+    const category = (g.label || '').trim();
+    const divs = g.divisions || [];
+    if (divs.length === 0) return [{ category, division: '' }];
+    return divs.map((d) => {
+      const name = (d.name || '').trim();
+      return { category, division: name && norm(name) !== norm(category) ? name : '' };
+    });
+  });
+}
+
+/* A sport pill; hovering (or tapping/focusing, on touch screens and for
+   keyboard users) shows that sport's categories and divisions. */
+function SportTag({ name, sport }) {
+  const rows = divisionRows(sport);
+  if (rows.length === 0) return <span className="ts-sport-tag">{name}</span>;
+  return (
+    <span className="ts-sport-tag ts-sport-tag--has-pop" tabIndex={0} aria-label={`${name} divisions`}>
+      {name}
+      <span className="ts-sport-pop" role="tooltip">
+        <span className="ts-sport-pop__title">{name} · Divisions</span>
+        {rows.map((r, i) => (
+          <span className="ts-sport-pop__row" key={i}>
+            <span className="ts-sport-pop__name">
+              {r.category}{r.division && <span className="ts-sport-pop__div"> · {r.division}</span>}
+            </span>
+          </span>
+        ))}
+      </span>
+    </span>
+  );
+}
+
 /* ── Single team card ── */
-function TeamCard({ team, index, levelLabels }) {
+function TeamCard({ team, index, levelLabels, sportsByName }) {
   const sports = team.sportIds || [];
   return (
     <div className="ts-team-card" style={{ animationDelay: `${index * 0.07}s` }}>
@@ -42,7 +81,7 @@ function TeamCard({ team, index, levelLabels }) {
       {sports.length > 0 ? (
         <div className="ts-sports-tags">
           {sports.map((sport, i) => (
-            <span key={i} className="ts-sport-tag">{sport}</span>
+            <SportTag key={i} name={sport} sport={sportsByName.get(norm(sport))} />
           ))}
         </div>
       ) : (
@@ -66,6 +105,7 @@ export default function TeamsAndSportsPage() {
   const level = LEVELS.find(l => l.key === levelKey) || LEVELS[0];
   const [loading, setLoading] = useState(true);
   const [teamsByLevel, setTeamsByLevel] = useState({ elementary: [], highSchool: [], college: [] });
+  const [sportsByLevel, setSportsByLevel] = useState({ elementary: [], highSchool: [], college: [] });
   const contactRef = React.useRef(null);
 
   /* ── Live data from Firestore for every level ──
@@ -83,6 +123,7 @@ export default function TeamsAndSportsPage() {
     const unsubs = LEVEL_KEYS.map((levelKey) => {
       const setLevelTeams = (cfg) => {
         setTeamsByLevel(prev => ({ ...prev, [levelKey]: tag(levelKey, cfg) }));
+        setSportsByLevel(prev => ({ ...prev, [levelKey]: cfg.sports || [] }));
         if (pending.delete(levelKey) && pending.size === 0) setLoading(false);
       };
       return subscribeSportsTeamsConfig(levelKey, setLevelTeams, (e) => {
@@ -95,6 +136,11 @@ export default function TeamsAndSportsPage() {
 
   /* ── Teams visible for the selected level filter ── */
   const visibleTeams = useMemo(() => teamsByLevel[level.key] || [], [level, teamsByLevel]);
+  // Sport name → its Sports & Teams entry, for each pill's division popover.
+  const sportsByName = useMemo(
+    () => new Map((sportsByLevel[level.key] || []).map((s) => [norm(s.name), s])),
+    [level, sportsByLevel],
+  );
 
   /* ── Stats always reflect the currently selected level ── */
   const totalTeams = visibleTeams.length;
@@ -154,7 +200,7 @@ export default function TeamsAndSportsPage() {
         ) : (
           <div className="ts-cards-list">
             {visibleTeams.map((team, i) => (
-              <TeamCard key={`${team.level}-${team.id}`} team={team} index={i} levelLabels={levelLabels} />
+              <TeamCard key={`${team.level}-${team.id}`} team={team} index={i} levelLabels={levelLabels} sportsByName={sportsByName} />
             ))}
           </div>
         )}

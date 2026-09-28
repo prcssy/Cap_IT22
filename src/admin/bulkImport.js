@@ -11,6 +11,8 @@
 
    Pure parsing/merging lives here (no Firebase, no React) so it can be tested. */
 
+import { resizeImageToDataUrl, LOGO_OPTIONS } from '../shared/utils/resizeImage';
+
 export const FORMAT_OPTIONS = [
   { id: 'single-time',  label: '1 vs 1 (Time Basis)' },
   { id: 'single-solo',  label: '1 vs 1 (Point Basis)' },
@@ -231,19 +233,10 @@ function sheetMatrix(ws) {
   return out;
 }
 
-/* Same 80x80 navy-backed JPEG the manual logo upload produces */
+/* Same navy-backed logo the manual upload produces (see LOGO_OPTIONS) */
 async function imageToLogo(buffer, extension) {
   const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' }[extension] || 'image/png';
-  const bitmap = await createImageBitmap(new Blob([buffer], { type: mime }));
-  const SIZE = 80;
-  const canvas = document.createElement('canvas');
-  canvas.width = canvas.height = SIZE;
-  const ctx = canvas.getContext('2d');
-  ctx.fillStyle = '#001529';
-  ctx.fillRect(0, 0, SIZE, SIZE);
-  const scale = Math.min(SIZE / bitmap.width, SIZE / bitmap.height);
-  ctx.drawImage(bitmap, (SIZE - bitmap.width * scale) / 2, (SIZE - bitmap.height * scale) / 2, bitmap.width * scale, bitmap.height * scale);
-  return canvas.toDataURL('image/jpeg', 0.75);
+  return resizeImageToDataUrl(new Blob([buffer], { type: mime }), LOGO_OPTIONS);
 }
 
 /* Pictures pasted into the sheet's Logo column, keyed by Excel row number */

@@ -359,6 +359,27 @@
   padding-bottom: 6px;
 }
 
+/* Mouse drag-to-scroll (ScrollRow): a grab hand says the row can be dragged. */
+@media (hover: hover) and (pointer: fine) {
+  .scroll-row {
+    cursor: grab;
+  }
+}
+
+/* While dragging: follow the pointer 1:1 — no snapping or smooth-scroll
+   easing fighting it, and no text getting highlighted along the way. */
+.scroll-row--dragging {
+  cursor: grabbing;
+  scroll-snap-type: none !important;
+  scroll-behavior: auto;
+  user-select: none;
+}
+
+.scroll-row img {
+  -webkit-user-drag: none;
+  user-select: none;
+}
+
 .dash-empty {
   font-family: "Inter", sans-serif;
   color: rgba(255, 255, 255, 0.6);
@@ -611,8 +632,24 @@
 .oc-date-row {
   display: flex;
   justify-content: center;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
   width: 100%;
   margin-bottom: 2px;
+}
+
+/* Time left in an ongoing match, beside its date pill. */
+.oc-countdown {
+  font-size: 10px;
+  font-weight: 800;
+  color: var(--c-dark, #001529);
+  background: var(--c-gold-2, #f5a623);
+  border-radius: 4px;
+  padding: 2px 8px;
+  letter-spacing: 0.04em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
 }
 
 .oc-teams-row {
@@ -771,6 +808,40 @@
 
 .dash-section--finished .section-title {
   color: #fff;
+}
+
+/* How many matches a section holds, beside its title (Ongoing, Upcoming,
+   Finished). */
+.section-title--count {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.section-count {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 22px;
+  height: 20px;
+  padding: 0 7px;
+  border-radius: 999px;
+  background: var(--c-gold-2, #f5a623);
+  color: var(--c-dark, #001529);
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0;
+}
+
+/* "2 / 3" — which real match is centered in the carousel. */
+.scroll-position {
+  align-self: center;
+  margin-right: 6px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  font-variant-numeric: tabular-nums;
 }
 
 .dash-section--finished .arrow-btn {
@@ -1428,6 +1499,18 @@
     flex-wrap: nowrap;
   }
 
+  /* Level tabs + Sport already fill a phone's width; once a sport is picked
+     the Division filter takes its own line underneath instead of squeezing
+     the row. Its dropdown still anchors right: 0 (see the panel note above). */
+  .dash-filters-row:has(.dash-sport-filter--division) {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .dash-sport-filter--division {
+    margin-left: auto;
+  }
+
   .dash-sport-filter {
     flex-shrink: 0;
     gap: clamp(3px, calc(-0.42px + 1.07vw), 6px);
@@ -1456,9 +1539,8 @@
   /* Ongoing Matches on mobile: same one-match-per-view treatment as
      Upcoming below — a 260px partial-peek card meant you only ever saw
      part of a match's info and had to scroll/click further to see the
-     rest. Full-width + scroll-snap makes a swipe (the arrows are gone
-     now — see ScrollRow's showArrows) land cleanly on exactly one
-     complete card. */
+     rest. Full-width + scroll-snap makes a swipe (or an arrow click, which
+     moves exactly one card) land cleanly on exactly one complete card. */
   .dash-section--ongoing .scroll-row {
     scroll-snap-type: x mandatory;
   }

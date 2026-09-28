@@ -11,6 +11,7 @@ import {
   getSportDeletionImpact, applySportChange, getAllRegistrations,
 } from '../shared/services/firestoreService';
 import { getSchoolLevel } from '../shared/utils/schoolLevel';
+import { resizeImageToDataUrl, LOGO_OPTIONS } from '../shared/utils/resizeImage';
 import { AuthContext } from '../shared/context/AuthContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import SportIcon from '../shared/components/SportIcon/SportIcon';
@@ -43,33 +44,19 @@ const dedupeByName = (rows) => {
 
 /* ═══════════════════════════════════════════
    LOGO UPLOAD
-   Resizes to 80×80 before storing as base64
+   Resizes to a sharp 192×192 (see LOGO_OPTIONS) before storing as base64
 ═══════════════════════════════════════════ */
 function LogoUpload({ logo, onUpload, onClear, showClearButton = false }) {
   const inputRef = useRef(null);
 
   const handleFile = (e) => {
     const file = e.target.files[0];
-    if (!file) return;
-    const img = new Image();
-    const url = URL.createObjectURL(file);
-    img.onload = () => {
-      const SIZE = 80;
-      const canvas = document.createElement('canvas');
-      canvas.width = canvas.height = SIZE;
-      const ctx = canvas.getContext('2d');
-      ctx.fillStyle = '#001529';
-      ctx.fillRect(0, 0, SIZE, SIZE);
-      const scale = Math.min(SIZE / img.width, SIZE / img.height);
-      const x = (SIZE - img.width * scale) / 2;
-      const y = (SIZE - img.height * scale) / 2;
-      ctx.drawImage(img, x, y, img.width * scale, img.height * scale);
-      onUpload(canvas.toDataURL('image/jpeg', 0.75));
-      URL.revokeObjectURL(url);
-    };
-    img.src = url;
     // allow re-selecting the same file after a clear
     e.target.value = '';
+    if (!file) return;
+    resizeImageToDataUrl(file, LOGO_OPTIONS)
+      .then(onUpload)
+      .catch((err) => console.error('Could not process logo:', err));
   };
 
   const handleClear = (e) => {

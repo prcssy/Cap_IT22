@@ -40,6 +40,8 @@ import {
   getEventRegistrationCounts,
   getEventKey,
 } from '../shared/services/firestoreService';
+import { matchStart, matchEnd } from '../shared/utils/matchTime';
+import MatchCountdown from '../shared/components/MatchCountdown';
 
 /* ═══════════════════════════════════════════
    LIVE MATCH STATUS
@@ -49,14 +51,10 @@ import {
    date/time (round-robin/bracket placeholders) are skipped entirely —
    they have nothing to compare against the clock yet.
 ═══════════════════════════════════════════ */
-const ASSUMED_MATCH_MINUTES = 120; // 2 hours, matching the original mock's "7:00–9:00 AM" style windows
-
+// Start/end (incl. any time a moderator added) come from shared/utils/matchTime.js.
 function matchWindow(match) {
-  if (!match.date || !match.time) return null;
-  const start = new Date(`${match.date}T${match.time}`);
-  if (Number.isNaN(start.getTime())) return null;
-  const end = new Date(start.getTime() + ASSUMED_MATCH_MINUTES * 60000);
-  return { start, end };
+  const start = matchStart(match);
+  return start ? { start, end: matchEnd(match) } : null;
 }
 
 function norm(value) {
@@ -291,7 +289,12 @@ function OngoingCard({ match }) {
         )}
       </div>
       <div className="oc-footer">
-        <div className="oc-date-row"><span className="date-pill">{match.date}</span></div>
+        <div className="oc-date-row">
+          <span className="date-pill">{match.date}</span>
+          {match.endsAt && (
+            <MatchCountdown end={match.endsAt} className="oc-countdown" doneText="Ending…" />
+          )}
+        </div>
         <div className="oc-teams-row">
           {match.raceCount ? (
             <RaceTeamNames names={match.raceTeams} />
@@ -506,7 +509,7 @@ function RaceStandings({ standings, isActive }) {
 // that matters.
 const MIN_SLOTS_TOTAL = 12;
 
-function FinishedCarousel({ matches, emptyText }) {
+function FinishedCarousel({ matches, emptyText, loading }) {
   const total = matches.length;
   // With fewer than MIN_SLOTS_TOTAL real finished matches, cycling through
   // `matches` alone gives the position math too little room: the wrap seam
@@ -601,9 +604,14 @@ function FinishedCarousel({ matches, emptyText }) {
   return (
     <section className="dash-section dash-section--finished">
       <div className="section-header">
-        <h2 className="section-title">FINISHED MATCHES</h2>
+        <SectionTitle label="FINISHED MATCHES" count={loading ? null : total} noun="finished" />
         {total > 0 && (
           <div className="scroll-arrows">
+            {/* Slots repeat the real matches (see `slots`), so map the centered
+                slot back to its real match: slot i shows matches[i % total]. */}
+            <span className="scroll-position" aria-live="polite">
+              {((((center % slotsTotal) + slotsTotal) % slotsTotal) % total) + 1} / {total}
+            </span>
             <button className="arrow-btn" onClick={() => go(-1)} aria-label="Scroll left"><FiChevronLeft /></button>
             <button className="arrow-btn" onClick={() => go(1)}  aria-label="Scroll right"><FiChevronRight /></button>
           </div>
@@ -661,34 +669,76 @@ function FinishedCarousel({ matches, emptyText }) {
   );
 }
 
-function ScrollRow({ children, label, variant, isEmpty, emptyText }) {
+/* "ONGOING MATCHES 3" — the number of matches in that section, following the
+   level tab and the Sport filter. Hidden (null) while matches are loading. */
+function SectionTitle({ label, count, noun }) {
+  return (
+    <h2 className="section-title section-title--count">
+      {label}
+      {count != null && (
+        <span className="section-count" aria-label={`${count} ${noun} ${count === 1 ? 'match' : 'matches'}`}>{count}</span>
+      )}
+    </h2>
+  );
+}
+
+function ScrollRow({ children, label, count, noun, variant, isEmpty, emptyText }) {
   const ref = React.useRef(null);
-  const scroll = (dir) => {
-    if (!ref.current) return;
-    // On mobile, Upcoming shows one full-width match per view (CSS scroll-snap
-    // makes swipe land on it too) — advance by a whole card, not the desktop
-    // peek-next-card 180px nudge, so the arrow lands on the same match a swipe would.
-    const step = variant === 'upcoming' && window.innerWidth <= 600 ? ref.current.clientWidth : 180;
-    ref.current.scrollBy({ left: dir * step, behavior: 'smooth' });
+  /* Mouse "swipe": press and drag the row sideways to scroll it, like a
+     finger on a phone (touch already scrolls natively, so only the mouse is
+     handled here). A drag of a few pixels or more swallows the click that
+     follows, so letting go over a card doesn't also "click" it. */
+  const drag = React.useRef(null);
+  const onPointerDown = (e) => {
+    if (e.pointerType !== 'mouse' || e.button !== 0 || !ref.current) return;
+    drag.current = { x: e.clientX, left: ref.current.scrollLeft, id: e.pointerId, moved: false };
   };
-  // Ongoing's arrows only nudged by a fixed 180px regardless of card width,
-  // so seeing a whole card meant clicking several times. Dropped the
-  // buttons here in favor of touch swipe (native on .scroll-row's
-  // overflow-x), which now snaps one full card at a time on mobile — see
-  // .dash-section--ongoing .ongoing-card's scroll-snap-align below.
-  const showArrows = variant !== 'ongoing';
+  const onPointerMove = (e) => {
+    const d = drag.current;
+    const row = ref.current;
+    if (!d || !row) return;
+    const dx = e.clientX - d.x;
+    if (!d.moved) {
+      if (Math.abs(dx) < 5) return;
+      d.moved = true;
+      row.setPointerCapture?.(d.id);
+      row.classList.add('scroll-row--dragging');
+    }
+    row.scrollLeft = d.left - dx;
+  };
+  const endDrag = () => {
+    const d = drag.current;
+    const row = ref.current;
+    drag.current = null;
+    if (!d || !row) return;
+    if (d.moved) {
+      row.classList.remove('scroll-row--dragging');
+      row.dataset.justDragged = '1';
+      setTimeout(() => { delete row.dataset.justDragged; }, 0);
+    }
+  };
+  const onClickCapture = (e) => {
+    if (ref.current?.dataset.justDragged) { e.preventDefault(); e.stopPropagation(); }
+  };
   return (
     <section className={`dash-section dash-section--${variant}`}>
       <div className="section-header">
-        <h2 className="section-title">{label}</h2>
-        {showArrows && (
-          <div className="scroll-arrows">
-            <button className="arrow-btn" onClick={() => scroll(-1)} aria-label="Scroll left">&#8249;</button>
-            <button className="arrow-btn" onClick={() => scroll(1)}  aria-label="Scroll right">&#8250;</button>
-          </div>
-        )}
+        <SectionTitle label={label} count={count} noun={noun} />
       </div>
-      {isEmpty ? <p className="dash-empty">{emptyText}</p> : <div className="scroll-row" ref={ref}>{children}</div>}
+      {isEmpty ? <p className="dash-empty">{emptyText}</p> : (
+        <div
+          className="scroll-row"
+          ref={ref}
+          onPointerDown={onPointerDown}
+          onPointerMove={onPointerMove}
+          onPointerUp={endDrag}
+          onPointerCancel={endDrag}
+          onClickCapture={onClickCapture}
+          onDragStart={(e) => e.preventDefault()} // logos would otherwise start a native image drag
+        >
+          {children}
+        </div>
+      )}
     </section>
   );
 }
@@ -703,6 +753,32 @@ function ScrollRow({ children, label, variant, isEmpty, emptyText }) {
    instead of a native <select>, so the sizing/arrangement reads the
    same way as the public homepage. */
 function SportFilter({ sports, value, onChange }) {
+  return (
+    <DashFilter
+      label="Sport"
+      ariaLabel="Filter the whole dashboard by sport"
+      options={[{ key: 'ALL SPORTS', label: 'All Sports' }, ...sports.map((sport) => ({ key: sport, label: sport }))]}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+/* Same control, for the divisions of the picked sport ("MALE · 5 V 5"). */
+function DivisionFilter({ divisions, value, onChange }) {
+  return (
+    <DashFilter
+      label="Division"
+      ariaLabel="Filter the whole dashboard by division"
+      className="dash-sport-filter--division"
+      options={[{ key: ALL_DIVISIONS, label: 'All Divisions' }, ...divisions.map((d) => ({ key: d, label: d }))]}
+      value={value}
+      onChange={onChange}
+    />
+  );
+}
+
+function DashFilter({ label, ariaLabel, options, value, onChange, className = '' }) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef(null);
 
@@ -714,20 +790,19 @@ function SportFilter({ sports, value, onChange }) {
     return () => document.removeEventListener('mousedown', onClick);
   }, []);
 
-  const options = [{ key: 'ALL SPORTS', label: 'All Sports' }, ...sports.map((sport) => ({ key: sport, label: sport }))];
-  const selected = options.find((o) => o.key === value);
+  const selected = options.find((o) => o.key === value) || options[0];
 
   return (
-    <div className="dash-sport-filter" ref={wrapRef}>
-      <span className="dash-sport-filter__label">Sport</span>
+    <div className={`dash-sport-filter ${className}`} ref={wrapRef}>
+      <span className="dash-sport-filter__label">{label}</span>
       <div className="dash-sport-filter__dd">
         <button
           type="button"
           className="dash-sport-filter__trigger"
           onClick={() => setOpen((p) => !p)}
-          aria-label="Filter the whole dashboard by sport"
+          aria-label={ariaLabel}
         >
-          <span>{selected ? selected.label : 'All Sports'}</span>
+          <span>{selected.label}</span>
           <FiChevronDown className={`dash-sport-filter__arrow ${open ? 'dash-sport-filter__arrow--open' : ''}`} />
         </button>
 
@@ -748,6 +823,27 @@ function SportFilter({ sports, value, onChange }) {
   );
 }
 
+
+const ALL_DIVISIONS = 'ALL DIVISIONS';
+
+/* "MALE · 5 V 5" for a group with its own named division, plain "MALE" when
+   the division is just the group itself. Resolved from the schedule's
+   divisionId; older fixtures without one fall back to their category text. */
+function divisionLabel(group, division) {
+  const cat = (group?.label || '').trim();
+  const name = (division?.name || '').trim();
+  if (!cat) return name.toUpperCase();
+  return (name && norm(name) !== norm(cat) ? `${cat} · ${name}` : cat).toUpperCase();
+}
+
+function scheduleDivisionOf(schedule, sports) {
+  const sport = (sports || []).find((s) => norm(s.name) === norm(schedule.sport));
+  for (const g of sport?.categoryGroups || []) {
+    const d = (g.divisions || []).find((x) => x.id === schedule.divisionId);
+    if (d) return divisionLabel(g, d);
+  }
+  return (schedule.category || '').trim().toUpperCase();
+}
 
 function HomeView({ onOpenRegistration }) {
   const { schoolName } = useContext(BrandingContext);
@@ -772,7 +868,9 @@ function HomeView({ onOpenRegistration }) {
   // Finished) reads from this same value, so there is exactly one source
   // of truth for "which sport am I looking at" across the whole Dashboard.
   const [sportFilter, setSportFilter] = useState('ALL SPORTS');
+  const [divisionFilter, setDivisionFilter] = useState(ALL_DIVISIONS);
   const [availableSports, setAvailableSports] = useState([]);
+  const [sportsConfig, setSportsConfig] = useState([]); // full sports list, for division names
   const [now, setNow] = useState(() => new Date());
 
   // Live listeners for the selected level: schedules, the moderator's
@@ -794,12 +892,14 @@ function HomeView({ onOpenRegistration }) {
         const byName = {};
         (cfg.teams || []).forEach(t => { byName[t.name] = t; });
         setTeamsByName(byName);
+        setSportsConfig(cfg.sports || []);
         setAvailableSports((cfg.sports || []).map(sport => (sport.name || '').trim().toUpperCase()).filter(Boolean).sort());
         setLoadError('');
         setLoading(false);
       }, (e) => {
         console.error('Failed to load dashboard data:', e);
         setTeamsByName({});
+        setSportsConfig([]);
         setAvailableSports([]);
         setLoadError('Unable to load the match schedule. Please refresh and try again.');
         setLoading(false);
@@ -843,15 +943,19 @@ function HomeView({ onOpenRegistration }) {
     const recordedIds = new Set(finishedMatches.map(({ m }) => m.id));
 
     const ongoingList = withWindow
-      .filter(({ w }) => now >= w.start && now < w.end)
+      // Same rule as the landing page's card (isMatchLive): in its time slot,
+      // not marked finished by the moderator, and not yet scored (below).
+      .filter(({ m, w }) => !m.finished && now >= w.start && now < w.end)
       .filter(({ m }) => !recordedIds.has(m.id))
       .sort((a, b) => a.w.start - b.w.start)
-      .map(({ m }) => ({
+      .map(({ m, w }) => ({
         id: m.id,
         date: formatDatePill(m.date),
+        endsAt: w.end, // live countdown on the card (incl. moderator-added time)
         teamA: toCardTeam(m.teamA, m.teamALogo),
         teamB: toCardTeam(m.teamB, m.teamBLogo),
         sport: (m.sport || '').toUpperCase(),
+        division: scheduleDivisionOf(m, sportsConfig),
         venue: (m.location || 'TBA').toUpperCase(),
         matchLabel: m.matchLabel || null,
         ...raceCardFields(m, toCardTeam),
@@ -869,6 +973,7 @@ function HomeView({ onOpenRegistration }) {
         teamA: toCardTeam(m.teamA, m.teamALogo),
         teamB: toCardTeam(m.teamB, m.teamBLogo),
         sport: (m.sport || '').toUpperCase(),
+        division: scheduleDivisionOf(m, sportsConfig),
         matchLabel: m.matchLabel || null,
         ...raceCardFields(m, toCardTeam),
       }));
@@ -883,10 +988,10 @@ function HomeView({ onOpenRegistration }) {
         || ((a.m.round ?? Infinity) === (b.m.round ?? Infinity) ? 0 : (a.m.round ?? Infinity) < (b.m.round ?? Infinity) ? -1 : 1)
         || a.w.start - b.w.start
       ))
-      .map(({ m, record }) => finishedCardFrom(m, record, teamsByName));
+      .map(({ m, record }) => ({ ...finishedCardFrom(m, record, teamsByName), division: scheduleDivisionOf(m, sportsConfig) }));
 
     return { ongoing: ongoingList, upcoming: upcomingList, finished: finishedList };
-  }, [matches, records, now, teamsByName]);
+  }, [matches, records, now, teamsByName, sportsConfig]);
 
   // The dropdown's options: every sport configured for this level, plus any
   // sport that only shows up in a match/record (older data, or a sport
@@ -910,20 +1015,37 @@ function HomeView({ onOpenRegistration }) {
     }
   }, [sportFilter, filterSports]);
 
-  const visibleOngoing = useMemo(
-    () => sportFilter === 'ALL SPORTS' ? ongoing : ongoing.filter(match => match.sport === sportFilter),
-    [ongoing, sportFilter],
-  );
-  const visibleUpcoming = useMemo(
-    () => sportFilter === 'ALL SPORTS' ? upcoming : upcoming.filter(match => match.sport === sportFilter),
-    [upcoming, sportFilter],
-  );
-  const visibleFinished = useMemo(
-    () => sportFilter === 'ALL SPORTS' ? finished : finished.filter(match => match.sport === sportFilter),
-    [finished, sportFilter],
-  );
+  /* Divisions of the picked sport: every one configured in Sports & Teams,
+     plus any that only appear on a match (older data), in config order. */
+  const filterDivisions = useMemo(() => {
+    if (sportFilter === 'ALL SPORTS') return [];
+    const sport = sportsConfig.find((s) => (s.name || '').trim().toUpperCase() === sportFilter);
+    const fromConfig = (sport?.categoryGroups || []).flatMap((g) => (
+      (g.divisions || []).length ? g.divisions.map((d) => divisionLabel(g, d)) : [divisionLabel(g, null)]
+    ));
+    const fromMatches = [...ongoing, ...upcoming, ...finished]
+      .filter((m) => m.sport === sportFilter)
+      .map((m) => m.division);
+    return Array.from(new Set([...fromConfig, ...fromMatches])).filter(Boolean);
+  }, [sportFilter, sportsConfig, ongoing, upcoming, finished]);
 
-  const sportSuffix = sportFilter === 'ALL SPORTS' ? '' : ` ${sportFilter}`;
+  // A division only exists within its sport — switching sport (or level)
+  // falls back to All Divisions instead of filtering everything out.
+  const activeDivision = filterDivisions.includes(divisionFilter) ? divisionFilter : ALL_DIVISIONS;
+  const pickSport = (value) => { setSportFilter(value); setDivisionFilter(ALL_DIVISIONS); };
+
+  const inView = useCallback((match) => (
+    (sportFilter === 'ALL SPORTS' || match.sport === sportFilter)
+    && (activeDivision === ALL_DIVISIONS || match.division === activeDivision)
+  ), [sportFilter, activeDivision]);
+
+  const visibleOngoing = useMemo(() => ongoing.filter(inView), [ongoing, inView]);
+  const visibleUpcoming = useMemo(() => upcoming.filter(inView), [upcoming, inView]);
+  const visibleFinished = useMemo(() => finished.filter(inView), [finished, inView]);
+
+  const sportSuffix = sportFilter === 'ALL SPORTS'
+    ? ''
+    : ` ${sportFilter}${activeDivision === ALL_DIVISIONS ? '' : ` ${activeDivision}`}`;
 
   return (
     <div className="user-dashboard">
@@ -950,7 +1072,10 @@ function HomeView({ onOpenRegistration }) {
             activeClassName="dash-lvltab--active"
           />
           )}
-          <SportFilter sports={filterSports} value={sportFilter} onChange={setSportFilter} />
+          <SportFilter sports={filterSports} value={sportFilter} onChange={pickSport} />
+          {filterDivisions.length > 0 && (
+            <DivisionFilter divisions={filterDivisions} value={activeDivision} onChange={setDivisionFilter} />
+          )}
         </div>
       </div>
       <div className="dash-body">
@@ -958,6 +1083,8 @@ function HomeView({ onOpenRegistration }) {
         {loading && <p className="dash-empty">Loading matches…</p>}
         <ScrollRow
           label="ONGOING MATCHES"
+          count={loading ? null : visibleOngoing.length}
+          noun="ongoing"
           variant="ongoing"
           isEmpty={!loading && visibleOngoing.length === 0}
           emptyText={`No${sportSuffix} matches are ongoing right now.`}
@@ -966,6 +1093,8 @@ function HomeView({ onOpenRegistration }) {
         </ScrollRow>
         <ScrollRow
           label="UPCOMING MATCHES"
+          count={loading ? null : visibleUpcoming.length}
+          noun="upcoming"
           variant="upcoming"
           isEmpty={!loading && visibleUpcoming.length === 0}
           emptyText={`No upcoming${sportSuffix} matches scheduled yet.`}
@@ -974,6 +1103,7 @@ function HomeView({ onOpenRegistration }) {
         </ScrollRow>
         <FinishedCarousel
           matches={visibleFinished}
+          loading={loading}
           emptyText={`No finished${sportSuffix} matches yet.`}
         />
         <Contact contactFooterRef={contactFooterRef} />
@@ -1602,7 +1732,7 @@ function PlayerRegistration({ onBack }) {
     // each upload in the tens-to-low-hundreds of KB instead.
     if (key === 'photo') {
       try {
-        const blob = await resizeImageToBlob(file, { maxWidth: 1000, maxHeight: 1000, format: 'jpeg', quality: 0.75 });
+        const blob = await resizeImageToBlob(file, { maxWidth: 1000, maxHeight: 1000, format: 'jpeg', quality: 0.82 });
         if (blob.size < file.size) {
           file = new File([blob], file.name, { type: blob.type });
         }

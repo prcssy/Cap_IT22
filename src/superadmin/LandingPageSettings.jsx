@@ -144,8 +144,12 @@ export default function LandingPageSettings({ actorEmail, actorRole }) {
       // siteConfig/landingPage — same approach as the Sports & Teams logo
       // upload, no Firebase Storage required (which is what made this
       // silently fail before).
+      // Full-width banner: 1920px wide so it stays sharp on large/HiDPI
+      // screens; the byte cap leaves room for 12 gallery images (below)
+      // in the same 1 MB doc.
       const dataUrl = await resizeImageToDataUrl(file, {
-        maxWidth: 1280, maxHeight: 720, mode: 'contain', format: 'jpeg', quality: 0.7,
+        maxWidth: 1920, maxHeight: 1080, mode: 'contain', format: 'jpeg', quality: 0.85,
+        maxBytes: 200 * 1024,
       });
       setDraftHero((prev) => ({ ...prev, backgroundImageURL: dataUrl }));
       setHeroMsg({ tone: 'success', text: 'Background image ready — click Save to publish it.' });
@@ -223,12 +227,13 @@ export default function LandingPageSettings({ actorEmail, actorRole }) {
     setGalleryImgBusy(true);
     setGalleryMsg(null);
     try {
-      // Kept smaller than the hero image (500×500 max) since up to 12 of
-      // these live in the same Firestore document, which has a hard 1MB
-      // total-size ceiling — same base64-on-Firestore approach as the
-      // logo/hero above, no Firebase Storage involved.
+      // Up to 12 of these live in the same Firestore document as the hero
+      // (hard 1MB total-size ceiling, and base64 adds a third on top), so
+      // each is capped at 42KB: 12 × 42KB × 4/3 + the 200KB hero × 4/3 ≈
+      // 940KB worst case. Quality only drops as far as a photo needs to fit.
       const dataUrl = await resizeImageToDataUrl(file, {
-        maxWidth: 500, maxHeight: 500, mode: 'contain', format: 'jpeg', quality: 0.6,
+        maxWidth: 900, maxHeight: 900, mode: 'contain', format: 'jpeg', quality: 0.85,
+        maxBytes: 42 * 1024,
       });
       setDraftGallery((prev) => ({ ...prev, images: [...prev.images, dataUrl] }));
       setGalleryMsg({ tone: 'success', text: 'Image added — click Save to publish it.' });

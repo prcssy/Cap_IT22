@@ -13,6 +13,8 @@ import { FaTimes, FaSync, FaUsers, FaChevronDown, FaCheck, FaEdit, FaPlus, FaMap
 // handleDownloadBracketPdf below), not imported statically here.
 import { db } from '../shared/firebase';
 import { getAllRegistrations, getAllUsers, subscribeSportsTeamsConfig, subscribeMatchSchedules, subscribeMatchRecords, saveGeneratedSchedule, upsertMatchSchedule, deleteMatchSchedule, deleteScheduleSet, inScheduleSet, setLivePlayerCount, setEventRegistrationCounts, getEventKey, EVENT_TYPES, getVenues, getAllMatchSchedules, updateScheduleRequest, deleteScheduleRequest } from '../shared/services/firestoreService';
+import { savedSlotRef, savedBracketResolved } from '../shared/utils/savedBracket';
+import { generateRounds, stageCodeFor, generateBracket, generateDoubleBracket, buildScheduleMatches } from '../shared/utils/scheduleFormats';
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
 import LevelTabs from '../shared/components/LevelTabs';
@@ -359,104 +361,6 @@ function TeamBadge({ team, size = 52 }) {
   );
 }
 
-/* ═══════════════════════════════════════════
-   ROUND-ROBIN GENERATOR
-   Circle method: fixes team[0], rotates the rest each round
-   so every team plays every other team exactly once (twice for
-   double round-robin). An odd team count gets a bye each round.
-═══════════════════════════════════════════ */
-function generateRounds(teamNames, doubleLegged) {
-  let arr = [...teamNames];
-  const hasBye = arr.length % 2 !== 0;
-  if (hasBye) arr.push('BYE');
-  const n = arr.length;
-  const rounds = [];
-
-  for (let r = 0; r < n - 1; r++) {
-    const pairs = [];
-    for (let i = 0; i < n / 2; i++) {
-      const a = arr[i];
-      const b = arr[n - 1 - i];
-      if (a !== 'BYE' && b !== 'BYE') pairs.push(r % 2 === 0 ? [a, b] : [b, a]);
-    }
-    rounds.push(pairs);
-    arr = [arr[0], arr[n - 1], ...arr.slice(1, n - 1)];
-  }
-
-  if (doubleLegged) {
-    const reverseLegs = rounds.map(pairs => pairs.map(([a, b]) => [b, a]));
-    return [...rounds, ...reverseLegs];
-  }
-  return rounds;
-}
-
-/* ═══════════════════════════════════════════
-   SINGLE BRACKET (elimination) GENERATOR
-   Pads the field to the next power of two with byes, pairs teams
-   sequentially, then each later round references the previous
-   round's winner as a placeholder ("Winner QF1") — except a bye
-   match, which auto-advances a known team instead of a placeholder.
-   Every bracket needs exactly teams.length - 1 matches to crown
-   one champion, regardless of how many byes are involved.
-═══════════════════════════════════════════ */
-function stageNamesFor(totalRounds) {
-  const tail = ['Finals'];
-  if (totalRounds >= 2) tail.unshift('Semifinals');
-  if (totalRounds >= 3) tail.unshift('Quarterfinals');
-  for (let extra = totalRounds - 3; extra >= 1; extra--) {
-    tail.unshift(`Round of ${Math.pow(2, extra + 3)}`);
-  }
-  return tail;
-}
-function stageCodeFor(name) {
-  if (name === 'Finals') return 'F';
-  if (name === 'Semifinals') return 'SF';
-  if (name === 'Quarterfinals') return 'QF';
-  const m = name.match(/Round of (\d+)/);
-  return m ? `R${m[1]}` : 'M';
-}
-
-function generateBracket(teamNames) {
-  const n = teamNames.length;
-  if (n < 2) return { stages: [], totalMatches: 0, leaves: [] };
-  const bracketSize = Math.pow(2, Math.ceil(Math.log2(n)));
-  const padded = [...teamNames];
-  while (padded.length < bracketSize) padded.push(null); // null = bye slot
-
-  const totalRounds = Math.log2(bracketSize);
-  const names = stageNamesFor(totalRounds);
-
-  let currentEntries = [];
-  for (let i = 0; i < padded.length; i += 2) {
-    currentEntries.push({ a: padded[i], b: padded[i + 1] });
-  }
-
-  const stages = [];
-  for (let r = 0; r < totalRounds; r++) {
-    const stageName = names[r];
-    const code = stageCodeFor(stageName);
-    const matches = currentEntries.map((m, i) => ({
-      label: stageName === 'Finals' && totalRounds === r + 1 ? 'Finals' : `${code}${i + 1}`,
-      a: m.a,
-      b: m.b,
-      isBye: m.a === null || m.b === null,
-    }));
-    stages.push({ name: stageName, matches });
-
-    const next = [];
-    for (let i = 0; i < matches.length; i += 2) {
-      const m1 = matches[i];
-      const m2 = matches[i + 1];
-      if (!m2) break;
-      const advance = (m) => (m.isBye ? (m.a ?? m.b) : `Winner ${m.label}`);
-      next.push({ a: advance(m1), b: advance(m2) });
-    }
-    currentEntries = next;
-  }
-
-  return { stages, totalMatches: n - 1, leaves: padded };
-}
-
 /* ── Horizontal bracket tree, drawn in the same style as the Double
    Bracket: team boxes on the left, every match's winner shown as a boxed
    "Winner of Match N" row (not a bare dot), a "Match N" caption above each
@@ -724,121 +628,6 @@ function SavedBracketTree({ stages, matchRecords }) {
   );
 }
 
-/* ═══════════════════════════════════════════
-   DOUBLE BRACKET (double elimination) GENERATOR
-   Reuses the single-elim generator for the Upper (Winner's) Bracket.
-
-   Lower (Loser's) Bracket format — verified match-for-match against a
-   real published double-elim bracket (MLBB M7 Worlds, 8-team knockout
-   stage): Round 1 pairs the Upper Bracket's round-1 losers against each
-   other (Match 7/8 there). Every later Upper Bracket round's fresh
-   losers are IMMEDIATELY cross-paired against the Lower Bracket's
-   current survivors — one slot rotated over (Match 10 there pairs
-   "Loser of Match 6" against "Winner of Match 7", not "Winner of Match
-   5" — the group whose own bracket didn't just eliminate them), so
-   nobody instantly replays the team that just knocked them down a
-   bracket. That drop-in round's winners then play each other in a
-   consolidation round (Match 12 there) to halve the Lower Bracket field
-   again. The Lower Bracket's last survivor meets the Upper Bracket
-   Final's loser one last time (the actual "Losers Final" / Match 13),
-   and that winner meets the Upper Bracket champion in the Grand Final.
-   Standard tournament rule: if the Lower Bracket team wins the Grand
-   Final, the Upper Bracket team only has ONE loss so far (double
-   elimination requires two) — a single reset match is then needed to
-   decide the real champion. That's why the total is "N (up to N+1)".
-═══════════════════════════════════════════ */
-function generateDoubleBracket(teamNames) {
-  const wb = generateBracket(teamNames);
-  if (!wb.stages.length) {
-    return { wbStages: [], leaves: [], lbRounds: [], grandFinal: null, ubMatchCount: 0, lbMatchCount: 0, totalMatches: 0 };
-  }
-
-  const wbStages = wb.stages;
-  const R = wbStages.length;
-
-  const wbLoserLabel = (stageIdx, matchIdx) => {
-    const isFinal = stageIdx === R - 1;
-    const code = isFinal ? 'F' : stageCodeFor(wbStages[stageIdx].name);
-    return isFinal ? 'Loser UB-F' : `Loser UB-${code}${matchIdx + 1}`;
-  };
-
-  const lbRounds = [];
-  let lbCounter = 1;
-
-  // LB Round 1 — sequential pairs of Upper Bracket round-1 losers,
-  // skipping byes (a bye auto-advances — no real loser to place here).
-  const r1Losers = wbStages[0].matches
-    .map((m, i) => (m.isBye ? null : wbLoserLabel(0, i)))
-    .filter(Boolean);
-  const round1 = [];
-  for (let i = 0; i < r1Losers.length; i += 2) {
-    round1.push({ label: `LB${lbCounter++}`, a: r1Losers[i], b: r1Losers[i + 1] ?? null });
-  }
-  if (round1.length) lbRounds.push({ name: 'Round 1', matches: round1 });
-  let currentWinners = round1.length
-    ? round1.map(m => (m.b ? `Winner ${m.label}` : m.a)) // an unpaired leftover just carries forward as itself
-    : r1Losers; // degenerate: fewer than 2 real round-1 losers (heavy byes)
-
-  for (let wr = 1; wr < R; wr++) {
-    const isLastWBRound = wr === R - 1;
-    // Skip byes here too — heavy padding (e.g. 10 teams into a 16-slot
-    // bracket) can leave a bye this deep, and a bye has no real loser.
-    const wbLosers = wbStages[wr].matches
-      .map((m, i) => (m.isBye ? null : wbLoserLabel(wr, i)))
-      .filter(Boolean);
-
-    if (isLastWBRound) {
-      lbRounds.push({ name: 'Losers Final', matches: [{ label: 'LB-F', a: currentWinners[0], b: wbLosers[0] }] });
-      currentWinners = ['Winner LB-F'];
-    } else {
-      // Cross-pair each Lower Bracket survivor against a DIFFERENT
-      // Upper Bracket loser than the one from their own group's round
-      // (rotated one slot over), so nobody instantly replays the team
-      // that just eliminated them. The two groups are normally the same
-      // size, but heavy byes can leave an odd leftover on either side —
-      // anything that doesn't get a drop-in match this round just joins
-      // the consolidation pool below instead of being silently dropped.
-      const pairCount = Math.min(currentWinners.length, wbLosers.length);
-      const dropIn = [];
-      for (let i = 0; i < pairCount; i++) {
-        dropIn.push({ label: `LB${lbCounter++}`, a: currentWinners[i], b: wbLosers[(i + 1) % pairCount] });
-      }
-      lbRounds.push({ name: `Round ${lbRounds.length + 1}`, matches: dropIn });
-      let pool = dropIn.map(m => `Winner ${m.label}`)
-        .concat(currentWinners.slice(pairCount), wbLosers.slice(pairCount));
-
-      if (pool.length > 1) {
-        const consolidation = [];
-        const survivors = [];
-        for (let i = 0; i < pool.length; i += 2) {
-          if (i + 1 >= pool.length) { survivors.push(pool[i]); continue; }
-          const label = `LB${lbCounter++}`;
-          consolidation.push({ label, a: pool[i], b: pool[i + 1] });
-          survivors.push(`Winner ${label}`);
-        }
-        lbRounds.push({ name: `Round ${lbRounds.length + 1}`, matches: consolidation });
-        currentWinners = survivors;
-      } else {
-        currentWinners = pool;
-      }
-    }
-  }
-
-  const grandFinal = { label: 'GF', a: 'Winner UB-F', b: currentWinners[0] };
-  const ubMatchCount = wbStages.reduce((s, st) => s + st.matches.filter(m => !m.isBye).length, 0);
-  const lbMatchCount = lbRounds.reduce((s, r) => s + r.matches.length, 0);
-
-  return {
-    wbStages,
-    leaves: wb.leaves,
-    lbRounds,
-    grandFinal,
-    ubMatchCount,
-    lbMatchCount,
-    totalMatches: ubMatchCount + lbMatchCount + 1, // Grand Final; a reset match is the "+1 if necessary"
-  };
-}
-
 /* Renumbers every real match (skipping byes) sequentially — Upper Bracket
    rounds, then Lower Bracket rounds — as "Match N", and rewrites every
    reference to it ("Winner QF1", "Loser UB-SF2", …) into "Winner of
@@ -872,6 +661,7 @@ function withMatchNumbers(wbStages, lbRounds) {
 
   const apply = (s) => (s != null && rename[s]) || s;
   return {
+    apply,
     wbStages: wbStages.map((stage, stageIdx) => ({
       ...stage,
       matches: stage.matches.map((m, i) => ({
@@ -913,17 +703,21 @@ function buildSavedDoubleBracketStages(matches) {
   const ubGroups = groupByStage(matches.filter(m => (m.stage || '').startsWith('Upper Bracket')));
   const lbGroups = groupByStage(matches.filter(m => (m.stage || '').startsWith('Lower Bracket')));
 
+  // Slots are connected by their ORIGINAL placeholders (see savedBracket.js),
+  // even after a result filled them with a real team.
+  const byId = new Map(matches.map((m) => [m.id, m]));
+  const refs = (m) => ({ a: savedSlotRef(m, 'A', byId), b: savedSlotRef(m, 'B', byId) });
   const wbStages = ubGroups.map((group) => ({
     name: (group[0].stage || '').replace(/^Upper Bracket\s*[–-]\s*/, ''),
-    matches: group.map(m => ({ label: (m.matchLabel || '').replace(/^UB-/, ''), a: m.teamA, b: m.teamB })),
+    matches: group.map(m => ({ label: (m.matchLabel || '').replace(/^UB-/, ''), ...refs(m) })),
   }));
   const lbRounds = lbGroups.map((group) => ({
     name: (group[0].stage || '').replace(/^Lower Bracket\s*[–-]\s*/, ''),
-    matches: group.map(m => ({ label: m.matchLabel, a: m.teamA, b: m.teamB })),
+    matches: group.map(m => ({ label: m.matchLabel, ...refs(m) })),
   }));
   const leaves = wbStages[0]?.matches.flatMap(m => [m.a, m.b]) || [];
 
-  return { wbStages, leaves, lbRounds };
+  return { wbStages, leaves, lbRounds, resolved: savedBracketResolved(matches) };
 }
 
 /* ── Double Bracket tree: Upper (Winner's) and Lower (Loser's) brackets
@@ -931,7 +725,7 @@ function buildSavedDoubleBracketStages(matches) {
    with real connector lines into a single "GC" node and Champion box —
    matching the double-elimination bracket look (two feeder trees
    merging into one final) instead of two disconnected mini-trees. ── */
-function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw, teamByName }) {
+function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw, teamByName, resolved = {}, champion = null }) {
   const ROW_H = 56;
   const LEAF_W = 190;
   const LEAF_H = 40;
@@ -939,7 +733,13 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
 
   if (!wbStagesRaw.length || !lbRoundsRaw.length) return null;
 
-  const { wbStages, lbRounds } = withMatchNumbers(wbStagesRaw, lbRoundsRaw);
+  const { wbStages, lbRounds, apply } = withMatchNumbers(wbStagesRaw, lbRoundsRaw);
+  /* "Winner of Match 1" → the real team once that result is in (saved
+     brackets only): layout keys stay the placeholders, only the text shown
+     in each box resolves. */
+  const shownByLabel = {};
+  Object.entries(resolved).forEach(([ref, name]) => { shownByLabel[apply(ref)] = name; });
+  const shown = (label) => shownByLabel[label] || label;
 
   const colX = (r) => LEAF_W + (r + 1) * COL_GAP;
 
@@ -1074,7 +874,7 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
       {ub.matchY.map((round, r) => round.map((node, i) => node && (
         <div key={`ub-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
-          <span>{node.label}</span>
+          <span>{shown(node.label)}</span>
         </div>
       )))}
 
@@ -1090,21 +890,21 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
       {lbLeafLabels.map((label, i) => (
         <div key={`lb-${i}`} className="msf-lbracket-leaf" style={{ top: LB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
-          <span>{label}</span>
+          <span>{shown(label)}</span>
         </div>
       ))}
 
       {lb.freshBoxes.map((box, i) => (
         <div key={`lb-fresh-${i}`} className="msf-lbracket-leaf" style={{ top: box.y - LEAF_H / 2, left: box.x, height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
-          <span>{box.label}</span>
+          <span>{shown(box.label)}</span>
         </div>
       ))}
 
       {lb.matchY.map((round, r) => round.map((node, i) => node && (
         <div key={`lb-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
-          <span>{node.label}</span>
+          <span>{shown(node.label)}</span>
         </div>
       )))}
 
@@ -1119,7 +919,7 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
 
       <div className="msf-bracket-champion" style={{ left: championX, top: gcY }}>
         <FaTrophy />
-        <span>Champion</span>
+        <span>{champion || 'Champion'}</span>
       </div>
     </div>
   );
@@ -1431,6 +1231,12 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     return ok ? full : null;
   }, [lockedMatches, eligibleTeams]);
   const savedDoubleBracketStages = useMemo(() => buildSavedDoubleBracketStages(lockedMatches), [lockedMatches]);
+  // Only the Grand Final's result crowns a double-bracket champion.
+  const savedDoubleChampion = useMemo(() => {
+    const gf = lockedMatches.find((m) => m.stage === 'Grand Final');
+    const rec = gf ? matchRecords.find((r) => recordMatchesSchedule(r, gf)) : null;
+    return rec ? recordWinnerName(rec) : null;
+  }, [lockedMatches, matchRecords]);
 
   const [resetConfirmOpen, setResetConfirmOpen] = useState(false);
   const [resettingSchedule, setResettingSchedule] = useState(false);
@@ -1507,41 +1313,8 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
       ...extra,
     });
 
-    let matches;
-    if (isRace) {
-      // One fixture for the whole field. No `stage`: every bracket helper
-      // keys off it, so leaving it unset keeps a race from being read as one.
-      matches = [buildMatch(buildRaceFields(eligibleTeams))];
-    } else if (isBracket) {
-      matches = bracket.stages.flatMap((stage, stageIdx) =>
-        stage.matches
-          .filter(m => !m.isBye) // a bye has no actual game — the team just advances
-          .map(m => buildMatch({ round: stageIdx + 1, stage: stage.name, matchLabel: m.label, teamA: m.a, teamB: m.b }))
-      );
-    } else if (isDoubleBracket) {
-      const ubMatches = doubleBracket.wbStages.flatMap((stage, stageIdx) =>
-        stage.matches
-          .filter(m => !m.isBye)
-          .map(m => buildMatch({ round: stageIdx + 1, stage: `Upper Bracket – ${stage.name}`, matchLabel: `UB-${m.label}`, teamA: m.a, teamB: m.b }))
-      );
-      const lbMatches = doubleBracket.lbRounds.flatMap((round, roundIdx) =>
-        round.matches
-          .filter(m => m.a && m.b) // drop any bye slot that slipped through
-          .map(m => buildMatch({ round: roundIdx + 1, stage: `Lower Bracket – ${round.name}`, matchLabel: m.label, teamA: m.a, teamB: m.b }))
-      );
-      const gfMatch = buildMatch({
-        round: null,
-        stage: 'Grand Final',
-        matchLabel: doubleBracket.grandFinal.label,
-        teamA: doubleBracket.grandFinal.a,
-        teamB: doubleBracket.grandFinal.b,
-      });
-      matches = [...ubMatches, ...lbMatches, gfMatch];
-    } else {
-      matches = rounds.flatMap((pairs, roundIdx) =>
-        pairs.map(([a, b]) => buildMatch({ round: roundIdx + 1, teamA: a, teamB: b }))
-      );
-    }
+    // Same builder the end-to-end format tests run (shared/utils/scheduleFormats.js).
+    let matches = buildScheduleMatches(selFormat.id, eligibleTeams, buildMatch);
 
     matches = assignAutoSchedule(matches, scheduleStartDate, scheduleStartTime);
 
@@ -2091,7 +1864,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
         {isLocked && lockedMatches[0]?.format === 'Double Bracket' && (
           <div className="msf-dbracket">
             <div className="msf-dbracket__scroll">
-              <DoubleBracketTree {...savedDoubleBracketStages} teamByName={teamByName} />
+              <DoubleBracketTree {...savedDoubleBracketStages} teamByName={teamByName} champion={savedDoubleChampion} />
             </div>
           </div>
         )}

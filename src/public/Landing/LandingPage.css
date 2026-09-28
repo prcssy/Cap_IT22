@@ -448,6 +448,23 @@
   font-family: "Inter", sans-serif;
 }
 
+/* Time left in the ongoing match shown on the card. */
+.match-countdown {
+  display: inline-flex;
+  align-items: center;
+  margin-top: 0.4rem;
+  padding: 0.1rem 0.45rem;
+  border-radius: 4px;
+  background: #f5a623;
+  color: #001529;
+  font-family: "Inter", sans-serif;
+  font-size: 0.66rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .linespace {
   stroke-width: 0.966px;
   background-color: #fff;

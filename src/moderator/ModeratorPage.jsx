@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import {
   FaChevronDown, FaTrophy, FaPlus, FaTimes, FaCheck, FaEdit,
   FaExclamationTriangle, FaUsers, FaLock, FaInfo, FaSync, FaMedal,
-  FaCalculator, FaClock, FaStar, FaExchangeAlt, FaPaperPlane,
+  FaCalculator, FaClock, FaStar, FaExchangeAlt, FaPaperPlane, FaUndo, FaTrash,
 } from 'react-icons/fa';
 import './ModeratorPage.css';
 import {
@@ -14,13 +14,25 @@ import {
   getMatchRecords,
   subscribeMatchRecords,
   submitMatchRecord,
-  editMatchRecord,
   recalculateRatings,
   getTeamRankings,
   subscribeTeamRankings,
   createScheduleRequest,
   markMatchScheduleFinished,
+  extendMatchSchedule,
+  resetScheduleSetResults,
+  deleteMatchSchedule,
+  isSingleBracketMatch,
+  isBracketMatch,
+  isPlaceholderTeam,
+  laterBracketMatchesWith,
+  replaceBracketWinner,
+  planBracketSwap,
+  swapBracketResult,
+  renameTeamsOnRecord,
 } from '../shared/services/firestoreService';
+import { matchStart, matchEnd, EXTEND_STEP_MINUTES } from '../shared/utils/matchTime';
+import MatchCountdown from '../shared/components/MatchCountdown';
 import LevelTabs from '../shared/components/LevelTabs';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
@@ -428,8 +440,6 @@ function categoriesMatch(scheduleCategory, activeCategory) {
   return a.endsWith(` ${b}`) || b.endsWith(` ${a}`);
 }
 
-const ASSUMED_MATCH_MINUTES = 120;
-
 /* Where a fixture sits against the clock. The moderator only records
    finished games — see matchHasFinished below, which is the actual gate
    on recordableMatches. This status is only a label/sort order for the
@@ -439,37 +449,43 @@ const MATCH_STATUS_LABEL = {
   ongoing: 'Ongoing',
   undated: 'No date yet',
   upcoming: 'Upcoming',
+  waiting: 'Waiting',
 };
-const MATCH_STATUS_ORDER = { finished: 0, ongoing: 1, undated: 2, upcoming: 3 };
+const MATCH_STATUS_ORDER = { finished: 0, ongoing: 1, undated: 2, upcoming: 3, waiting: 4 };
 const MATCH_STATUS_COLOR = {
   finished: { bg: '#e6f7ec', fg: '#14713a' },
   ongoing: { bg: '#fff3d6', fg: '#8a5f04' },
   undated: { bg: '#eef1f8', fg: '#46536b' },
   upcoming: { bg: '#eaf2ff', fg: '#14549b' },
+  waiting: { bg: '#f1f1f4', fg: '#6b6f80' },
 };
 
-function matchStatus(schedule) {
+/* A bracket fixture whose teams aren't known yet — it still holds a
+   generator placeholder ("Winner QF1", "Loser UB-SF2") that only fills in
+   once that earlier match is recorded. It can't be played or recorded. */
+function isAwaitingTeams(schedule) {
+  return !isRaceMatch(schedule)
+    && (isPlaceholderTeam(schedule.teamA) || isPlaceholderTeam(schedule.teamB));
+}
+
+// Start/end come from shared/utils/matchTime.js — the end includes any time
+// the moderator added with the "+ min" button.
+function matchStatus(schedule, now = Date.now()) {
   if (schedule.finished) return 'finished';
-  if (!schedule.date || !schedule.time) return 'undated';
-  const start = new Date(`${schedule.date}T${schedule.time}`);
-  if (Number.isNaN(start.getTime())) return 'undated';
-  const end = start.getTime() + ASSUMED_MATCH_MINUTES * 60000;
-  const now = Date.now();
-  if (now >= end) return 'finished';
+  const start = matchStart(schedule);
+  if (!start) return 'undated';
+  if (now >= matchEnd(schedule).getTime()) return 'finished';
   if (now >= start.getTime()) return 'ongoing';
   return 'upcoming';
 }
 
-function matchHasFinished(schedule) {
+function matchHasFinished(schedule, now = Date.now()) {
   // Every scheduled match is visible to the moderator, but only a finished
   // one can be recorded: either the moderator pressed "Mark as finished"
-  // (schedule.finished) or a dated match's assumed duration has elapsed.
+  // (schedule.finished) or a dated match's time (plus any added) has elapsed.
   if (schedule?.finished) return true;
-  if (!schedule?.date || !schedule?.time) return false;
-  const start = new Date(`${schedule.date}T${schedule.time}`);
-  if (Number.isNaN(start.getTime())) return false;
-  const end = new Date(start.getTime() + ASSUMED_MATCH_MINUTES * 60000);
-  return Date.now() >= end.getTime();
+  const end = matchEnd(schedule);
+  return !!end && now >= end.getTime();
 }
 
 /* Fallbacks for when Sports & Teams is empty but schedules already exist. */
@@ -608,62 +624,6 @@ function FilterSelect({ value, onChange, options, allLabel, disabled }) {
 
 function initials(name) {
   return (name || '?').split(' ').map((w) => w[0]).filter(Boolean).slice(0, 2).join('').toUpperCase();
-}
-
-/* Recomputes both teams' final points live from the inline edit row of the
-   summary table (1v1 records only). */
-function computeEditFinalPoints(record, editDraft, isPoints) {
-  const violA = parseInt(editDraft.totalViolationsA, 10) || 0;
-  const violB = parseInt(editDraft.totalViolationsB, 10) || 0;
-
-  let f1A, f1B;
-  if (isPoints) {
-    const pA = editDraft.pointsA === '' ? record.teamA.points : Number(editDraft.pointsA);
-    const pB = editDraft.pointsB === '' ? record.teamB.points : Number(editDraft.pointsB);
-    const valid = pA != null && pB != null && !Number.isNaN(pA) && !Number.isNaN(pB);
-    // F1 is a DIFFERENCE (own − opponent), same as signedPerformance() used
-    // everywhere else — using the raw score here inflated every edit and
-    // flipped the sign of the losing team's rating change.
-    f1A = valid ? pA - pB : 0;
-    f1B = valid ? pB - pA : 0;
-  } else {
-    const mA = editDraft.minutesA === '' ? record.teamA.minutes : Number(editDraft.minutesA);
-    const mB = editDraft.minutesB === '' ? record.teamB.minutes : Number(editDraft.minutesB);
-    const valid = mA != null && mB != null && !Number.isNaN(mA) && !Number.isNaN(mB);
-    // Time: lower is better, so a team's performance is opponent time minus
-    // its own — matches signedPerformance('time', ...) and stays correct
-    // if the moderator edits the time values themselves, instead of always
-    // recomputing from the original record.diff.
-    f1A = valid ? signedPerformance('time', mA, mB) : 0;
-    f1B = valid ? signedPerformance('time', mB, mA) : 0;
-  }
-
-  // Winner must follow the EDITED scores, not the record's original
-  // `winner` flag — otherwise editing team A/B's score enough to flip who's
-  // actually ahead still credits the old winner with the Elo win-term (S),
-  // producing a finalPoints value that silently disagrees with the score
-  // shown right next to it. Only fall back to the original winner when the
-  // edit is a genuine tie or the inputs are incomplete (f1A/f1B both 0).
-  const isDraw = f1A === 0 && record.winner === 'DRAW';
-  const isWinnerA = f1A > 0 ? true : f1A < 0 ? false : record.winner === 'A';
-  const ratingA = record.teamA.prevPoints ?? DEFAULT_POINTS;
-  const ratingB = record.teamB.prevPoints ?? DEFAULT_POINTS;
-  const eA = expectedScore(ratingA, ratingB);
-  const eB = expectedScore(ratingB, ratingA);
-  const sA = isDraw ? 0.5 : (isWinnerA ? 1 : 0);
-  const sB = isDraw ? 0.5 : (isWinnerA ? 0 : 1);
-  // Comeback flags come from the edit row's toggles (falling back to what was
-  // saved), and — like pairComputation — only count for the team that won.
-  const comebackA = editDraft.comebackA ?? !!record.teamA.comeback;
-  const comebackB = editDraft.comebackB ?? !!record.teamB.comeback;
-  const changeA = K_FACTOR * (sA - eA) + PPU * (f1A - violA + (comebackA && sA === 1 ? COMEBACK_BONUS : 0));
-  const changeB = K_FACTOR * (sB - eB) + PPU * (f1B - violB + (comebackB && sB === 1 ? COMEBACK_BONUS : 0));
-
-  return {
-    finalPointsA: round4(ratingA + changeA),
-    finalPointsB: round4(ratingB + changeB),
-    winner: isDraw ? 'DRAW' : (isWinnerA ? 'A' : 'B'),
-  };
 }
 
 
@@ -1025,6 +985,28 @@ function ConfirmModal({ pending, levelLabel, onCancel, onConfirm, saving }) {
           ))}
         </div>
 
+        {pending.bracketChange && (
+          <div className="mp-confirm__warn mp-confirm__warn--bracket">
+            <FaExclamationTriangle />
+            <div>
+              <b>This changes the winner of a bracket match</b> — from {pending.bracketChange.from} to {pending.bracketChange.to}.
+              {' '}{pending.bracketChange.kind === 'double'
+                ? `Both teams were already sent on (winner up, loser to the lower bracket), so on confirm they swap places in:`
+                : `${pending.bracketChange.from} was already advanced, so on confirm ${pending.bracketChange.to} replaces it in:`}
+              <ul className="mp-confirm__bracket-list">
+                {pending.bracketChange.matches.map((m) => (
+                  <li key={m.id}>
+                    <b>{m.label}</b>: {m.before} → <b>{m.after}</b>
+                    {m.recorded
+                      ? ' — already recorded: its scores stay, the result moves to the teams that actually played, and ratings are recalculated.'
+                      : ' — not played yet.'}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </div>
+        )}
+
         <div className="mp-confirm__warn"><FaExclamationTriangle /> This action cannot be undone. Please review all details before confirming.</div>
 
         <div className="mp-confirm__actions">
@@ -1240,6 +1222,62 @@ function ResetConfirmModal({ onCancel, onConfirm }) {
   );
 }
 
+/* Deleting ONE fixture that was scheduled from a moderator's request. */
+function DeleteRequestedModal({ match, recorded, busy, onCancel, onConfirm }) {
+  return (
+    <div className="mp-modal-overlay" onClick={busy ? undefined : onCancel}>
+      <div className="mp-modal mp-result-modal mp-reset-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="mp-result-icon mp-result-icon--warn"><FaTrash /></div>
+        <h2 className="mp-result-title">Delete this requested match?</h2>
+        <p className="mp-result-sub">
+          <b>{match.matchLabel || 'Requested match'}</b> — {match.teamA} vs {match.teamB} ({match.sport})
+        </p>
+        <ul className="mp-reset-results__list">
+          <li>Only this match is removed — every other match stays.</li>
+          {recorded && <li>Its recorded result is deleted too, and the ratings are recalculated without it.</li>}
+          <li>The schedule request it came from is removed as well.</li>
+        </ul>
+        <p className="mp-result-sub"><b>This can't be undone.</b></p>
+        <div className="mp-result-actions">
+          <button className="mp-btn mp-btn--cancel" onClick={onCancel} disabled={busy} style={{ flex: 1 }}>Cancel</button>
+          <button className="mp-btn mp-btn--reset-solid" onClick={onConfirm} disabled={busy} style={{ flex: 1 }}>
+            <FaTrash /> {busy ? 'Deleting…' : 'Delete'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* "Reset results" for one sport + category + division — says exactly what
+   will be cleared before anything is touched. */
+function ResetResultsModal({ target, busy, onCancel, onConfirm }) {
+  return (
+    <div className="mp-modal-overlay" onClick={busy ? undefined : onCancel}>
+      <div className="mp-modal mp-result-modal mp-reset-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="mp-result-icon mp-result-icon--warn"><FaExclamationTriangle /></div>
+        <h2 className="mp-result-title">Reset all results for {target.label}?</h2>
+        <ul className="mp-reset-results__list">
+          <li>
+            <b>{target.recorded}</b> recorded result{target.recorded === 1 ? '' : 's'} will be deleted, and every
+            team's rating in this division goes back to what it was before them ({DEFAULT_POINTS} if nothing else is left).
+          </li>
+          <li>All {target.total} match{target.total === 1 ? '' : 'es'} go back to unplayed — "Mark as finished" and any added time are cleared.</li>
+          {target.bracket && <li>Bracket slots filled by results go back to "Winner of …" / "Loser of …".</li>}
+          <li>The schedule itself (teams, dates, venues) stays.</li>
+        </ul>
+        <p className="mp-result-sub"><b>This can't be undone.</b></p>
+        <div className="mp-result-actions">
+          <button className="mp-btn mp-btn--cancel" onClick={onCancel} disabled={busy} style={{ flex: 1 }}>Cancel</button>
+          <button className="mp-btn mp-btn--reset-solid" onClick={onConfirm} disabled={busy} style={{ flex: 1 }}>
+            <FaUndo /> {busy ? 'Resetting…' : 'Reset results'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ═══════════════════════════════════════════
    REQUEST A SCHEDULE — moderator asks the admin to set up a fixture
    instead of adding a manual match record themselves. The admin sees
@@ -1440,31 +1478,13 @@ function RequestScheduleModal({
   );
 }
 
-/* Small team logo (initials fallback) used in the inline edit row so each
-   input can be tied to the team it belongs to. */
+/* Small team logo (initials fallback) shown beside each team name in the
+   summary table. */
 function EditTeamLogo({ team }) {
   return (
     <span className="mp-edit-logo" title={team?.name || ''}>
       {team?.logo ? <img src={team.logo} alt="" /> : initials(team?.name || '?')}
     </span>
-  );
-}
-
-/* Per-team comeback toggle for the inline edit row. The bonus only counts for
-   the team that wins, so it's disabled (but keeps its value) while this team
-   isn't the one ahead in the edited score. */
-function ComebackToggle({ on, canApply, onToggle }) {
-  return (
-    <button
-      type="button"
-      className={`mp-edit-comeback ${on ? 'mp-edit-comeback--on' : ''}`}
-      aria-pressed={on}
-      disabled={!canApply}
-      onClick={onToggle}
-      title={canApply ? `Comeback bonus +${COMEBACK_BONUS}` : 'The comeback bonus only counts for the winning team'}
-    >
-      <FaExchangeAlt /> Comeback {on ? 'Yes' : 'No'}
-    </button>
   );
 }
 
@@ -1868,14 +1888,7 @@ export default function ModeratorPage() {
 
   // summary table
   const [formatFilter, setFormatFilter] = useState('');
-  const [editingId, setEditingId] = useState(null);
-  const [editDraft, setEditDraft] = useState(null);
-  const [savingEditId, setSavingEditId] = useState(null);
-  const [flashId, setFlashId] = useState(null);
-  const editTeamOptions = useMemo(
-    () => effectiveTeams.map((t) => ({ key: t.id, label: t.name, logo: t.logo || null })),
-    [effectiveTeams],
-  );
+  const [flashId, setFlashId] = useState(null); // row that was just re-saved via Edit
 
   /* ── "Request a schedule" (ask the admin to arrange a fixture) ── */
   const [requestModalOpen, setRequestModalOpen] = useState(false);
@@ -2261,13 +2274,24 @@ export default function ModeratorPage() {
 
   // Every scheduled match is listed for the moderator, but only finished
   // ones (marked by the moderator, or elapsed) can be picked for recording.
+  /* Re-checks the clock so a card flips Ongoing → Finished on time (and back
+     to Ongoing when time is added) without waiting for some other change. */
+  const [clock, setClock] = useState(() => Date.now());
+  useEffect(() => {
+    const t = setInterval(() => setClock(Date.now()), 15000);
+    return () => clearInterval(t);
+  }, []);
+
   const listedMatches = useMemo(() => {
     const startOf = (s) => {
       const d = new Date(`${s.date}T${s.time || '00:00'}`);
       return Number.isNaN(d.getTime()) ? 0 : d.getTime();
     };
     return scheduledMatches
-      .map((s) => ({ ...s, status: matchStatus(s), canRecord: matchHasFinished(s) }))
+      .map((s) => {
+        const waiting = isAwaitingTeams(s);
+        return { ...s, waiting, status: waiting ? 'waiting' : matchStatus(s, clock), canRecord: !waiting && matchHasFinished(s, clock) };
+      })
       .sort((a, b) => {
         const aDone = isMatchRecorded(a) ? 1 : 0;
         const bDone = isMatchRecorded(b) ? 1 : 0;
@@ -2283,7 +2307,7 @@ export default function ModeratorPage() {
         if (byRound !== 0 && Number.isFinite(byRound)) return byRound;
         return startOf(a) - startOf(b);
       });
-  }, [scheduledMatches, isMatchRecorded]);
+  }, [scheduledMatches, isMatchRecorded, clock]);
   const recordableMatches = useMemo(() => listedMatches.filter((s) => s.canRecord), [listedMatches]);
 
   /* Sport / Category / Division filters for the Match schedules panel, so a
@@ -2304,12 +2328,101 @@ export default function ModeratorPage() {
       divisions: uniq(inCat.map((r) => r.division)),
     };
   }, [listedMatches, partsOf, fSport, fCategory]);
+  /* "Requested schedules": fixtures the admin scheduled from a moderator's
+     schedule request (the admin tags them with that request's id) — any
+     moderator's, not only this account's; each card says who asked. */
+  const [onlyMyRequests, setOnlyMyRequests] = useState(false);
+  const requestsById = useMemo(() => new Map(allScheduleRequests.map((r) => [r.id, r])), [allScheduleRequests]);
+  const isMyRequested = useCallback((s) => !!s.requestId, []);
+  const myRequestedCount = useMemo(() => listedMatches.filter(isMyRequested).length, [listedMatches, isMyRequested]);
+  const requesterLabel = useCallback((s) => {
+    const req = s.requestId ? requestsById.get(s.requestId) : null;
+    if (!req) return s.requestId ? 'Requested by a moderator' : null;
+    const mine = (req.requestedByEmail || '').toLowerCase() === (currentUser?.email || '').toLowerCase();
+    return mine ? 'Requested by you' : `Requested by ${req.requestedByName || req.requestedByEmail || 'a moderator'}`;
+  }, [requestsById, currentUser]);
+
   const shownMatches = useMemo(() => listedMatches.filter((s) => {
     const p = partsOf(s);
-    return (!fSport || norm(s.sport) === norm(fSport))
+    return (!onlyMyRequests || isMyRequested(s))
+      && (!fSport || norm(s.sport) === norm(fSport))
       && (!fCategory || norm(p.category) === norm(fCategory))
       && (!fDivision || norm(p.division) === norm(fDivision));
-  }), [listedMatches, partsOf, fSport, fCategory, fDivision]);
+  }), [listedMatches, partsOf, fSport, fCategory, fDivision, onlyMyRequests, isMyRequested]);
+
+  /* "Reset results" applies to ONE set of fixtures (sport + category +
+     division), so it's offered only once the filters narrow the list to
+     exactly one — and only if something there has been recorded, marked
+     finished or extended. */
+  const resetTarget = useMemo(() => {
+    // Reset clears a whole set, so it's not offered while only part of a set
+    // (the requested fixtures) is on screen.
+    if (!fSport || onlyMyRequests) return null;
+    const sets = new Map();
+    shownMatches.forEach((s) => {
+      const k = `${norm(s.sport)}||${s.category}||${s.divisionId || ''}`;
+      if (!sets.has(k)) sets.set(k, []);
+      sets.get(k).push(s);
+    });
+    if (sets.size !== 1) return null;
+    const set = [...sets.values()][0];
+    const first = set[0];
+    const recorded = set.filter((s) => isMatchRecorded(s)).length;
+    const touched = recorded || set.some((s) => s.finished || s.extraMinutes);
+    if (!touched) return null;
+    return {
+      sport: first.sport,
+      category: first.category,
+      divisionId: first.divisionId || null,
+      label: `${first.sport} · ${scheduleDivisionLabel(first, sports) || first.category}`,
+      recorded,
+      total: set.length,
+      bracket: set.some((s) => !!s.stage),
+    };
+  }, [fSport, onlyMyRequests, shownMatches, isMatchRecorded, sports]);
+
+  /* Delete one requested fixture (and its result + the request behind it). */
+  const [deleteTarget, setDeleteTarget] = useState(null);
+  const [deletingRequested, setDeletingRequested] = useState(false);
+  async function handleDeleteRequested() {
+    if (!deleteTarget || deletingRequested) return;
+    setDeletingRequested(true);
+    try {
+      await deleteMatchSchedule(level, deleteTarget.id, userProfile?.role);
+      // The form may have been showing this very match.
+      if (lockedMatch?.id === deleteTarget.id) resetForm();
+      setDeleteTarget(null);
+    } catch (err) {
+      console.error('Failed to delete requested match:', err);
+      setDeleteTarget(null);
+      setLoadError('Could not delete that match. Please try again.');
+    } finally {
+      setDeletingRequested(false);
+    }
+  }
+
+  const [resetResultsOpen, setResetResultsOpen] = useState(false);
+  const [resettingResults, setResettingResults] = useState(false);
+  async function handleResetResults() {
+    if (!resetTarget || resettingResults) return;
+    setResettingResults(true);
+    try {
+      const { records: nextRecords, rankings: nextRankings } = await resetScheduleSetResults(
+        level, resetTarget, userProfile?.role,
+      );
+      if (nextRecords) setRecords(nextRecords);
+      if (nextRankings) setRankings(nextRankings);
+      // Whatever the form was showing may have been one of those results.
+      resetForm();
+      setResetResultsOpen(false);
+    } catch (err) {
+      console.error('Failed to reset results:', err);
+      setResetResultsOpen(false);
+      setLoadError('Could not reset those results. Please try again.');
+    } finally {
+      setResettingResults(false);
+    }
+  }
 
   /* Rebuilds every rating from the saved records (each sport + division from
      1200), so a record saved on a stale baseline is fixed without re-entering
@@ -2327,6 +2440,24 @@ export default function ModeratorPage() {
       setLoadError('Could not recalculate the ratings. Please try again.');
     } finally {
       setRecalculating(false);
+    }
+  }
+
+  /* "+15 min": gives a match more time so it stays Ongoing instead of
+     rolling over to Finished (see extendMatchSchedule). The schedule
+     subscription pushes the new end back, so the countdown just jumps. */
+  const [extendingId, setExtendingId] = useState(null);
+  async function handleExtend(s) {
+    if (extendingId) return;
+    setExtendingId(s.id);
+    try {
+      await extendMatchSchedule(level, s.id, EXTEND_STEP_MINUTES, userProfile?.role);
+      setClock(Date.now());
+    } catch (err) {
+      console.error('Failed to extend match:', err);
+      setLoadError('Could not add time to that match. Please try again.');
+    } finally {
+      setExtendingId(null);
     }
   }
 
@@ -2673,9 +2804,13 @@ export default function ModeratorPage() {
       }
     }
 
-    if (reasons.length) { setInvalidReasons(reasons); return; }
+    const comp = reasons.length ? null : buildComputation({ rows: readyRows, mode, winnerOverrideId: winnerOverride });
+    // An elimination match (single or double bracket) has to send someone on.
+    if (comp && lockedMatch && isBracketMatch(lockedMatch) && comp.winnerId === 'DRAW') {
+      reasons.push('A bracket match can\'t end in a draw — set the winner with the Win/Lose buttons.');
+    }
 
-    const comp = buildComputation({ rows: readyRows, mode, winnerOverrideId: winnerOverride });
+    if (reasons.length) { setInvalidReasons(reasons); return; }
 
     setPending({
       mode,
@@ -2694,7 +2829,115 @@ export default function ModeratorPage() {
       // Cloud Function's own buildComputation run is given the exact same
       // input that produced this preview.
       winnerOverrideId: winnerOverride,
+      bracketChange: bracketWinnerChange(comp),
     });
+  }
+
+  // { id, name, logo } for a team name, from Sports & Teams when configured.
+  const teamFor = (name) => {
+    const t = effectiveTeams.find((x) => norm(x.name) === norm(name));
+    return { id: t?.id || null, name, logo: t?.logo || null };
+  };
+
+  /* Runs after the corrected result itself is saved: put the right teams
+     into every later fixture the old result had already filled, then move
+     each of those fixtures' recorded results onto the teams that actually
+     played (scores/violations kept) — the server replays the ratings each
+     time, so every later game ends up on the right baseline. */
+  async function applyBracketWinnerChange(change, latestRecords) {
+    try {
+      // matchId → { oldName(lowercased): new team } for its recorded result.
+      const perMatch = new Map();
+      if (change.kind === 'double') {
+        const renames = await swapBracketResult(level, change.source, change.from, change.to, userProfile?.role);
+        renames.forEach((r) => {
+          if (!perMatch.has(r.matchId)) perMatch.set(r.matchId, {});
+          perMatch.get(r.matchId)[norm(r.from)] = teamFor(r.to);
+        });
+      } else {
+        const to = teamFor(change.to);
+        const changedIds = await replaceBracketWinner(
+          level, change.source, change.from, change.to, to.logo, userProfile?.role,
+        );
+        changedIds.forEach((id) => perMatch.set(id, { [norm(change.from)]: to }));
+      }
+
+      let current = latestRecords;
+      for (const m of change.matches) {
+        const renames = perMatch.get(m.id);
+        if (!renames) continue;
+        const rec = current.find((r) => String(r.scheduleId) === String(m.id));
+        if (!rec || (rec.participants || []).length > 2) continue;
+        if (![rec.teamA?.name, rec.teamB?.name].some((n) => renames[norm(n)])) continue;
+        const res = await renameTeamsOnRecord(level, rec, renames);
+        current = res.records;
+        setRecords(res.records);
+        setRankings(res.rankings);
+      }
+    } catch (err) {
+      console.error('Failed to carry the corrected result into later rounds:', err);
+      setLoadError(`The result was saved, but the later bracket matches couldn't be updated (they may still show ${change.from} in the wrong place). Ask an admin to check those fixtures.`);
+    }
+  }
+
+  /* Editing a bracket match so a DIFFERENT team wins: the old result had
+     already sent teams on to later fixtures (and they may have played
+     there). Single elimination: the old winner is swapped for the new one
+     in every later round. Double elimination: winner and loser swap places
+     along the links fillSlots recorded (the loser had dropped to the lower
+     bracket). Returns what changes — before/after per fixture — for the
+     receipt's warning and for handleConfirm, or null when nothing is
+     affected. */
+  function bracketWinnerChange(comp) {
+    if (!editingRecord || !lockedMatch || !isBracketMatch(lockedMatch)) return null;
+    const oldWinner = editingRecord.winner === 'A' ? editingRecord.teamA?.name
+      : editingRecord.winner === 'B' ? editingRecord.teamB?.name
+      : null;
+    const oldLoser = editingRecord.winner === 'A' ? editingRecord.teamB?.name
+      : editingRecord.winner === 'B' ? editingRecord.teamA?.name
+      : null;
+    const newTeam = comp.winnerId === 'DRAW' ? null : comp.teams.find((t) => t.id === comp.winnerId);
+    if (!oldWinner || !newTeam || norm(oldWinner) === norm(newTeam.name)) return null;
+
+    const byId = new Map(schedules.map((m) => [m.id, m]));
+    const describe = (id, after) => {
+      const before = byId.get(id);
+      return {
+        id,
+        label: before?.matchLabel || before?.stage || 'Next round',
+        before: `${before?.teamA} vs ${before?.teamB}`,
+        after: `${after.teamA} vs ${after.teamB}`,
+        recorded: before ? isMatchRecorded(before) : false,
+        round: before?.round ?? 0,
+      };
+    };
+
+    if (isSingleBracketMatch(lockedMatch)) {
+      const later = laterBracketMatchesWith(schedules, lockedMatch, oldWinner)
+        .sort((a, b) => (a.round ?? 0) - (b.round ?? 0));
+      if (!later.length) return null;
+      const swap = (n) => (norm(n) === norm(oldWinner) ? newTeam.name : n);
+      return {
+        kind: 'single',
+        source: lockedMatch,
+        from: oldWinner,
+        to: newTeam.name,
+        matches: later.map((m) => describe(m.id, { teamA: swap(m.teamA), teamB: swap(m.teamB) })),
+      };
+    }
+
+    if (!oldLoser) return null;
+    const plan = planBracketSwap(schedules, lockedMatch.id, oldWinner, oldLoser);
+    if (!plan.renames.length) return null;
+    const ids = [...new Set(plan.renames.map((r) => r.matchId))];
+    const afterById = new Map(plan.matches.map((m) => [m.id, m]));
+    return {
+      kind: 'double',
+      source: lockedMatch,
+      from: oldWinner,
+      to: oldLoser,
+      matches: ids.map((id) => describe(id, afterById.get(id))).sort((a, b) => a.round - b.round),
+    };
   }
 
   async function handleConfirm() {
@@ -2736,8 +2979,18 @@ export default function ModeratorPage() {
 
       setRecords(records);
       setRankings(rankings);
+
+      if (pending.bracketChange) {
+        await applyBracketWinnerChange(pending.bracketChange, records);
+      }
+
       setPending(null);
       setSuccessRecord(record);
+      // Re-saved from the summary table's Edit: highlight that row.
+      if (editingRecord?.id && record?.id) {
+        setFlashId(record.id);
+        setTimeout(() => setFlashId(null), 1100);
+      }
       resetForm(entries.length);
     } catch (err) {
       console.error(err);
@@ -2754,25 +3007,9 @@ export default function ModeratorPage() {
     return records.filter((r) => recordGameFormat(r) === formatFilter);
   }, [records, formatFilter]);
 
-  function startEdit(record) {
-    setEditingId(record.id);
-    setEditDraft({
-      teamAId: record.teamA.id,
-      teamBId: record.teamB.id,
-      totalViolationsA: record.teamA.totalViolations,
-      totalViolationsB: record.teamB.totalViolations,
-      minutesA: record.teamA.minutes ?? '',
-      minutesB: record.teamB.minutes ?? '',
-      pointsA: record.teamA.points ?? '',
-      pointsB: record.teamB.points ?? '',
-      comebackA: !!record.teamA.comeback,
-      comebackB: !!record.teamB.comeback,
-    });
-  }
-
-  /* Multi-team records go back into the main form (there's no sensible
-     single-row inline editor for four teams) — the same record id is kept
-     so confirming overwrites it instead of creating a duplicate. */
+  /* A record with no (longer existing) fixture goes back into the main form
+     by its own sport/category — the same record id is kept so confirming
+     overwrites it instead of creating a duplicate. */
   function loadRecordIntoForm(record) {
     const choice = FORMAT_CHOICES.find((f) => f.id === record.formatId)
       || FORMAT_CHOICES.find((f) => f.mode === record.mode && !!f.multi === !!record.multi)
@@ -2796,48 +3033,33 @@ export default function ModeratorPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  async function saveEdit(record) {
-    if (savingEditId) return; // guards against a fast double-click firing two concurrent saves
-    setSavingEditId(record.id);
-    try {
-      await saveEditInner(record);
-    } finally {
-      setSavingEditId(null);
+  /* The summary table's Edit button — for 1V1 and 1-vs-many alike — opens
+     the record in the big "Update match record" card, where every input
+     (teams, points/time, violations list, comeback, winner) and the full
+     confirmation receipt are available. A record tied to a fixture reopens
+     exactly like clicking that match's card, so its sport/division scope
+     comes from the fixture itself. */
+  function editRecordInForm(record) {
+    const sched = record.scheduleId
+      ? schedules.find((s) => String(s.id) === String(record.scheduleId))
+      : null;
+    if (!sched) {
+      loadRecordIntoForm(record);
+      return;
     }
+    selectScopeFromSchedule(sched);
+    setLockedMatch(sched);
+    setLockedRecord(null);
+    const savedFormat = formatById(record.formatId)
+      || FORMAT_CHOICES.find((f) => f.mode === (record.mode || 'points') && !!f.multi === !!record.multi);
+    if (savedFormat) setFormatId(savedFormat.id);
+    setFormatPickerOpen(false);
+    setFormatPickerFor(null);
+    setEditingRecord(record);
+    applyRecordToForm(record);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   }
 
-  async function saveEditInner(record) {
-    const teamAObj = effectiveTeams.find((t) => t.id === editDraft.teamAId) || { id: record.teamA.id, name: record.teamA.name, logo: record.teamA.logo };
-    const teamBObj = effectiveTeams.find((t) => t.id === editDraft.teamBId) || { id: record.teamB.id, name: record.teamB.name, logo: record.teamB.logo };
-
-    // Identity/display fields (team id/name/logo) are trusted from the
-    // client same as before — the Cloud Function only ever recomputes
-    // finalPoints itself from record.teamA/teamB.prevPoints (already
-    // authoritative, since it was written by the server) plus these edited
-    // violations/score inputs, never accepting a finalPoints value as-is.
-    const { record: updated, records, rankings } = await editMatchRecord({
-      level,
-      recordId: record.id,
-      teamA: { id: teamAObj.id, name: teamAObj.name, logo: teamAObj.logo || null },
-      teamB: { id: teamBObj.id, name: teamBObj.name, logo: teamBObj.logo || null },
-      totalViolationsA: editDraft.totalViolationsA,
-      totalViolationsB: editDraft.totalViolationsB,
-      pointsA: editDraft.pointsA,
-      pointsB: editDraft.pointsB,
-      minutesA: editDraft.minutesA,
-      minutesB: editDraft.minutesB,
-      comebackA: editDraft.comebackA,
-      comebackB: editDraft.comebackB,
-    });
-
-    setRecords(records);
-    setRankings(rankings);
-
-    setEditingId(null);
-    setEditDraft(null);
-    setFlashId(updated.id);
-    setTimeout(() => setFlashId(null), 1100);
-  }
 
   /* ── derived display bits ── */
   // The teams of a race come from its schedule: they can't be swapped, added or removed here.
@@ -2930,9 +3152,33 @@ export default function ModeratorPage() {
                   />
                 </div>
               ))}
+              <button
+                type="button"
+                className={`mp-fs-requested ${onlyMyRequests ? 'mp-fs-requested--on' : ''}`}
+                onClick={() => setOnlyMyRequests((v) => !v)}
+                aria-pressed={onlyMyRequests}
+                title="Show only the matches the admin scheduled from moderators' schedule requests"
+              >
+                <FaPaperPlane /> Requested schedules
+                <span className="mp-fs-requested__count">{myRequestedCount}</span>
+              </button>
+              {resetTarget && (
+                <button
+                  type="button"
+                  className="mp-fs-reset"
+                  onClick={() => setResetResultsOpen(true)}
+                  title={`Clear every result recorded for ${resetTarget.label}`}
+                >
+                  <FaUndo /> Reset results
+                </button>
+              )}
             </div>
             {shownMatches.length === 0 && (
-              <p className="mp-schedule-hint mp-schedule-hint--empty">No matches for this filter.</p>
+              <p className="mp-schedule-hint mp-schedule-hint--empty">
+                {onlyMyRequests && myRequestedCount === 0
+                  ? 'No schedule request has been scheduled by the admin yet — use "Request a schedule" to ask for one.'
+                  : 'No matches for this filter.'}
+              </p>
             )}
             <div className="mp-finished-panel__list">
               {shownMatches.map((s) => {
@@ -3001,6 +3247,9 @@ export default function ModeratorPage() {
                         ? raceParticipants(s).map((p) => p.name).join(', ')
                         : <>{s.teamA} <span>vs</span> {s.teamB}</>}
                     </div>
+                    {requesterLabel(s) && (
+                      <div className="mp-finished-card__requester"><FaPaperPlane /> {requesterLabel(s)}</div>
+                    )}
                     <div className="mp-finished-card__meta">
                       {s.date || s.time
                         ? `${s.date || ''}${s.date && s.time ? ' · ' : ''}${s.time || ''}`
@@ -3012,14 +3261,53 @@ export default function ModeratorPage() {
                       <div className="mp-finished-card__status mp-finished-card__status--active"><FaLock /> Selected</div>
                     ) : null}
                   </button>
-                  {!s.canRecord && (
+                  {s.waiting ? (
+                    <p className="mp-finished-item__waiting">
+                      <FaClock /> Waiting for earlier results — the teams fill in automatically once those matches are recorded.
+                    </p>
+                  ) : (
+                    <>
+                      {/* Ongoing: time left + more time. Also offered once the clock
+                          ran out but nothing is recorded yet (and it wasn't marked
+                          finished by hand), to put the match back to Ongoing. */}
+                      {!done && !s.finished && matchStart(s) && (s.status === 'ongoing' || s.status === 'finished') && (
+                        <div className="mp-finished-item__timer">
+                          {s.status === 'ongoing' && (
+                            <MatchCountdown end={matchEnd(s)} className="mp-finished-item__countdown" doneText="Time is up" />
+                          )}
+                          <button
+                            type="button"
+                            className="mp-finished-item__extend"
+                            onClick={() => handleExtend(s)}
+                            disabled={extendingId === s.id}
+                            title={`Give this match ${EXTEND_STEP_MINUTES} more minutes`}
+                          >
+                            <FaClock /> {extendingId === s.id ? 'Adding…' : `+${EXTEND_STEP_MINUTES} min`}
+                          </button>
+                        </div>
+                      )}
+                      {!s.canRecord && (
+                        <button
+                          type="button"
+                          className="mp-finished-item__mark"
+                          onClick={() => handleMarkFinished(s)}
+                          disabled={markingId === s.id}
+                        >
+                          <FaCheck /> {markingId === s.id ? 'Saving…' : 'Mark as finished'}
+                        </button>
+                      )}
+                    </>
+                  )}
+                  {/* Requested fixtures are one-offs, not part of a generated
+                      set — each can be deleted on its own. */}
+                  {s.requestId && (
                     <button
                       type="button"
-                      className="mp-finished-item__mark"
-                      onClick={() => handleMarkFinished(s)}
-                      disabled={markingId === s.id}
+                      className="mp-finished-item__delete"
+                      onClick={() => setDeleteTarget(s)}
+                      title="Delete this requested match"
                     >
-                      <FaCheck /> {markingId === s.id ? 'Saving…' : 'Mark as finished'}
+                      <FaTrash /> Delete requested match
                     </button>
                   )}
                   </div>
@@ -3256,112 +3544,13 @@ export default function ModeratorPage() {
                         </td>
                         <td className="mp-table__points" data-label="Final Points">{r.participants.map((p) => fmtPts(p.finalPoints)).join(' - ')}</td>
                         <td className="mp-td-center" data-label="Edit">
-                          <button className="mp-table__edit-btn" onClick={() => loadRecordIntoForm(r)} aria-label="Edit"><FaEdit /></button>
+                          <button className="mp-table__edit-btn" onClick={() => editRecordInForm(r)} aria-label="Edit"><FaEdit /></button>
                         </td>
                       </tr>
                     );
                   }
 
-                  const editPreview = editingId === r.id ? computeEditFinalPoints(r, editDraft, rowIsPoints) : null;
-                  // Teams currently picked in the edit row (falls back to the saved record's team),
-                  // so each input can carry its team's logo and it's clear whose value it is.
-                  const editTeamA = editingId === r.id ? (effectiveTeams.find((t) => t.id === editDraft.teamAId) || r.teamA) : null;
-                  const editTeamB = editingId === r.id ? (effectiveTeams.find((t) => t.id === editDraft.teamBId) || r.teamB) : null;
-                  return editingId === r.id ? (
-                    <tr className="mp-edit-row" key={r.id}>
-                      <td data-label="Sports">{displayCategory(r.label || r.sportName || '').toUpperCase()}</td>
-                      <td data-label="Team">
-                        <div className="mp-edit-form">
-                          <div className="mp-edit-side">
-                            <EditTeamLogo team={editTeamA} />
-                            <div className="mp-edit-side__col">
-                              <div className="mp-edit-team-select">
-                                <OptionDropdown
-                                  variant="teams"
-                                  value={editDraft.teamAId}
-                                  options={editTeamOptions}
-                                  onChange={(key) => setEditDraft((d) => ({ ...d, teamAId: key }))}
-                                />
-                              </div>
-                              <ComebackToggle
-                                on={!!editDraft.comebackA}
-                                canApply={editPreview.winner === 'A'}
-                                onToggle={() => setEditDraft((d) => ({ ...d, comebackA: !d.comebackA }))}
-                              />
-                            </div>
-                          </div>
-                          <span className="mp-vs-mini">vs</span>
-                          <div className="mp-edit-side">
-                            <EditTeamLogo team={editTeamB} />
-                            <div className="mp-edit-side__col">
-                              <div className="mp-edit-team-select">
-                                <OptionDropdown
-                                  variant="teams"
-                                  value={editDraft.teamBId}
-                                  options={editTeamOptions}
-                                  onChange={(key) => setEditDraft((d) => ({ ...d, teamBId: key }))}
-                                />
-                              </div>
-                              <ComebackToggle
-                                on={!!editDraft.comebackB}
-                                canApply={editPreview.winner === 'B'}
-                                onToggle={() => setEditDraft((d) => ({ ...d, comebackB: !d.comebackB }))}
-                              />
-                            </div>
-                          </div>
-                        </div>
-                      </td>
-                      <td className="mp-td-center" data-label="Violation">
-                        <div className="mp-edit-form">
-                          <div className="mp-edit-form__score">
-                            <EditTeamLogo team={editTeamA} />
-                            <input type="number" min="0" value={editDraft.totalViolationsA} onChange={(e) => setEditDraft((d) => ({ ...d, totalViolationsA: e.target.value }))} />
-                            <span className="mp-vs-mini">-</span>
-                            <input type="number" min="0" value={editDraft.totalViolationsB} onChange={(e) => setEditDraft((d) => ({ ...d, totalViolationsB: e.target.value }))} />
-                            <EditTeamLogo team={editTeamB} />
-                          </div>
-                        </div>
-                      </td>
-                      <td data-label="Duration / Score">
-                        <div className="mp-edit-form">
-                          {rowIsPoints ? (
-                            <div className="mp-edit-form__score">
-                              <EditTeamLogo team={editTeamA} />
-                              <input className="mp-edit-time" type="number" min="0" placeholder="pts" value={editDraft.pointsA} onChange={(e) => setEditDraft((d) => ({ ...d, pointsA: e.target.value }))} />
-                              <span className="mp-vs-mini">-</span>
-                              <input className="mp-edit-time" type="number" min="0" placeholder="pts" value={editDraft.pointsB} onChange={(e) => setEditDraft((d) => ({ ...d, pointsB: e.target.value }))} />
-                              <EditTeamLogo team={editTeamB} />
-                            </div>
-                          ) : (
-                            <div className="mp-edit-form__score">
-                              <EditTeamLogo team={editTeamA} />
-                              <input className="mp-edit-time" type="text" placeholder="mins" value={editDraft.minutesA} onChange={(e) => setEditDraft((d) => ({ ...d, minutesA: e.target.value }))} />
-                              <span className="mp-vs-mini">-</span>
-                              <input className="mp-edit-time" type="text" placeholder="mins" value={editDraft.minutesB} onChange={(e) => setEditDraft((d) => ({ ...d, minutesB: e.target.value }))} />
-                              <EditTeamLogo team={editTeamB} />
-                            </div>
-                          )}
-                        </div>
-                      </td>
-                      <td className="mp-table__points" data-label="Final Points">
-                        <div className="mp-edit-form__score mp-edit-form__score--auto" title="Recalculated automatically from violations/score above">
-                          <EditTeamLogo team={editTeamA} />
-                          <span>{fmtPts(editPreview.finalPointsA)}</span>
-                          <span className="mp-vs-mini">-</span>
-                          <span>{fmtPts(editPreview.finalPointsB)}</span>
-                          <EditTeamLogo team={editTeamB} />
-                        </div>
-                      </td>
-                      <td className="mp-td-center" data-label="Edit">
-                        <div className="mp-edit-form__actions">
-                          <button className="mp-edit-form__save" onClick={() => saveEdit(r)} disabled={savingEditId === r.id}>
-                            {savingEditId === r.id ? 'Saving…' : 'Save'}
-                          </button>
-                          <button className="mp-edit-form__cancel" onClick={() => { setEditingId(null); setEditDraft(null); }} disabled={savingEditId === r.id}>Cancel</button>
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
+                  return (
                     <tr key={r.id} className={flashId === r.id ? 'mp-row-flash' : ''}>
                       <td data-label="Sports">{displayCategory(r.label || r.sportName || '').toUpperCase()}</td>
                       <td data-label="Team">
@@ -3374,7 +3563,7 @@ export default function ModeratorPage() {
                       <td className="mp-td-center" data-label="Violation">{(r.teamA.totalViolations || r.teamB.totalViolations) ? `${r.teamA.totalViolations}-${r.teamB.totalViolations}` : '--'}</td>
                       <td data-label="Duration / Score">{rowIsPoints ? (r.teamA.points != null ? `${r.teamA.points} - ${r.teamB.points} pts` : '--') : (r.teamA.minutes != null ? `${minutesToDurationString(r.teamA.minutes)} - ${minutesToDurationString(r.teamB.minutes)}` : '--')}</td>
                       <td className="mp-table__points" data-label="Final Points">{fmtPts(r.teamA.finalPoints)} - {fmtPts(r.teamB.finalPoints)}</td>
-                      <td className="mp-td-center" data-label="Edit"><button className="mp-table__edit-btn" onClick={() => startEdit(r)} aria-label="Edit"><FaEdit /></button></td>
+                      <td className="mp-td-center" data-label="Edit"><button className="mp-table__edit-btn" onClick={() => editRecordInForm(r)} aria-label="Edit"><FaEdit /></button></td>
                     </tr>
                   );
                 })}
@@ -3434,6 +3623,25 @@ export default function ModeratorPage() {
         <ResetConfirmModal
           onCancel={() => setResetConfirmOpen(false)}
           onConfirm={() => { resetInputs(); setResetConfirmOpen(false); }}
+        />
+      )}
+
+      {deleteTarget && (
+        <DeleteRequestedModal
+          match={deleteTarget}
+          recorded={isMatchRecorded(deleteTarget)}
+          busy={deletingRequested}
+          onCancel={() => setDeleteTarget(null)}
+          onConfirm={handleDeleteRequested}
+        />
+      )}
+
+      {resetResultsOpen && resetTarget && (
+        <ResetResultsModal
+          target={resetTarget}
+          busy={resettingResults}
+          onCancel={() => setResetResultsOpen(false)}
+          onConfirm={handleResetResults}
         />
       )}
 

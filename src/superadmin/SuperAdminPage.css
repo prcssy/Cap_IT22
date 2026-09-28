@@ -445,6 +445,23 @@
   min-width: 0;
 }
 
+/* The two Row 1 chart cards stretch to the taller one's height (grid row);
+   center each chart in the leftover space instead of leaving it pinned to
+   the top with a blank band underneath. */
+.sa-card--chart {
+  display: flex;
+  flex-direction: column;
+}
+
+.sa-card--chart > .sa-chart,
+.sa-card--chart > .sa-empty,
+.sa-card--chart > .sa-loading {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
 .sa-card__head {
   display: flex;
   align-items: center;

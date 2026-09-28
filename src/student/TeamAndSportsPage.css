@@ -326,6 +326,96 @@
 }
 }
 
+/* ── Division popover on a sport pill ──
+   Each card's entry animation (transform, fill-mode both) makes it its own
+   stacking context, so a popover can't rise above a LATER card on z-index
+   alone: lift the whole card while one of its pills is open, and open the
+   popover upward, over the card's own body. */
+.ts-team-card:hover,
+.ts-team-card:focus-within {
+  z-index: 5;
+}
+
+.ts-sport-tag--has-pop {
+  position: relative;
+  cursor: help;
+  outline: none;
+}
+
+.ts-sport-tag--has-pop:focus-visible {
+  border-color: var(--c-gold, #fcbf19);
+}
+
+.ts-sport-pop {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 10;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: max-content;
+  min-width: 190px;
+  max-width: min(300px, 80vw);
+  padding: 10px 12px;
+  border-radius: 10px;
+  /* Opaque, not a thin glass tint — it opens over busy card content. */
+  background: rgba(4, 18, 34, 0.97);
+  border: 1px solid rgba(252, 191, 25, 0.45);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
+  text-transform: none;
+  letter-spacing: 0;
+  white-space: normal;
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(4px);
+  transition: opacity 0.15s, transform 0.15s, visibility 0.15s;
+  pointer-events: none;
+}
+
+.ts-sport-tag--has-pop:focus .ts-sport-pop,
+.ts-sport-tag--has-pop:focus-within .ts-sport-pop {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0);
+}
+
+@media (hover: hover) and (pointer: fine) {
+  .ts-sport-tag--has-pop:hover .ts-sport-pop {
+    opacity: 1;
+    visibility: visible;
+    transform: translateY(0);
+  }
+}
+
+.ts-sport-pop__title {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--c-gold, #fcbf19);
+}
+
+.ts-sport-pop__row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.ts-sport-pop__name {
+  font-weight: 800;
+  color: #fff;
+  text-transform: uppercase;
+}
+
+.ts-sport-pop__div {
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.8);
+}
+
 /* ── Responsive ── */
 @media (max-width: 480px) {
   body .ts-dash-header {

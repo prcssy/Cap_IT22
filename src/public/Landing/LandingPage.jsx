@@ -25,6 +25,8 @@ import {
   FaCheckCircle,
 } from "react-icons/fa";
 import SportIcon from '../../shared/components/SportIcon/SportIcon';
+import { matchStart, matchEnd, isMatchLive } from '../../shared/utils/matchTime';
+import MatchCountdown from '../../shared/components/MatchCountdown';
 
 /* Every level's Firestore key, for stats that sum across the whole
    school (Elementary + High School + College) rather than one level. */
@@ -95,30 +97,11 @@ function computeTopTeamForLevel(teams, rankingPoints, records) {
   return best || null;
 }
 
-/* Same assumed match length Admin/Moderator use to decide whether a
-   scheduled match is "over" — there's no real end-time saved per match,
-   so a match counts as finished once this long has passed its start. */
-const ASSUMED_MATCH_MINUTES = 120;
-
-function scheduleStart(schedule) {
-  if (!schedule.date || !schedule.time) return null;
-  const d = new Date(`${schedule.date}T${schedule.time}`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-/* True only while the match is actually in progress right now — same
-   [start, start+120min) window Dashboard's own Ongoing section uses.
-   The previous version only checked "hasn't finished yet", which is
-   also true for a match that hasn't started — so a future/upcoming
-   fixture (tomorrow, next week) showed up in this "Ongoing Matches"
-   card right alongside — or instead of — the one Dashboard actually
-   shows as ongoing. */
-function scheduleIsOngoing(schedule) {
-  const start = scheduleStart(schedule);
-  if (!start) return false; // no date/time set yet — nothing to compare against the clock
-  const now = Date.now();
-  return now >= start.getTime() && now < start.getTime() + ASSUMED_MATCH_MINUTES * 60000;
-}
+/* Whether a match counts as ongoing is the shared rule in
+   shared/utils/matchTime.js (isMatchLive) — the same one Dashboard's
+   Ongoing section uses, so the two never disagree: inside its time slot
+   (incl. moderator-added time), not marked finished, and not yet scored. */
+const scheduleStart = matchStart;
 
 function formatScheduleDate(dateStr) {
   if (!dateStr) return 'Date TBA';
@@ -164,6 +147,7 @@ function mapScheduleToCardMatch(schedule) {
     // A race has every team in one event — the card shows all of them, not just two.
     field: isRaceMatch(schedule) ? raceParticipants(schedule).map((p) => buildTeamBadge(p.name, p.logo)) : null,
     _start: scheduleStart(schedule),
+    endsAt: matchEnd(schedule), // live countdown (incl. moderator-added time)
   };
 }
 
@@ -450,10 +434,11 @@ function LandingPage() {
       return () => { cancelled = true; };
     }
     let latest = [];
+    let records = []; // scored matches are over, whatever the clock says
     let first = true;
     const apply = () => {
       const upcoming = latest
-        .filter((s) => s.teamA && s.teamB && scheduleIsOngoing(s))
+        .filter((s) => s.teamA && s.teamB && isMatchLive(s, records))
         .map(mapScheduleToCardMatch)
         .sort((a, b) => {
           if (!a._start && !b._start) return 0;
@@ -478,10 +463,18 @@ function LandingPage() {
       latest = [];
       apply();
     });
+    const unsubscribeRecords = subscribeMatchRecords(activeLevelKey, (recs) => {
+      if (cancelled) return;
+      records = recs || [];
+      apply();
+    }, () => {
+      // Results are optional here — fall back to the clock alone.
+    });
     const tick = setInterval(apply, 60000);
     return () => {
       cancelled = true;
       unsubscribe();
+      unsubscribeRecords();
       clearInterval(tick);
     };
   }, [activeLevelKey]);
@@ -747,6 +740,9 @@ function LandingPage() {
                     <span className="dot">·</span>
                     <span>{currentMatch.venue}</span>
                   </div>
+                  {currentMatch.endsAt && (
+                    <MatchCountdown end={currentMatch.endsAt} className="match-countdown" doneText="Ending…" />
+                  )}
                 </div>
 
                 <div className="match-card-footer">

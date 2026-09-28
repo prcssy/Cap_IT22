@@ -44,12 +44,76 @@ import { isLevelScopedRole, normalizeStaffLevel } from '../constants/roles';
  */
 async function updateDocFieldViaTransaction(collectionName, docId, fieldName, defaultValue, updater) {
   const ref = doc(db, collectionName, docId);
-  return runTransaction(db, async (tx) => {
+  const isSchedules = collectionName === 'matchSchedules';
+  const next = await runTransaction(db, async (tx) => {
     const snap = await tx.get(ref);
     const current = snap.exists() ? (snap.data()[fieldName] ?? defaultValue) : defaultValue;
-    const next = updater(current);
-    tx.set(ref, { [fieldName]: next, updatedAt: serverTimestamp() }, { merge: true });
-    return next;
+    const updated = updater(current);
+    // Match lists are stored without their big logo copies (see
+    // slimScheduleLogos below).
+    tx.set(ref, { [fieldName]: isSchedules ? slimScheduleLogos(updated) : updated, updatedAt: serverTimestamp() }, { merge: true });
+    return updated;
+  });
+  if (!isSchedules) return next;
+  // Callers put the returned list straight into local state — give it the
+  // same current team logos a fresh read would have.
+  const cfg = await getSportsTeamsConfig(docId).catch(() => null);
+  return withCurrentLogos(next, cfg?.teams);
+}
+
+/* ── Team logos on match schedules ──
+   Every match used to carry its own copy of both teams' logos (teamALogo /
+   teamBLogo, participants[].logo for a race), taken when it was scheduled,
+   and every page rendered that copy. Two problems: re-uploading a sharper
+   team logo never reached a single match card, and at today's logo size
+   (~19 KB as base64) 2 copies × every match of a level would push
+   matchSchedules/{level} past Firestore's 1 MB document limit.
+   So: reads overlay each team's CURRENT logo from sportsTeamsConfig/{level}
+   (withCurrentLogos), and writes drop the large copies (slimScheduleLogos).
+   Small legacy copies and plain URLs are kept as a fallback for a team that
+   has since been removed from the roster. */
+const MAX_STORED_SCHEDULE_LOGO_CHARS = 6000; // the old 80px logos are ~4k
+
+function slimLogo(logo) {
+  return typeof logo === 'string' && logo.startsWith('data:') && logo.length > MAX_STORED_SCHEDULE_LOGO_CHARS
+    ? null
+    : logo;
+}
+
+function slimScheduleLogos(matches) {
+  if (!Array.isArray(matches)) return matches;
+  return matches.map((m) => {
+    if (!m || typeof m !== 'object') return m;
+    const out = { ...m };
+    if ('teamALogo' in m) out.teamALogo = slimLogo(m.teamALogo) ?? null;
+    if ('teamBLogo' in m) out.teamBLogo = slimLogo(m.teamBLogo) ?? null;
+    if (Array.isArray(m.participants)) {
+      out.participants = m.participants.map((p) => (p && 'logo' in p ? { ...p, logo: slimLogo(p.logo) ?? null } : p));
+    }
+    return out;
+  });
+}
+
+export function withCurrentLogos(matches, teams) {
+  const logoByName = new Map(
+    (teams || []).filter((t) => t?.name && t.logo).map((t) => [t.name.trim().toLowerCase(), t.logo]),
+  );
+  if (logoByName.size === 0) return matches || [];
+  const current = (name) => logoByName.get(String(name || '').trim().toLowerCase());
+  return (matches || []).map((m) => {
+    if (!m) return m;
+    const out = { ...m };
+    const a = current(m.teamA);
+    const b = current(m.teamB);
+    if (a) out.teamALogo = a;
+    if (b) out.teamBLogo = b;
+    if (Array.isArray(m.participants)) {
+      out.participants = m.participants.map((p) => {
+        const logo = current(p?.name);
+        return logo ? { ...p, logo } : p;
+      });
+    }
+    return out;
   });
 }
 
@@ -830,7 +894,8 @@ export async function applySportChange(level, sportName, newName) {
    {
      id, sport, category, format, round,
      teamA, teamB,           // team names
-     teamALogo, teamBLogo,   // base64 or URL, copied from Sports & Teams
+     teamALogo, teamBLogo,   // fallback only: reads overlay the team's current
+                              // logo, writes drop large copies (withCurrentLogos)
      date, time, location,   // filled in later via Edit / Add Schedule
      status: 'scheduled',
      requestId,              // set when this match was created via "Open
@@ -845,9 +910,13 @@ export async function getMatchSchedules(level) {
       return [];
     }
     const configRef = doc(db, 'matchSchedules', level);
-    const snapshot  = await getDoc(configRef);
+    const [snapshot, cfg] = await Promise.all([
+      getDoc(configRef),
+      // Logos are optional decoration — never fail the schedule read over them.
+      getSportsTeamsConfig(level).catch(() => null),
+    ]);
     if (!snapshot.exists()) return [];
-    return snapshot.data().matches || [];
+    return withCurrentLogos(snapshot.data().matches || [], cfg?.teams);
   });
 }
 
@@ -865,13 +934,28 @@ export function subscribeMatchSchedules(level, callback, onError) {
     callback([]);
     return () => {};
   }
-  const configRef = doc(db, 'matchSchedules', level);
-  return onSnapshot(configRef, (snapshot) => {
-    callback(snapshot.exists() ? (snapshot.data().matches || []) : []);
+  /* Also follows the level's Sports & Teams config so each match shows its
+     teams' CURRENT logos (see withCurrentLogos) — re-uploading a team logo
+     updates every match card live, not just ones scheduled afterwards. */
+  let matches = null; // null until the first schedules snapshot
+  let teams = [];
+  const emit = () => { if (matches) callback(withCurrentLogos(matches, teams)); };
+
+  const unsubSchedules = onSnapshot(doc(db, 'matchSchedules', level), (snapshot) => {
+    matches = snapshot.exists() ? (snapshot.data().matches || []) : [];
+    emit();
   }, (error) => {
     console.warn('Match schedules listener failed:', error);
     if (onError) onError(error); else callback([]);
   });
+  const unsubTeams = onSnapshot(doc(db, 'sportsTeamsConfig', level), (snapshot) => {
+    teams = snapshot.exists() ? (snapshot.data().teams || []) : [];
+    emit();
+  }, (error) => {
+    // Logos are optional — keep showing the schedule with its stored copies.
+    console.warn('Team logos listener failed:', error);
+  });
+  return () => { unsubSchedules(); unsubTeams(); };
 }
 
 /**
@@ -893,6 +977,91 @@ export function subscribeMatchSchedules(level, callback, onError) {
 export const inScheduleSet = (m, sport, category, divisionId) =>
   m.sport === sport && m.category === category
   && (!divisionId || !m.divisionId || m.divisionId === divisionId);
+
+/**
+ * The schedule side of "Reset results" for one set (sport + category +
+ * division): every fixture goes back to how it was generated — no "Mark
+ * as finished", no added time, and every bracket slot a result had filled
+ * back to its placeholder ("Winner SF1", "Loser UB-SF2", …). Real teams
+ * that were placed at generation (round 1, or a bye straight into round 2)
+ * stay. Pure — the write happens in resetScheduleSetResults.
+ */
+export function planResultsReset(matches, sport, category, divisionId) {
+  const key = (v) => String(v || '').trim().toLowerCase();
+  const inSet = (m) => inScheduleSet(m, sport, category, divisionId);
+  const set = (matches || []).filter(inSet);
+  const byId = new Map(set.map((m) => [m.id, m]));
+
+  const originalSlot = (m, side) => {
+    const name = m[`team${side}`];
+    const from = m[`team${side}From`];
+    const source = from ? byId.get(from.matchId) : null;
+    if (source) {
+      const ref = bracketSlotsFor(source)[from.result === 'loser' ? 'loser' : 'winner'][0];
+      if (ref) return ref;
+    }
+    // Single-bracket slots filled before slots remembered their source: the
+    // team is the winner of the previous-round match it played in (a team
+    // plays once per round; a bye team never played one, so it stays).
+    if (isSingleBracketMatch(m) && (m.round ?? 0) > 1 && name && !isPlaceholderTeam(name)) {
+      const feeder = set.find((x) => isSingleBracketMatch(x) && x.round === m.round - 1
+        && (key(x.teamA) === key(name) || key(x.teamB) === key(name)));
+      if (feeder?.matchLabel) return `Winner ${feeder.matchLabel}`;
+    }
+    return name;
+  };
+
+  return (matches || []).map((m) => {
+    if (!inSet(m)) return m;
+    const out = { ...m };
+    delete out.finished;
+    delete out.finishedAt;
+    delete out.extraMinutes;
+    delete out.teamAFrom;
+    delete out.teamBFrom;
+    ['A', 'B'].forEach((side) => {
+      const original = originalSlot(m, side);
+      if (original !== m[`team${side}`]) {
+        out[`team${side}`] = original;
+        out[`team${side}Logo`] = null;
+      }
+    });
+    return out;
+  });
+}
+
+/**
+ * Moderator "Reset results" for one set of fixtures: removes every recorded
+ * result tied to them (server-side, which also rolls the ratings back —
+ * teams return to 1200 if nothing else remains in that sport + division),
+ * then puts the fixtures back to their generated state (planResultsReset).
+ * Results first, so a failure never leaves a bracket reset under results
+ * that still exist. Returns { records, rankings } from the server.
+ */
+export async function resetScheduleSetResults(level, { sport, category, divisionId }, actorRole) {
+  if (!db) throw new Error('Firestore not initialized.');
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+
+  const schedules = await getMatchSchedules(level);
+  const ids = schedules.filter((m) => inScheduleSet(m, sport, category, divisionId)).map((m) => m.id);
+  const call = httpsCallable(functions, 'removeScheduledMatchRecords');
+  const { data } = await call({ level, scheduleIds: ids });
+
+  await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (current) => (
+    planResultsReset(current, sport, category, divisionId)
+  ));
+
+  logActivity({
+    actorRole,
+    type: 'Match Records Reset',
+    details: `Reset all results for ${sport || 'a sport'}${category ? ` (${category})` : ''} — ${ids.length} fixture${ids.length === 1 ? '' : 's'} back to unplayed`,
+    targetType: 'schedule',
+    targetId: `${level}::${sport}::${category}`,
+    targetLabel: sport,
+  });
+
+  return data || {};
+}
 
 export async function saveGeneratedSchedule(level, matches, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
@@ -1006,6 +1175,36 @@ export async function upsertMatchSchedule(level, match, actorRole) {
  * the admin set (teams, date, venue) can be overwritten. Once finished, the
  * match becomes recordable on the Update Match Records screen.
  */
+/**
+ * Gives an ongoing match more time: adds `minutes` to the fixture's
+ * `extraMinutes`, which every page's end-time rule (shared/utils/
+ * matchTime.js) adds to the assumed match length — so it stays "Ongoing"
+ * (and not recordable as finished) until the extended end.
+ */
+export async function extendMatchSchedule(level, matchId, minutes, actorRole) {
+  if (!db) throw new Error('Firestore not initialized.');
+  const add = Math.max(1, Math.round(Number(minutes) || 0));
+
+  let target = null;
+  const merged = await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (existing) => {
+    target = existing.find(m => m.id === matchId) || null;
+    return existing.map(m => (m.id === matchId
+      ? { ...m, extraMinutes: (Number(m.extraMinutes) || 0) + add }
+      : m));
+  });
+
+  logActivity({
+    actorRole,
+    type: 'Schedule Updated',
+    details: `Extended a ${target?.sport || 'match'} fixture by ${add} min${target?.category ? ` (${target.category})` : ''}`,
+    targetType: 'schedule',
+    targetId: matchId,
+    targetLabel: target?.sport,
+  });
+
+  return merged;
+}
+
 export async function markMatchScheduleFinished(level, matchId, actorRole) {
   if (!db) throw new Error('Firestore not initialized.');
 
@@ -1330,52 +1529,218 @@ export async function getMatchRecords(level) {
  */
 async function advanceBracketWinner(level, record) {
   try {
-    if (!record.scheduleId) return;
-    const winnerName = record.winner === 'A' ? record.teamA?.name
-      : record.winner === 'B' ? record.teamB?.name
-      : null;
-    if (!winnerName) return; // no definitive winner (draw / unset) — nothing to advance
-
+    if (!record.scheduleId || !(record.winner === 'A' || record.winner === 'B')) return;
     const schedules = await getMatchSchedules(level);
     const source = schedules.find((m) => String(m.id) === String(record.scheduleId));
-    if (!source || !source.matchLabel) return;
+    if (!source || !source.matchLabel || !isBracketMatch(source)) return;
 
-    // Single-elimination stages are named "Quarterfinals"/"Semifinals"/
-    // "Finals"/"Round of N" with no prefix; double-elimination's are always
-    // "Upper Bracket – …"/"Lower Bracket – …"/"Grand Final".
-    const isSingleBracket = !!source.stage
-      && !source.stage.startsWith('Upper Bracket')
-      && !source.stage.startsWith('Lower Bracket')
-      && source.stage !== 'Grand Final';
-    if (!isSingleBracket) return;
-
-    const placeholder = `Winner ${source.matchLabel}`;
-    const winnerLogo = record.winner === 'A' ? (record.teamA?.logo || null) : (record.teamB?.logo || null);
-
-    // Re-checked against a fresh read inside the transaction below: the
-    // `schedules` snapshot above was only used to decide whether it's worth
-    // attempting this at all (bracket match with a real winner and a
-    // matching placeholder somewhere) — the actual find-and-replace runs
-    // again on whatever the doc currently holds when the transaction
-    // commits, in case another confirmed match changed it in the meantime.
+    // Re-checked against a fresh read inside the transaction: the snapshot
+    // above only decided whether this is a bracket match worth attempting —
+    // the find-and-replace runs on whatever the doc holds at commit time, in
+    // case another confirmed match changed it in the meantime.
     await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (current) => (
-      current.map((m) => {
-        if (m.sport !== source.sport || m.category !== source.category) return m;
-        const hitA = m.teamA === placeholder;
-        const hitB = m.teamB === placeholder;
-        if (!hitA && !hitB) return m;
-        return {
-          ...m,
-          teamA: hitA ? winnerName : m.teamA,
-          teamALogo: hitA ? winnerLogo : m.teamALogo,
-          teamB: hitB ? winnerName : m.teamB,
-          teamBLogo: hitB ? winnerLogo : m.teamBLogo,
-        };
-      })
+      applyBracketResult(current, record)
     ));
   } catch (error) {
-    console.warn('Could not advance bracket winner:', error);
+    console.warn('Could not advance bracket result:', error);
   }
+}
+
+/**
+ * Pure core of advanceBracketWinner: the saved fixture list after `record`
+ * (a 1v1 result tied to a bracket fixture by scheduleId) sends its winner
+ * on — and, in the upper bracket of a double elimination, its loser down.
+ * Returns `matches` unchanged when there's nothing to advance.
+ */
+export function applyBracketResult(matches, record) {
+  const winnerSide = record?.winner === 'A' ? record.teamA : record?.winner === 'B' ? record.teamB : null;
+  const loserSide = record?.winner === 'A' ? record.teamB : record?.winner === 'B' ? record.teamA : null;
+  if (!record?.scheduleId || !winnerSide?.name) return matches; // draw / unset — nothing to advance
+  const source = (matches || []).find((m) => String(m.id) === String(record.scheduleId));
+  if (!source || !source.matchLabel || !isBracketMatch(source)) return matches;
+
+  const slots = bracketSlotsFor(source);
+  const fill = {}; // placeholder text → the team that now takes that slot
+  slots.winner.forEach((p) => { fill[p] = { name: winnerSide.name, logo: winnerSide.logo || null, result: 'winner' }; });
+  if (loserSide?.name) {
+    slots.loser.forEach((p) => { fill[p] = { name: loserSide.name, logo: loserSide.logo || null, result: 'loser' }; });
+  }
+  if (Object.keys(fill).length === 0) return matches;
+  return matches.map((m) => (sameBracket(m, source) ? fillSlots(m, fill, source.id) : m));
+}
+
+export function isBracketMatch(m) {
+  return !!m?.stage;
+}
+
+export function isPlaceholderTeam(name) {
+  return typeof name === 'string' && /^(Winner|Loser)\s/.test(name);
+}
+
+/* Same sport + category (+ division, when both carry one) — i.e. the same
+   generated bracket; a (sport, category) set only ever holds one. */
+function sameBracket(m, source) {
+  const key = (v) => String(v || '').trim().toLowerCase();
+  return key(m.sport) === key(source.sport)
+    && m.category === source.category
+    && (!m.divisionId || !source.divisionId || m.divisionId === source.divisionId);
+}
+
+/* The placeholder texts later fixtures use for this match's winner and
+   loser, exactly as AdminSchedulePage's generators write them:
+     single elimination   "QF1"      → winner "Winner QF1"
+     upper bracket        "UB-QF1"   → winner "Winner QF1", loser "Loser UB-QF1"
+     upper bracket final  "UB-Finals"→ winner "Winner UB-F", loser "Loser UB-F"
+     lower bracket        "LB3"/"LB-F" → winner "Winner LB3"/"Winner LB-F"
+                                          (a lower-bracket loser is eliminated)
+     grand final          — nothing further */
+export function bracketSlotsFor(source) {
+  const label = source?.matchLabel || '';
+  const stage = source?.stage || '';
+  if (!label || !stage || stage === 'Grand Final') return { winner: [], loser: [] };
+  if (stage.startsWith('Upper Bracket')) {
+    const inner = label.replace(/^UB-/, '');
+    const isFinal = inner === 'Finals' || inner === 'F';
+    return {
+      winner: isFinal ? ['Winner UB-F', `Winner ${label}`] : [`Winner ${inner}`, `Winner ${label}`],
+      loser: isFinal ? ['Loser UB-F', `Loser ${label}`] : [`Loser ${label}`],
+    };
+  }
+  return { winner: [`Winner ${label}`], loser: [] };
+}
+
+/* Puts real teams into a fixture's placeholder slots, remembering where
+   each came from (teamAFrom/teamBFrom) so a later correction of that
+   result can move the right team back out — the placeholder text itself is
+   gone once filled. */
+function fillSlots(m, fill, sourceId) {
+  const a = fill[m.teamA];
+  const b = fill[m.teamB];
+  if (!a && !b) return m;
+  return {
+    ...m,
+    ...(a && { teamA: a.name, teamALogo: a.logo, teamAFrom: { matchId: sourceId, result: a.result } }),
+    ...(b && { teamB: b.name, teamBLogo: b.logo, teamBFrom: { matchId: sourceId, result: b.result } }),
+  };
+}
+
+/* Single-elimination bracket fixture (the only kind advanceBracketWinner
+   ever fills in) — double-elimination stages are always prefixed. */
+export function isSingleBracketMatch(m) {
+  return !!m?.stage
+    && !m.stage.startsWith('Upper Bracket')
+    && !m.stage.startsWith('Lower Bracket')
+    && m.stage !== 'Grand Final';
+}
+
+/* Later rounds of the same single-elimination bracket as `source` that
+   currently list `teamName` — i.e. where that team was advanced to. */
+export function laterBracketMatchesWith(matches, source, teamName) {
+  const key = (v) => String(v || '').trim().toLowerCase();
+  return (matches || []).filter((m) => m && m.id !== source.id
+    && isSingleBracketMatch(m)
+    && key(m.sport) === key(source.sport)
+    && m.category === source.category
+    && (!m.divisionId || !source.divisionId || m.divisionId === source.divisionId)
+    && (m.round ?? 0) > (source.round ?? 0)
+    && (key(m.teamA) === key(teamName) || key(m.teamB) === key(teamName)));
+}
+
+/**
+ * A moderator re-saved a bracket match with a DIFFERENT winner. The old
+ * winner had already been advanced into later rounds (advanceBracketWinner
+ * replaced the "Winner QF1" placeholder with its name), and it lost this
+ * match, so it can't legitimately be in any later round of this bracket:
+ * swap it for the new winner in all of them. Returns the ids of the
+ * fixtures that changed so the caller can move their recorded results too.
+ */
+export async function replaceBracketWinner(level, source, fromName, toName, toLogo, actorRole) {
+  if (!db) throw new Error('Firestore not initialized.');
+  const key = (v) => String(v || '').trim().toLowerCase();
+  const changedIds = [];
+  await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (current) => {
+    const targets = new Set(laterBracketMatchesWith(current, source, fromName).map((m) => m.id));
+    changedIds.length = 0;
+    return current.map((m) => {
+      if (!targets.has(m.id)) return m;
+      changedIds.push(m.id);
+      const hitA = key(m.teamA) === key(fromName);
+      return {
+        ...m,
+        teamA: hitA ? toName : m.teamA,
+        teamALogo: hitA ? (toLogo || null) : m.teamALogo,
+        teamB: hitA ? m.teamB : toName,
+        teamBLogo: hitA ? m.teamBLogo : (toLogo || null),
+      };
+    });
+  });
+  logActivity({
+    actorRole,
+    type: 'Schedule Updated',
+    details: `Bracket winner corrected: ${toName} replaces ${fromName} in ${changedIds.length} later-round match${changedIds.length === 1 ? '' : 'es'} (${source.sport || 'match'})`,
+    targetType: 'schedule',
+    targetId: source.id,
+    targetLabel: source.sport,
+  });
+  return changedIds;
+}
+
+/**
+ * Double elimination: a corrected result swaps its winner and loser, and
+ * both had already been sent on (winner up, loser down to the lower
+ * bracket). Follows the teamAFrom/teamBFrom links fillSlots left, starting
+ * at `sourceId`: every slot filled from that match with the old name gets
+ * the other team, and the change keeps flowing from each touched fixture
+ * to the slots IT filled (a renamed team carries the new name onward).
+ * Each slot changes at most once, so the two halves of the swap can't undo
+ * each other when both teams meet again later (e.g. in the Grand Final).
+ * Pure — used for the moderator's warning preview and inside the write.
+ * Returns the updated list plus every rename made, per fixture.
+ */
+export function planBracketSwap(matches, sourceId, oldWinner, oldLoser) {
+  const key = (v) => String(v || '').trim().toLowerCase();
+  const next = (matches || []).map((m) => ({ ...m }));
+  const touched = new Set(); // `${matchId}:A|B`
+  const renames = [];        // { matchId, side, from, to }
+  const queue = [
+    { matchId: sourceId, from: oldWinner, to: oldLoser },
+    { matchId: sourceId, from: oldLoser, to: oldWinner },
+  ];
+  while (queue.length) {
+    const item = queue.shift();
+    next.forEach((m) => {
+      ['A', 'B'].forEach((side) => {
+        const from = m[`team${side}From`];
+        if (!from || String(from.matchId) !== String(item.matchId)) return;
+        if (touched.has(`${m.id}:${side}`) || key(m[`team${side}`]) !== key(item.from)) return;
+        touched.add(`${m.id}:${side}`);
+        m[`team${side}`] = item.to;
+        m[`team${side}Logo`] = null; // reads fill in the team's current logo
+        renames.push({ matchId: m.id, side, from: item.from, to: item.to });
+        queue.push({ matchId: m.id, from: item.from, to: item.to });
+      });
+    });
+  }
+  return { matches: next, renames };
+}
+
+export async function swapBracketResult(level, source, oldWinner, oldLoser, actorRole) {
+  if (!db) throw new Error('Firestore not initialized.');
+  let renames = [];
+  await updateDocFieldViaTransaction('matchSchedules', level, 'matches', [], (current) => {
+    const plan = planBracketSwap(current, source.id, oldWinner, oldLoser);
+    renames = plan.renames;
+    return plan.matches;
+  });
+  logActivity({
+    actorRole,
+    type: 'Schedule Updated',
+    details: `Bracket result corrected: ${oldLoser} now beats ${oldWinner} (${source.matchLabel || source.stage || 'match'}, ${source.sport || 'match'}) — ${renames.length} later slot${renames.length === 1 ? '' : 's'} updated`,
+    targetType: 'schedule',
+    targetId: source.id,
+    targetLabel: source.sport,
+  });
+  return renames;
 }
 
 /**
@@ -1411,17 +1776,54 @@ export async function recalculateRatings(level) {
 }
 
 /**
- * The Updated Match Summary table's inline quick-edit (1v1 records only),
- * via the `editMatchRecord` Cloud Function — same reasoning as
- * submitMatchRecord above: prevPoints/finalPoints are never trusted from
- * the client, only recomputed server-side from the record already stored
- * in Firestore.
+ * Edits a saved 1v1 record's teams/scores via the `editMatchRecord` Cloud
+ * Function — same reasoning as submitMatchRecord above: prevPoints/
+ * finalPoints are never trusted from the client, only recomputed
+ * server-side (and the whole scope replayed) from the stored record.
  */
 export async function editMatchRecord(payload) {
   if (!functions) throw new Error('Firebase Functions not initialized.');
   const call = httpsCallable(functions, 'editMatchRecord');
   const { data } = await call(payload);
   return data;
+}
+
+/**
+ * Re-labels one side of a saved 1v1 result from `fromName` to `toTeam`,
+ * keeping every entered value (points/time, violations, comeback) — used
+ * when a corrected bracket result means a different team actually played
+ * a later round. The server recomputes and replays the ratings.
+ */
+export async function moveRecordToTeam(level, record, fromName, toTeam) {
+  return renameTeamsOnRecord(level, record, { [String(fromName || '').trim().toLowerCase()]: toTeam });
+}
+
+/* Same, for any number of sides at once — `renames` maps a lowercased old
+   name to { id, name, logo }. Both sides in one call matters when a
+   corrected bracket swaps BOTH teams of a later fixture (renaming them one
+   at a time would briefly put the same team on both sides). */
+export async function renameTeamsOnRecord(level, record, renames) {
+  const key = (v) => String(v || '').trim().toLowerCase();
+  const side = (t) => {
+    const to = renames[key(t?.name)];
+    return to
+      ? { id: to.id || t.id, name: to.name, logo: to.logo || null }
+      : { id: t.id, name: t.name, logo: t.logo || null };
+  };
+  return editMatchRecord({
+    level,
+    recordId: record.id,
+    teamA: side(record.teamA),
+    teamB: side(record.teamB),
+    totalViolationsA: record.teamA.totalViolations,
+    totalViolationsB: record.teamB.totalViolations,
+    pointsA: record.teamA.points ?? '',
+    pointsB: record.teamB.points ?? '',
+    minutesA: record.teamA.minutes ?? '',
+    minutesB: record.teamB.minutes ?? '',
+    comebackA: !!record.teamA.comeback,
+    comebackB: !!record.teamB.comeback,
+  });
 }
 
 /* ─────────────────────────────────────────────

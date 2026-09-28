@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect, useRef, useContext } from 'react';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './RankingPage.css';
-import { FaSearch, FaCrown, FaMedal, FaChevronDown } from 'react-icons/fa';
+import { FaSearch, FaCrown, FaMedal, FaChevronDown, FaInfo, FaTimes } from 'react-icons/fa';
 import Contact from '../public/Landing/Contact/Contact';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
@@ -301,7 +301,125 @@ function DivisionSelect({ value, onChange, options, allLabel = 'All Divisions' }
 }
 
 /* ── Potential Champion table ── */
+/* ── "Where does this number come from?" ──
+   Both breakdowns read the exact values championData / medalData used, so
+   the explanation always adds up to the number in the table. Shown as a
+   small centered dialog (not a popover inside the table, which the table's
+   own clipping/row stacking could cut off). */
+const fmtPts = (n) => String(Math.round(n * 100) / 100);
+const fmtSigned = (n) => `${n >= 0 ? '+' : '−'}${fmtPts(Math.abs(n))}`;
+
+function BreakdownDialog({ title, subtitle, onClose, children }) {
+  useEffect(() => {
+    const onKey = (e) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return (
+    <div className="rk-bd-overlay" onClick={onClose}>
+      <div className="rk-bd" role="dialog" aria-modal="true" aria-label={title} onClick={(e) => e.stopPropagation()}>
+        <div className="rk-bd__head">
+          <div>
+            <h3 className="rk-bd__title">{title}</h3>
+            {subtitle && <p className="rk-bd__sub">{subtitle}</p>}
+          </div>
+          <button type="button" className="rk-bd__close" onClick={onClose} aria-label="Close"><FaTimes /></button>
+        </div>
+        <div className="rk-bd__body">{children}</div>
+      </div>
+    </div>
+  );
+}
+
+function RatingBreakdown({ team, onClose }) {
+  const sportsList = team.breakdown || [];
+  const all = team.breakdownMode === 'all';
+  const perSport = (s) => (s.scopes.length > 1
+    ? `average of ${s.scopes.map((x) => `${x.category} ${fmtPts(x.points)}`).join(' · ')}`
+    : s.scopes[0]?.category || '');
+
+  return (
+    <BreakdownDialog title={`${team.team} — rating ${team.rating}`} subtitle="Where this rating comes from" onClose={onClose}>
+      {sportsList.length === 0 ? (
+        <p className="rk-bd__note">No rated match here yet — every team starts at {DEFAULT_POINTS}.</p>
+      ) : all ? (
+        <>
+          <p className="rk-bd__note">Every team starts at {DEFAULT_POINTS}. Each sport then adds what the team gained or lost in it:</p>
+          <ul className="rk-bd__list">
+            <li className="rk-bd__row rk-bd__row--base"><span>Starting rating</span><b>{DEFAULT_POINTS}</b></li>
+            {sportsList.map((s) => {
+              const change = s.avg - DEFAULT_POINTS;
+              return (
+                <li className="rk-bd__row" key={s.sport}>
+                  <span>
+                    <b>{s.sport}</b>
+                    <small>{perSport(s)} → {fmtPts(s.avg)}</small>
+                  </span>
+                  <b className={change >= 0 ? 'rk-bd__gain' : 'rk-bd__loss'}>{fmtSigned(change)}</b>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="rk-bd__total">
+            {DEFAULT_POINTS} {sportsList.map((s) => fmtSigned(s.avg - DEFAULT_POINTS).replace(/^([+−])/, '$1 ')).join(' ')}
+            {' = '}<b>{team.rating}</b>
+          </p>
+        </>
+      ) : (
+        <>
+          <p className="rk-bd__note">
+            {sportsList[0].scopes.length > 1
+              ? `The average of ${sportsList[0].sport}'s divisions:`
+              : `${sportsList[0].sport}'s rating in this division:`}
+          </p>
+          <ul className="rk-bd__list">
+            {sportsList[0].scopes.map((x) => (
+              <li className="rk-bd__row" key={x.category}>
+                <span><b>{x.category || sportsList[0].sport}</b></span>
+                <b>{fmtPts(x.points)}</b>
+              </li>
+            ))}
+          </ul>
+          <p className="rk-bd__total">
+            {sportsList[0].scopes.length > 1
+              ? <>({sportsList[0].scopes.map((x) => fmtPts(x.points)).join(' + ')}) ÷ {sportsList[0].scopes.length} = <b>{team.rating}</b></>
+              : <>Rating = <b>{team.rating}</b></>}
+          </p>
+        </>
+      )}
+      <p className="rk-bd__foot">Ratings are rounded to whole numbers in the table.</p>
+    </BreakdownDialog>
+  );
+}
+
+const MEDAL_ICON = { gold: '🥇', silver: '🥈', bronze: '🥉' };
+function MedalBreakdown({ team, onClose }) {
+  const list = [...(team.medalFrom || [])].sort((a, b) => ['gold', 'silver', 'bronze'].indexOf(a.medal) - ['gold', 'silver', 'bronze'].indexOf(b.medal));
+  return (
+    <BreakdownDialog title={`${team.team} — ${team.total} medal${team.total === 1 ? '' : 's'}`} subtitle="Where these medals come from" onClose={onClose}>
+      {list.length === 0 ? (
+        <p className="rk-bd__note">No medals yet. A sport + division hands out medals once all of its games are played.</p>
+      ) : (
+        <>
+          <ul className="rk-bd__list">
+            {list.map((m, i) => (
+              <li className="rk-bd__row" key={i}>
+                <span><span aria-hidden="true">{MEDAL_ICON[m.medal]}</span> <b>{m.medal[0].toUpperCase() + m.medal.slice(1)}</b></span>
+                <span className="rk-bd__where">{m.where}</span>
+              </li>
+            ))}
+          </ul>
+          <p className="rk-bd__total">
+            {team.gold} gold + {team.silver} silver + {team.bronze} bronze = <b>{team.total}</b>
+          </p>
+        </>
+      )}
+    </BreakdownDialog>
+  );
+}
+
 function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
+  const [explain, setExplain] = useState(null); // team whose rating breakdown is open
   /* Sorted highest rating first. Teams that land on the exact same rating
      (common at the shared 1200 baseline, or after a scope where nobody has
      played yet) are resolved by applyEloTieBreakers per the CLAUDE.md
@@ -355,18 +473,25 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
             <div className="rk-cell rk-cell-logo" role="cell"><TeamLogo team={t.team} color={t.color} logo={t.logo} /></div>
             <div className="rk-cell rk-cell-team" role="cell">{t.team}</div>
             <div className="rk-cell rk-cell-num" role="cell" data-label="Rating">
-              {t.rating}
+              <span className="rk-num-with-info">
+                {t.rating}
+                <button type="button" className="rk-info-btn" onClick={() => setExplain(t)} aria-label={`Where ${t.team}'s rating comes from`} title="Where this rating comes from">
+                  <FaInfo />
+                </button>
+              </span>
             </div>
             <div className="rk-cell rk-cell-num" role="cell" data-label="Win-Loss">{t.wins}-{t.losses}</div>
           </div>
         );
       })}
+      {explain && <RatingBreakdown team={explain} onClose={() => setExplain(null)} />}
     </div>
   );
 }
 
 /* ── Medal Tally table ── */
 function MedalTable({ data, search, records, sportFilter, divisionFilter }) {
+  const [explain, setExplain] = useState(null); // team whose medal breakdown is open
   /* Same rule as ChampionTable: rank is fixed over the full data before the
      search box filters what's displayed, so a filtered team keeps its real
      rank instead of being renumbered starting from 1. Teams tied on
@@ -414,10 +539,18 @@ function MedalTable({ data, search, records, sportFilter, divisionFilter }) {
             <div className="rk-cell rk-cell-num" role="cell" data-label="Gold">{t.gold}</div>
             <div className="rk-cell rk-cell-num" role="cell" data-label="Silver">{t.silver}</div>
             <div className="rk-cell rk-cell-num" role="cell" data-label="Bronze">{t.bronze}</div>
-            <div className="rk-cell rk-cell-num rk-cell-total" role="cell" data-label="Total">{t.total}</div>
+            <div className="rk-cell rk-cell-num rk-cell-total" role="cell" data-label="Total">
+              <span className="rk-num-with-info">
+                {t.total}
+                <button type="button" className="rk-info-btn" onClick={() => setExplain(t)} aria-label={`Where ${t.team}'s medals come from`} title="Where these medals come from">
+                  <FaInfo />
+                </button>
+              </span>
+            </div>
           </div>
         );
       })}
+      {explain && <MedalBreakdown team={explain} onClose={() => setExplain(null)} />}
     </div>
   );
 }
@@ -633,16 +766,25 @@ export default function RankingPage() {
          separate: under "All Sports" a sport counts once no matter how many
          divisions it happens to have, so Basketball with MEN + WOMEN can't
          outweigh Chess with one division. */
-      const bySportRatings = new Map();
+      const bySportRatings = new Map(); // sport key -> [{ category, points }]
       scopesInView.forEach((scope) => {
         const savedPoints = savedPointsForTeam(scope.teamMap, t);
         if (savedPoints == null) return;
         if (!bySportRatings.has(scope.sport)) bySportRatings.set(scope.sport, []);
-        bySportRatings.get(scope.sport).push(savedPoints);
+        bySportRatings.get(scope.sport).push({ category: scope.category, points: savedPoints });
       });
 
       const sportAverages = [...bySportRatings.values()]
-        .map((points) => points.reduce((sum, p) => sum + p, 0) / points.length);
+        .map((list) => list.reduce((sum, x) => sum + x.points, 0) / list.length);
+
+      /* The same numbers, kept for the rating's "where does this come from"
+         breakdown (RatingBreakdown) — so the explanation can never disagree
+         with the rating it explains. */
+      const breakdown = [...bySportRatings.entries()].map(([sportKey, list]) => ({
+        sport: sports.find((s) => norm(s.name) === sportKey)?.name || sportKey,
+        scopes: list.map((x) => ({ category: String(x.category || '').toUpperCase(), points: x.points })),
+        avg: list.reduce((sum, x) => sum + x.points, 0) / list.length,
+      }));
 
       /* Every sport + category + division has its own 1200 baseline. A team
          with no rating in the scope being viewed shows exactly 1200 — never
@@ -660,7 +802,7 @@ export default function RankingPage() {
           ? Math.round(DEFAULT_POINTS + sportAverages.reduce((sum, avg) => sum + (avg - DEFAULT_POINTS), 0))
           : Math.round(sportAverages.reduce((sum, avg) => sum + avg, 0) / sportAverages.length))
         : DEFAULT_POINTS;
-      const played = [...bySportRatings.values()].reduce((n, points) => n + points.length, 0);
+      const played = [...bySportRatings.values()].reduce((n, list) => n + list.length, 0);
 
       // Win/loss: count from actual saved match records for this team,
       // narrowed to the selected sport tab and division (if chosen).
@@ -691,6 +833,7 @@ export default function RankingPage() {
       return {
         id: t.id, team: (t.name || '').toUpperCase(), logo: t.logo || null,
         color: colorForTeam(t.name), rating, wins, losses, played,
+        breakdown, breakdownMode: championSport === 'All Sports' ? 'all' : 'sport',
       };
     });
   }, [teams, sports, schedules, activeRankings, records, championSport, championDivision]);
@@ -729,9 +872,16 @@ export default function RankingPage() {
           gold: 0,
           silver: 0,
           bronze: 0,
+          medalFrom: [], // [{ medal, where }] — for the medal breakdown
         });
       }
       return byTeam.get(key);
+    };
+    // Award one medal and remember where it was won (sport + division).
+    const award = (row, medal, sportName, divLabel) => {
+      if (!row) return;
+      row[medal] += 1;
+      row.medalFrom.push({ medal, where: [sportName, displayCategory(divLabel || '')].filter(Boolean).join(' ') });
     };
 
     const divisionPicked = medalDivision !== 'All Divisions';
@@ -852,9 +1002,8 @@ export default function RankingPage() {
         const row = ensureTeam(participant);
         if (!row) return;
         const place = places?.has(norm(participant.name)) ? places.get(norm(participant.name)) : participant.place;
-        if (place === 1) row.gold += 1;
-        else if (place === 2) row.silver += 1;
-        else if (place === 3) row.bronze += 1;
+        const medal = place === 1 ? 'gold' : place === 2 ? 'silver' : place === 3 ? 'bronze' : null;
+        if (medal) award(row, medal, record.sportName, recordLabel(record).label);
       });
     });
 
@@ -918,8 +1067,7 @@ export default function RankingPage() {
         const group = sorted.filter((t) => t.wins === sorted[pos].wins && t.losses === sorted[pos].losses);
         // Only a team alone at its record earns the medal for its position.
         if (group.length === 1) {
-          const row = ensureTeam({ name: group[0].name, logo: group[0].logo });
-          if (row) row[medalKeys[pos]] += 1;
+          award(ensureTeam({ name: group[0].name, logo: group[0].logo }), medalKeys[pos], sportName, divLabel);
         }
         pos += group.length;
       }

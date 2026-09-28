@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo, useContext } from 'react';
+import React, { useState, useEffect, useMemo, useCallback, useContext } from 'react';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './MatchSchedulesPage.css';
@@ -6,8 +6,10 @@ import './MatchSchedulesPage.css';
 // the admin Schedule Manager's classes unchanged, so it renders identically here.
 import '../admin/AdminSchedulePage.css';
 import Contact from '../public/Landing/Contact/Contact';
-import { FaSearch, FaTrophy } from 'react-icons/fa';
-import { subscribeMatchSchedules, subscribeMatchRecords, subscribeTeamRankings } from '../shared/services/firestoreService';
+import { FaSearch, FaTrophy, FaChevronDown } from 'react-icons/fa';
+import { subscribeMatchSchedules, subscribeMatchRecords, subscribeTeamRankings, subscribeSportsTeamsConfig } from '../shared/services/firestoreService';
+import { savedSlotRef, savedBracketResolved } from '../shared/utils/savedBracket';
+import { decidingMatch, roundRobinLeader } from '../shared/utils/scheduleFormats';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
 import RaceDiagram, { RaceResults } from '../shared/components/RaceDiagram/RaceDiagram';
@@ -118,6 +120,186 @@ function buildBracketStages(matches) {
       name: byRound.get(r)[0]?.stage || `Round ${r}`,
       matches: byRound.get(r),
     }));
+}
+
+/* A fixture's place in the Sport → Category → Division selectors, e.g.
+   { sport: 'Basketball', group: 'MALE', division: '5 V 5' }. Resolved from
+   the saved divisionId against Sports & Teams; older fixtures fall back to
+   their category text ("MALE (1 v 1)" → MALE / 1 v 1). `division` is ''
+   when the category has no named division of its own. */
+function matchParts(match, sports) {
+  const sport = (match.sport || '').trim();
+  const cfgSport = (sports || []).find((s) => norm(s.name) === norm(sport));
+  for (const g of cfgSport?.categoryGroups || []) {
+    const d = (g.divisions || []).find((x) => x.id === match.divisionId);
+    if (d) {
+      const group = displayCategory((g.label || '').trim());
+      const name = (d.name || '').trim();
+      return { sport, group, division: name && norm(name) !== norm(group) ? name : '' };
+    }
+  }
+  const raw = String(match.category || '');
+  const paren = raw.match(/^(.*?)\s*\(([^)]*)\)\s*$/);
+  if (paren) return { sport, group: displayCategory(paren[1]), division: paren[2].trim() };
+  const group = displayCategory(raw);
+  return { sport, group: norm(group) === 'general' ? '' : group, division: '' };
+}
+
+/* ONE dropdown for Sport → Category → Division, as a hover menu: hovering a
+   sport shows its categories beside it, hovering a category shows its
+   divisions beside that, and clicking a division selects that set and
+   closes. On touch screens (no hover) tapping a sport/category opens the
+   next column instead. A level with nothing named to choose is skipped — a
+   sport or category with nothing further under it is selected by clicking
+   it. Columns sit side by side inside one panel (no nested flyouts that
+   could run off-screen). A custom button + list (not a native <select>) so
+   it follows the page's navy / gold theme.
+
+   `tree`: [{ sport, groups: [{ group, divisions: [division, …] }] }] — ''
+   stands for "no named category/division". */
+function SetPicker({ tree, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [hover, setHover] = useState({ sport: null, group: null });
+  const wrapRef = React.useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const onDown = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false); };
+    const onKey = (e) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  const groupsOf = (sport) => tree.find((n) => norm(n.sport) === norm(sport))?.groups || [];
+  const named = (list) => list.filter(Boolean);
+  // A sport "has categories" when any is named; otherwise its single unnamed
+  // group's divisions are shown straight after the sport.
+  const namedGroups = (sport) => groupsOf(sport).filter((g) => g.group);
+  const divisionsOf = (sport, group) => groupsOf(sport).find((g) => norm(g.group) === norm(group))?.divisions || [];
+  const sportHasMore = (sport) => namedGroups(sport).length > 0 || groupsOf(sport).some((g) => named(g.divisions).length > 0);
+
+  const commit = (sport, group, division) => {
+    onChange({ sport, group, division });
+    setOpen(false);
+  };
+  const toggle = () => {
+    // Open on the current selection's path, so its columns are already showing.
+    setHover({ sport: value.sport, group: namedGroups(value.sport).length ? value.group : '' });
+    setOpen((o) => !o);
+  };
+
+  const showSport = (sport) => setHover({ sport, group: namedGroups(sport).length ? null : '' });
+  const clickSport = (sport) => {
+    if (!sportHasMore(sport)) commit(sport, groupsOf(sport)[0]?.group || '', '');
+    else showSport(sport); // touch: tap opens the next column
+  };
+  const clickGroup = (group) => {
+    if (named(divisionsOf(hover.sport, group)).length === 0) commit(hover.sport, group, '');
+    else setHover((h) => ({ ...h, group }));
+  };
+
+  const hs = hover.sport;
+  const groupCol = hs && namedGroups(hs).length > 0 ? namedGroups(hs) : null;
+  const divisionCol = hs && hover.group != null && named(divisionsOf(hs, hover.group)).length > 0
+    ? divisionsOf(hs, hover.group) : null;
+  const isCurrent = (sport, group, division) => norm(sport) === norm(value.sport)
+    && (group === undefined || norm(group) === norm(value.group))
+    && (division === undefined || norm(division) === norm(value.division));
+
+  const current = [value.sport, value.group, value.division].filter(Boolean);
+
+  const item = ({ key, label, active, path, more, onEnter, onClick }) => (
+    <button
+      key={key}
+      type="button"
+      role="option"
+      aria-selected={active}
+      className={`ms-select__option${active ? ' ms-select__option--active' : ''}${path ? ' ms-select__option--path' : ''}`}
+      onMouseEnter={onEnter}
+      onFocus={onEnter}
+      onClick={onClick}
+    >
+      <span>{label}</span>
+      {more && <span className="ms-select__more" aria-hidden="true">›</span>}
+    </button>
+  );
+
+  return (
+    <div className="ms-select" ref={wrapRef}>
+      <div className="ms-select__dd">
+        <button
+          type="button"
+          className="ms-select__trigger"
+          onClick={toggle}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-label={`Showing ${current.join(', ')}. Change sport, category or division`}
+        >
+          {/* Just the sport here — the category/division show in the set's
+              title below, and in the menu once it's open. */}
+          <span className="ms-select__value">
+            <span className="ms-select__part ms-select__part--sport">{value.sport}</span>
+          </span>
+          <FaChevronDown className={`ms-select__arrow ${open ? 'ms-select__arrow--open' : ''}`} />
+        </button>
+        {open && (
+          <div className="ms-select__panel ms-select__panel--cols">
+            <div className="ms-select__col" role="listbox" aria-label="Sport">
+              <span className="ms-select__step">Sport</span>
+              {tree.map((n) => item({
+                key: n.sport,
+                label: n.sport,
+                active: isCurrent(n.sport),
+                path: norm(n.sport) === norm(hs),
+                more: sportHasMore(n.sport),
+                onEnter: () => showSport(n.sport),
+                onClick: () => clickSport(n.sport),
+              }))}
+            </div>
+            {groupCol && (
+              <div className="ms-select__col" role="listbox" aria-label="Category">
+                <span className="ms-select__step">Category</span>
+                {groupCol.map((g) => item({
+                  key: g.group,
+                  label: g.group,
+                  active: isCurrent(hs, g.group),
+                  path: norm(g.group) === norm(hover.group),
+                  more: named(g.divisions).length > 0,
+                  onEnter: () => setHover((h) => ({ ...h, group: g.group })),
+                  onClick: () => clickGroup(g.group),
+                }))}
+              </div>
+            )}
+            {divisionCol && (
+              <div className="ms-select__col" role="listbox" aria-label="Division">
+                <span className="ms-select__step">Division</span>
+                {divisionCol.map((d) => item({
+                  key: d || '__general',
+                  label: d || 'General',
+                  active: isCurrent(hs, hover.group, d),
+                  path: false,
+                  more: false,
+                  onEnter: undefined,
+                  onClick: () => commit(hs, hover.group, d),
+                }))}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+/* Distinct values in first-seen order, compared case-insensitively. */
+function uniqueValues(values) {
+  const seen = new Map();
+  values.forEach((v) => { if (!seen.has(norm(v))) seen.set(norm(v), v); });
+  return [...seen.values()];
 }
 
 /* ── Build the tab key/label for a match's sport + category ── */
@@ -523,6 +705,7 @@ function withMatchNumbers(wbStages, lbRounds) {
 
   const apply = (s) => (s != null && rename[s]) || s;
   return {
+    apply,
     wbStages: wbStages.map((stage, stageIdx) => ({
       ...stage,
       matches: stage.matches.map((m, i) => ({
@@ -563,15 +746,20 @@ function buildSavedDoubleBracketStages(matches) {
   const ubGroups = groupByStage(matches.filter(m => (m.stage || '').startsWith('Upper Bracket')));
   const lbGroups = groupByStage(matches.filter(m => (m.stage || '').startsWith('Lower Bracket')));
 
+  // Slots are connected by their ORIGINAL placeholders (see savedBracket.js),
+  // even after a result filled them with a real team.
+  const byId = new Map(matches.map((m) => [m.id, m]));
+  const refs = (m) => ({ a: savedSlotRef(m, 'A', byId), b: savedSlotRef(m, 'B', byId) });
   const wbStages = ubGroups.map((group) => ({
     name: (group[0].stage || '').replace(/^Upper Bracket\s*[–-]\s*/, ''),
-    matches: group.map(m => ({ label: (m.matchLabel || '').replace(/^UB-/, ''), a: m.teamA, b: m.teamB })),
+    matches: group.map(m => ({ label: (m.matchLabel || '').replace(/^UB-/, ''), ...refs(m) })),
   }));
   const lbRounds = lbGroups.map((group) => ({
     name: (group[0].stage || '').replace(/^Lower Bracket\s*[–-]\s*/, ''),
-    matches: group.map(m => ({ label: m.matchLabel, a: m.teamA, b: m.teamB })),
+    matches: group.map(m => ({ label: m.matchLabel, ...refs(m) })),
   }));
   const leaves = wbStages[0]?.matches.flatMap(m => [m.a, m.b]) || [];
+  const resolved = savedBracketResolved(matches);
 
   /* Saved team logos by team name, so the bracket's team boxes can show them. */
   const logos = {};
@@ -580,7 +768,7 @@ function buildSavedDoubleBracketStages(matches) {
     if (m.teamB && m.teamBLogo) logos[norm(m.teamB)] = m.teamBLogo;
   });
 
-  return { wbStages, leaves, lbRounds, logos };
+  return { wbStages, leaves, lbRounds, logos, resolved };
 }
 
 /* ── Double Bracket tree: Upper (Winner's) and Lower (Loser's) brackets
@@ -588,7 +776,7 @@ function buildSavedDoubleBracketStages(matches) {
    with real connector lines into a single "GC" node and Champion box —
    ported unchanged from the admin Schedule Manager so it renders in
    exactly the same format here. ── */
-function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw, logos = {} }) {
+function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRaw, logos = {}, resolved = {}, champion = null }) {
   const ROW_H = 56;
   const LEAF_W = 190;
   const LEAF_H = 40;
@@ -596,7 +784,12 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
 
   if (!wbStagesRaw.length || !lbRoundsRaw.length) return null;
 
-  const { wbStages, lbRounds } = withMatchNumbers(wbStagesRaw, lbRoundsRaw);
+  const { wbStages, lbRounds, apply } = withMatchNumbers(wbStagesRaw, lbRoundsRaw);
+  /* "Winner of Match 1" → "GREEN SULTAN" once that result is in: layout keys
+     stay the placeholders, only the text shown in each box resolves. */
+  const shownByLabel = {};
+  Object.entries(resolved).forEach(([ref, name]) => { shownByLabel[apply(ref)] = name; });
+  const shown = (label) => shownByLabel[label] || label;
 
   const colX = (r) => LEAF_W + (r + 1) * COL_GAP;
 
@@ -710,7 +903,7 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
       {ub.matchY.map((round, r) => round.map((node, i) => (
         <div key={`ub-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
-          <span>{node.label}</span>
+          <span>{shown(node.label)}</span>
         </div>
       )))}
 
@@ -726,21 +919,21 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
       {lbLeafLabels.map((label, i) => (
         <div key={`lb-${i}`} className="msf-lbracket-leaf" style={{ top: LB_TOP + i * ROW_H + ROW_H / 2 - LEAF_H / 2, left: 0, height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
-          <span>{label}</span>
+          <span>{shown(label)}</span>
         </div>
       ))}
 
       {lb.freshBoxes.map((box, i) => (
         <div key={`lb-fresh-${i}`} className="msf-lbracket-leaf" style={{ top: box.y - LEAF_H / 2, left: box.x, height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
-          <span>{box.label}</span>
+          <span>{shown(box.label)}</span>
         </div>
       ))}
 
       {lb.matchY.map((round, r) => round.map((node, i) => (
         <div key={`lb-node-${r}-${i}`} className="msf-lbracket-leaf" style={{ top: node.y - LEAF_H / 2, left: colX(r), height: LEAF_H, width: LEAF_W }}>
           <span className="msf-lbracket-leaf__dot" />
-          <span>{node.label}</span>
+          <span>{shown(node.label)}</span>
         </div>
       )))}
 
@@ -755,7 +948,7 @@ function DoubleBracketTree({ wbStages: wbStagesRaw, leaves, lbRounds: lbRoundsRa
 
       <div className="msf-bracket-champion" style={{ left: championX, top: gcY }}>
         <FaTrophy />
-        <span>Champion</span>
+        <span>{champion || 'Champion'}</span>
       </div>
     </div>
   );
@@ -917,7 +1110,9 @@ export default function MatchSchedulesPage() {
   const [pickedLevel, setLevelKey] = useState(LEVELS[0].key);
   const levelKey = lockedLevel || pickedLevel;
   const level = LEVELS.find(l => l.key === levelKey) || LEVELS[0];
-  const [category, setCategory] = useState(null);
+  // Sport → Category → Division picked in the selectors; '' = "first available".
+  const [pick, setPick] = useState({ sport: '', group: '', division: '' });
+  const [sportsByLevel, setSportsByLevel] = useState({}); // Sports & Teams, for division names
   const [search, setSearch] = useState('');
   const [loading, setLoading] = useState(true);
   const [matchesByLevel, setMatchesByLevel] = useState({ elementary: [], highSchool: [], college: [] });
@@ -970,32 +1165,60 @@ export default function MatchSchedulesPage() {
   /* ── Matches visible for the selected level filter ── */
   const levelMatches = useMemo(() => matchesByLevel[level.key] || [], [level, matchesByLevel]);
 
-  /* ── Category tabs are built entirely from whatever sports/categories
-     the admin actually has matches for — never a fixed list ── */
-  const categories = useMemo(() => {
-    const map = new Map();
-    levelMatches.forEach(m => {
-      const c = categoryOf(m);
-      if (!map.has(c.key)) map.set(c.key, c.label);
-    });
-    return Array.from(map.entries()).map(([key, label]) => ({ key, label }));
-  }, [levelMatches]);
+  /* Division names live in Sports & Teams — followed live for this level. */
+  useEffect(() => subscribeSportsTeamsConfig(
+    levelKey,
+    (cfg) => setSportsByLevel((prev) => ({ ...prev, [levelKey]: cfg.sports || [] })),
+    () => {}, // optional: without it, divisions come from the fixtures' own category text
+  ), [levelKey]);
 
-  /* ── Keep the selected category valid as data loads/changes ── */
-  useEffect(() => {
-    if (categories.length === 0) {
-      if (category !== null) setCategory(null);
-      return;
-    }
-    if (!category || !categories.some(c => c.key === category.key)) {
-      setCategory(categories[0]);
-    }
-  }, [categories, category]);
+  /* ── Sport → Category → Division selectors, built entirely from what the
+     admin actually has matches for (never a fixed list). Each level falls
+     back to its first option when the pick doesn't exist (level switched,
+     data changed), so a set is always shown without resetting state. ── */
+  const partsById = useMemo(() => {
+    const sports = sportsByLevel[levelKey] || [];
+    return new Map(levelMatches.map((m) => [m.id, matchParts(m, sports)]));
+  }, [levelMatches, sportsByLevel, levelKey]);
+  const partsOf = useCallback((m) => partsById.get(m.id) || matchParts(m, []), [partsById]);
 
+  const sportOptions = useMemo(() => uniqueValues(levelMatches.map((m) => partsOf(m).sport)), [levelMatches, partsOf]);
+  const selSport = sportOptions.find((s) => norm(s) === norm(pick.sport)) ?? sportOptions[0] ?? null;
+
+  const groupOptions = useMemo(() => uniqueValues(
+    levelMatches.map(partsOf).filter((p) => norm(p.sport) === norm(selSport)).map((p) => p.group),
+  ), [levelMatches, partsOf, selSport]);
+  const selGroup = groupOptions.find((g) => norm(g) === norm(pick.group)) ?? groupOptions[0] ?? '';
+
+  const divisionOptions = useMemo(() => uniqueValues(
+    levelMatches.map(partsOf)
+      .filter((p) => norm(p.sport) === norm(selSport) && norm(p.group) === norm(selGroup))
+      .map((p) => p.division),
+  ), [levelMatches, partsOf, selSport, selGroup]);
+  const selDivision = divisionOptions.find((d) => norm(d) === norm(pick.division)) ?? divisionOptions[0] ?? '';
+
+  const setTitle = [selSport, selGroup].filter(Boolean).join(' ') + (selDivision ? ` · ${selDivision}` : '');
+
+  // Every sport → category → division that has fixtures, for the one dropdown.
+  const selectorTree = useMemo(() => sportOptions.map((sport) => {
+    const inSport = levelMatches.map(partsOf).filter((p) => norm(p.sport) === norm(sport));
+    return {
+      sport,
+      groups: uniqueValues(inSport.map((p) => p.group)).map((group) => ({
+        group,
+        divisions: uniqueValues(inSport.filter((p) => norm(p.group) === norm(group)).map((p) => p.division)),
+      })),
+    };
+  }), [sportOptions, levelMatches, partsOf]);
+
+  // One set = one sport + category + division: its own bracket/rounds.
   const categoryMatches = useMemo(() => {
-    if (!category) return [];
-    return levelMatches.filter(m => categoryOf(m).key === category.key);
-  }, [levelMatches, category]);
+    if (!selSport) return [];
+    return levelMatches.filter((m) => {
+      const p = partsOf(m);
+      return norm(p.sport) === norm(selSport) && norm(p.group) === norm(selGroup) && norm(p.division) === norm(selDivision);
+    });
+  }, [levelMatches, partsOf, selSport, selGroup, selDivision]);
 
   /* ── Rounds/bracket view only for matches that came from the generator
      (they carry a round number or a stage label) ── */
@@ -1115,19 +1338,11 @@ export default function MatchSchedulesPage() {
     }
 
     if (isBracketShaped || isDoubleBracketShaped) {
-      const finals = generatedMatches.filter((m) => {
-        const stage = (m.stage || '').toLowerCase();
-        return stage.includes('final') || stage.includes('champion');
-      });
-      const maxRound = Math.max(...generatedMatches.map(m => (m.round != null ? m.round : -1)));
-      const lastRound = maxRound >= 0 ? generatedMatches.filter(m => m.round === maxRound) : [];
-      const candidates = finals.length ? finals : lastRound;
-      let finalMatch = null;
-      let champ = null;
-      for (const match of candidates) {
-        const winner = winnerNameOf(resultFor(match));
-        if (winner) { finalMatch = match; champ = winner; break; }
-      }
+      // The ONE deciding match (Grand Final / last round) — shared rule in
+      // shared/utils/scheduleFormats.js, covered by the format tests.
+      const finalMatch = decidingMatch(generatedMatches);
+      if (!finalMatch) return null;
+      const champ = winnerNameOf(resultFor(finalMatch));
       if (!champ) return null;
 
       /* Rule: once the final is played, the finalist with the higher rating
@@ -1161,33 +1376,12 @@ export default function MatchSchedulesPage() {
       return (latest === finalMatch ? champ : winnerNameOf(resultFor(latest))).toUpperCase();
     }
 
-    const standings = new Map(); // norm(name) -> { name, wins, diff }
-    const row = (name) => {
-      const k = norm(name);
-      if (!standings.has(k)) standings.set(k, { name, wins: 0, diff: 0 });
-      return standings.get(k);
-    };
-    for (const match of categoryMatches) {
-      const record = resultFor(match);
-      if (!record) return null; // a game is still unplayed
-      row(match.teamA); row(match.teamB);
-      const winner = winnerNameOf(record);
-      if (winner) row(winner).wins += 1;
-      const a = record.teamA, b = record.teamB;
-      if (a?.points != null && b?.points != null) {
-        row(a.name).diff += a.points - b.points;
-        row(b.name).diff += b.points - a.points;
-      }
-    }
-    const ranked = [...standings.values()].sort((x, y) => y.wins - x.wins || y.diff - x.diff);
-    if (!ranked.length) return null;
-    // Level on wins for first place: no champion yet (TBA) until a tie-break
-    // game is added and played — point difference doesn't decide it.
-    if (ranked[1] && ranked[0].wins === ranked[1].wins) return null;
-    return ranked[0].name.toUpperCase();
+    // Round-robin: shared rule (every game played, most wins, a tie on wins = TBA).
+    const leader = roundRobinLeader(categoryMatches, resultFor, winnerNameOf);
+    return leader ? leader.toUpperCase() : null;
   }, [generatedMatches, categoryMatches, raceMatch, isBracketShaped, isDoubleBracketShaped, resultFor, rankingsByLevel]);
 
-  const hasAnyData = categories.length > 0;
+  const hasAnyData = sportOptions.length > 0;
 
   return (
     <div className="ms-page">
@@ -1226,24 +1420,18 @@ export default function MatchSchedulesPage() {
           </p>
         ) : (
           <>
-            {/* Category selector */}
-            <div className="ms-toolbar">
-              <div className="ms-category-tabs">
-                {categories.map(c => (
-                  <button
-                    key={c.key}
-                    className={`ms-category-tab ${category?.key === c.key ? 'ms-category-tab--active' : ''}`}
-                    onClick={() => setCategory(c)}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
+            {/* One dropdown: Sport, then that sport's Category, then its Division. */}
+            <div className="ms-toolbar ms-toolbar--selects">
+              <SetPicker
+                tree={selectorTree}
+                value={{ sport: selSport, group: selGroup, division: selDivision }}
+                onChange={setPick}
+              />
             </div>
 
             {/* Bracket / rounds section (format) */}
             <div className="ms-bracket-card">
-              <h3 className="ms-bracket-title">{category?.label || ''}</h3>
+              <h3 className="ms-bracket-title">{setTitle}</h3>
               {generatedMatches.length > 0 ? (
                 raceMatch ? (
                   <>
@@ -1259,14 +1447,14 @@ export default function MatchSchedulesPage() {
                 ) : isDoubleBracketShaped ? (
                   <div className="msf-dbracket">
                     <div className="msf-dbracket__scroll">
-                      <DoubleBracketTree {...buildSavedDoubleBracketStages(generatedMatches)} />
+                      <DoubleBracketTree {...buildSavedDoubleBracketStages(generatedMatches)} champion={champion} />
                     </div>
                   </div>
                 ) : (
                   <RoundsView matches={generatedMatches} standingsMatches={categoryMatches} resultFor={resultFor} champion={champion} />
                 )
               ) : (
-                <p className="ms-bracket-empty">No bracket or rounds generated yet for {category?.label}.</p>
+                <p className="ms-bracket-empty">No bracket or rounds generated yet for {setTitle}.</p>
               )}
             </div>
 

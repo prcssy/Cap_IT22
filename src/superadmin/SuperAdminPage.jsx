@@ -17,6 +17,7 @@ import {
   FaUsers, FaRunning, FaUsersCog, FaCalendarAlt, FaUserCheck, FaClock,
   FaSync, FaDownload, FaChartPie, FaChevronDown, FaCheck, FaUserShield, FaSearch,
 } from 'react-icons/fa';
+import { matchStart, matchEnd } from '../shared/utils/matchTime';
 
 /* ═══════════════════════════════════════════════════════════════
    DATA ANALYTICS — super admin only
@@ -151,8 +152,6 @@ const STATUS_BUCKETS = [
   { key: 'upcoming', label: 'Upcoming', color: '#f5a623' },
 ];
 
-const ASSUMED_MATCH_MINUTES = 120; // same assumption as DashboardPage.jsx
-
 function normText(value) {
   return (value || '').trim().toLowerCase();
 }
@@ -172,12 +171,10 @@ function displayCategory(category) {
     .trim();
 }
 
+// Same start/end rule as every other page (incl. moderator-added time).
 function matchWindow(match) {
-  if (!match.date || !match.time) return null;
-  const start = new Date(`${match.date}T${match.time}`);
-  if (Number.isNaN(start.getTime())) return null;
-  const end = new Date(start.getTime() + ASSUMED_MATCH_MINUTES * 60000);
-  return { start, end };
+  const start = matchStart(match);
+  return start ? { start, end: matchEnd(match) } : null;
 }
 
 function recordIdentity(record) {
@@ -335,6 +332,9 @@ function BarChart({ bars }) {
   const maxValue = Math.ceil(Math.max(1, ...bars.map(b => b.value)) / ticks) * ticks;
   const slotW = plotW / bars.length;
   const barW = Math.min(30, slotW * 0.5);
+  // Cut a label only when its slot is too narrow for it (~6.5 viewBox units
+  // per character at the axis font size) — a lone "Basketball" has room.
+  const maxLabelChars = Math.max(6, Math.floor(slotW / 6.5));
 
   return (
     <div className="sa-chart">
@@ -371,7 +371,7 @@ function BarChart({ bars }) {
                 className="sa-axis sa-axis--x"
                 textAnchor="middle"
               >
-                {bar.label.length > 9 ? `${bar.label.slice(0, 8)}…` : bar.label}
+                {bar.label.length > maxLabelChars ? `${bar.label.slice(0, maxLabelChars - 1)}…` : bar.label}
               </text>
             </g>
           );
@@ -1224,7 +1224,7 @@ export default function SuperAdminPage() {
 
           {/* ── Row 1 ── */}
           <div className="sa-grid sa-grid--2">
-            <div className="sa-card">
+            <div className="sa-card sa-card--chart">
               <div className="sa-card__head">
                 <h3>Sports Participation</h3>
                 <span className="sa-card__tag">Top 8</span>
@@ -1232,7 +1232,7 @@ export default function SuperAdminPage() {
               {loading ? <p className="sa-loading">Loading…</p> : <BarChart bars={sportBars} />}
             </div>
 
-            <div className="sa-card">
+            <div className="sa-card sa-card--chart">
               <div className="sa-card__head">
                 <h3>User Registration Over Time</h3>
                 <span className="sa-card__tag">{range.label}</span>
