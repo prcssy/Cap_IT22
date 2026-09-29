@@ -170,12 +170,33 @@ const minutesToTimeStr = (mins) => {
   const m = mins % 60;
   return `${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
 };
+const formatGapMinutes = (mins) => {
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return `${h ? `${h}h` : ''}${m ? `${m}m` : ''}` || '0m';
+};
 const addDaysToDateStr = (dateStr, days) => {
   const [y, mo, d] = dateStr.split('-').map(Number);
   const dt = new Date(y, mo - 1, d);
   dt.setDate(dt.getDate() + days);
   return `${dt.getFullYear()}-${String(dt.getMonth() + 1).padStart(2, '0')}-${String(dt.getDate()).padStart(2, '0')}`;
 };
+
+/* Two matches at the same venue conflict if their assumed play windows
+   overlap — not just if they start at the exact same minute. A 09:00
+   match and a 09:30 match at the same venue still collide if the first
+   one's sport isn't done by 09:30. Each match's window is
+   [start, start + slotGapFor(its own sport)) — the same duration already
+   used to space that sport's slots (90m for Basketball/Volleyball, 60m
+   default for everything else). Matches on different days never overlap. */
+function timeWindowsOverlap(dateA, timeA, sportA, dateB, timeB, sportB) {
+  if (!dateA || !timeA || !dateB || !timeB || dateA !== dateB) return false;
+  const startA = timeStrToMinutes(timeA);
+  const endA = startA + slotGapFor(sportA);
+  const startB = timeStrToMinutes(timeB);
+  const endB = startB + slotGapFor(sportB);
+  return startA < endB && startB < endA;
+}
 
 function assignAutoSchedule(matches, startDate, startTime) {
   let currentDate = startDate;
@@ -201,6 +222,68 @@ function assignAutoSchedule(matches, startDate, startTime) {
       prevKey = key;
     }
     return { ...m, date: currentDate, time: minutesToTimeStr(currentMinutes) };
+  });
+}
+
+/* ── Automatic venue assignment ──
+   Spreads `venueNames` across `matches` round-robin style for balance,
+   while never double-booking a venue for overlapping play windows —
+   checked with timeWindowsOverlap against `existingSchedules` (every
+   already-saved match, any sport/level, same as venueOccupied below) as
+   well as every match this same call has already placed. Matches that
+   share a slot (see assignAutoSchedule's header comment: "played on
+   different courts at once") need one venue each; once every checked
+   venue's window is already taken at that slot, the match is pushed
+   slotGapFor(sport) minutes later (rolling to the next day past
+   DAY_CUTOFF_MINUTES, same as assignAutoSchedule) and retried, so it
+   still lands on a free venue+time instead of blocking the save. */
+function assignAutoVenues(matches, venueNames, existingSchedules, dayStartTime) {
+  if (!venueNames.length) return matches;
+
+  const bookedElsewhere = existingSchedules.filter(m => m.location && m.date && m.time);
+  const placedThisBatch = [];
+
+  const isFree = (venue, date, time, sport) => {
+    const conflicts = (other) => (
+      (other.location || '') === venue
+      && timeWindowsOverlap(date, time, sport, other.date, other.time, other.sport)
+    );
+    return !bookedElsewhere.some(conflicts) && !placedThisBatch.some(conflicts);
+  };
+
+  let cursor = 0;
+  return matches.map((m) => {
+    let date = m.date;
+    let time = m.time;
+    let tries = 0;
+    const maxTries = venueNames.length * 50; // safety valve against runaway loops
+
+    while (tries < maxTries) {
+      const venue = venueNames[cursor % venueNames.length];
+      if (isFree(venue, date, time, m.sport)) {
+        cursor++;
+        const placed = { ...m, date, time, location: venue };
+        placedThisBatch.push(placed);
+        return placed;
+      }
+      cursor++;
+      tries++;
+      if (tries % venueNames.length === 0) {
+        const mins = timeStrToMinutes(time) + slotGapFor(m.sport);
+        if (mins >= DAY_CUTOFF_MINUTES) {
+          date = addDaysToDateStr(date, 1);
+          time = dayStartTime;
+        } else {
+          time = minutesToTimeStr(mins);
+        }
+      }
+    }
+    // Exhausted every venue across every retry (only possible with a huge
+    // batch and a single checked venue) — hand it the first venue rather
+    // than loop forever; the admin can still fix it via the Edit modal.
+    const placed = { ...m, date, time, location: venueNames[0] };
+    placedThisBatch.push(placed);
+    return placed;
   });
 }
 
@@ -951,6 +1034,9 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     setSelCategory(null);
     setSelFormat(null);
     setActiveRound(0);
+    setVenueMode('manual');
+    setAutoVenueNames([]);
+    setManualMatchVenues({});
   }
 
   /* Start date/time for auto-scheduling a freshly generated set — the admin
@@ -958,6 +1044,17 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
      afterward via the per-match Edit modal. */
   const [scheduleStartDate, setScheduleStartDate] = useState('');
   const [scheduleStartTime, setScheduleStartTime] = useState('');
+
+  /* Venue assignment for a freshly generated set — 'manual' (default,
+     matches today's behavior: venue stays blank unless picked per match)
+     or 'automatic' (spread the checked venues across every match, see
+     assignAutoVenues). `manualMatchVenues` only applies to the
+     round-robin/double round-robin match-card grid, keyed by
+     `${activeRound}-${cardIndex}` — bracket/double-bracket/race formats
+     have no per-match card at generation time to attach a picker to. */
+  const [venueMode, setVenueMode] = useState('manual');
+  const [autoVenueNames, setAutoVenueNames] = useState([]);
+  const [manualMatchVenues, setManualMatchVenues] = useState({});
 
   const [savedSchedules, setSavedSchedules] = useState([]); // persisted matches, this level
   const [matchRecords, setMatchRecords] = useState([]);     // results saved by Moderator, this level
@@ -1167,6 +1264,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     setSelCategory(null);
     setSelFormat(null);
     setActiveRound(0);
+    setManualMatchVenues({});
   };
   const handlePickCategory = (opt) => {
     setSelCategory(opt.raw);
@@ -1175,12 +1273,14 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     const allowed = formatsForDivision(opt.raw.format);
     setSelFormat(allowed.length === 1 ? allowed[0] : null);
     setActiveRound(0);
+    setManualMatchVenues({});
   };
-  const handlePickFormat = (opt) => { setSelFormat(opt.raw); setActiveRound(0); };
+  const handlePickFormat = (opt) => { setSelFormat(opt.raw); setActiveRound(0); setManualMatchVenues({}); };
 
   const handleReset = () => {
     setSelSport(null); setSelCategory(null); setSelFormat(null); setActiveRound(0);
     setScheduleStartDate(''); setScheduleStartTime('');
+    setVenueMode('manual'); setAutoVenueNames([]); setManualMatchVenues({});
   };
 
   const ready = selSport && selCategory && selFormat && eligibleTeams.length >= 2;
@@ -1318,6 +1418,22 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
     matches = assignAutoSchedule(matches, scheduleStartDate, scheduleStartTime);
 
+    if (venueMode === 'automatic' && autoVenueNames.length > 0) {
+      matches = assignAutoVenues(matches, autoVenueNames, allSchedules, scheduleStartTime);
+    } else if (venueMode === 'manual') {
+      // Only round-robin/double round-robin matches (round set, no stage)
+      // have a per-match venue picker on the generation screen — see
+      // manualMatchVenues' declaration.
+      const roundCounters = {};
+      matches = matches.map(m => {
+        if (m.round == null || m.stage) return m;
+        const idx = roundCounters[m.round] ?? 0;
+        roundCounters[m.round] = idx + 1;
+        const picked = manualMatchVenues[`${m.round - 1}-${idx}`];
+        return picked ? { ...m, location: picked } : m;
+      });
+    }
+
     setSavingSchedule(true);
     try {
       const merged = await saveGeneratedSchedule(level, matches, actorRole);
@@ -1346,18 +1462,21 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
   /* ── Venue availability ──
      A venue is "occupied" when another match — any sport, any level,
-     since it's the same physical space — already sits at the exact same
-     date + time. `excludeId` lets the Edit modal ignore the match it's
-     currently editing, so re-saving it without changing date/time/venue
-     doesn't lock itself out. Blank date/time means nothing to conflict
-     with yet, so nothing is disabled until both are picked. */
-  const venueOccupied = (venueName, date, time, excludeId) => {
+     since it's the same physical space — has an overlapping play window
+     there (see timeWindowsOverlap: same day, [start, start+duration)
+     ranges intersect, duration = slotGapFor each match's own sport) —
+     not just an exact date+time match, so e.g. a 09:00 Badminton game
+     and a 09:30 Basketball game at the same court still get caught.
+     `excludeId` lets the Edit modal ignore the match it's currently
+     editing, so re-saving it without changing date/time/venue doesn't
+     lock itself out. Blank date/time means nothing to conflict with yet,
+     so nothing is disabled until both are picked. */
+  const venueOccupied = (venueName, date, time, sport, excludeId) => {
     if (!venueName || !date || !time) return false;
     return allSchedules.some(m =>
       m.id !== excludeId &&
       (m.location || '') === venueName &&
-      m.date === date &&
-      m.time === time
+      timeWindowsOverlap(date, time, sport, m.date, m.time, m.sport)
     );
   };
 
@@ -1390,7 +1509,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
     }
     const validPairs = filledPairs;
     if (!addForm.sport || !addForm.category || !addForm.date || !addForm.time || validPairs.length === 0) return;
-    if (venueOccupied(addForm.location, addForm.date, addForm.time, null)) {
+    if (venueOccupied(addForm.location, addForm.date, addForm.time, addForm.sport, null)) {
       setToast({ text: 'That venue is already booked at this date & time — pick another.' });
       return;
     }
@@ -1477,7 +1596,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
       setToast({ text: 'A team cannot be scheduled against itself — pick two different teams.' });
       return;
     }
-    if (venueOccupied(editForm.location, editForm.date, editForm.time, editForm.id)) {
+    if (venueOccupied(editForm.location, editForm.date, editForm.time, editForm.sport, editForm.id)) {
       setToast({ text: 'That venue is already booked at this date & time — pick another.' });
       return;
     }
@@ -1998,6 +2117,22 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                             <span>{b}</span>
                           </div>
                         </div>
+                        {venueMode === 'manual' && venues.length > 0 && (
+                          <div className="msf-matchcard__venue">
+                            <select
+                              value={manualMatchVenues[`${activeRound}-${i}`] || ''}
+                              onChange={e => setManualMatchVenues(prev => ({
+                                ...prev,
+                                [`${activeRound}-${i}`]: e.target.value,
+                              }))}
+                            >
+                              <option value="">Venue (optional)</option>
+                              {venues.map(v => (
+                                <option key={v.id} value={v.name}>{v.name}</option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
                       </div>
                     ))}
                   </div>
@@ -2005,7 +2140,56 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               </>
             )}
 
-            <div className="msf-form-row" style={{ marginTop: 20 }}>
+            <div className="msf-venuemode-block" style={{ marginTop: 20 }}>
+              <label className="msf-venuemode-block__title">Venue Assignment</label>
+              <div className="msf-venuemode">
+                <label className="msf-radio">
+                  <input
+                    type="radio"
+                    name="venueMode"
+                    checked={venueMode === 'manual'}
+                    onChange={() => setVenueMode('manual')}
+                  />
+                  I'll set venues manually
+                </label>
+                <label className="msf-radio">
+                  <input
+                    type="radio"
+                    name="venueMode"
+                    checked={venueMode === 'automatic'}
+                    onChange={() => setVenueMode('automatic')}
+                  />
+                  Automatically assign venues
+                </label>
+              </div>
+              {venueMode === 'automatic' && (
+                venues.length === 0 ? (
+                  <p className="msf-form-note">No venues configured yet — add venues in the Venues tab first.</p>
+                ) : (
+                  <>
+                    <div className="msf-venuechecklist">
+                      {venues.map(v => (
+                        <label key={v.id} className="msf-checkbox">
+                          <input
+                            type="checkbox"
+                            checked={autoVenueNames.includes(v.name)}
+                            onChange={() => setAutoVenueNames(prev => (
+                              prev.includes(v.name) ? prev.filter(n => n !== v.name) : [...prev, v.name]
+                            ))}
+                          />
+                          {v.name}
+                        </label>
+                      ))}
+                    </div>
+                    {autoVenueNames.length === 0 && (
+                      <p className="msf-form-note">Check at least one venue to auto-assign.</p>
+                    )}
+                  </>
+                )
+              )}
+            </div>
+
+            <div className="msf-form-row">
               <div className="msf-form-group">
                 <label>Start Date</label>
                 <input
@@ -2026,13 +2210,16 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
             <p className="msf-form-note">
               {isRace
                 ? 'The race starts at this date and time, with every team in the same event. You can still change the date, time, or venue afterward from the list below.'
-                : 'Matches are auto-scheduled from here, 1h30m apart per round/stage (matches in the same round or stage share a slot). You can still change the date, time, or venue of any match afterward from the list below.'}
+                : `Matches are auto-scheduled from here, ${formatGapMinutes(slotGapFor(selSport?.name))} apart per round/stage (matches in the same round or stage share a slot). You can still change the date, time, or venue of any match afterward from the list below.`}
             </p>
 
             <div className="msf-savebar">
               <button
                 className="msf-btn-primary"
-                disabled={savingSchedule || !scheduleStartDate || !scheduleStartTime}
+                disabled={
+                  savingSchedule || !scheduleStartDate || !scheduleStartTime
+                  || (venueMode === 'automatic' && autoVenueNames.length === 0)
+                }
                 onClick={handleSaveGenerated}
               >
                 {savingSchedule ? 'Saving…' : 'Save Generated Schedule'}
@@ -2566,7 +2753,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 >
                   <option value="">Select a venue</option>
                   {venues.map(v => {
-                    const occupied = venueOccupied(v.name, addForm.date, addForm.time, null);
+                    const occupied = venueOccupied(v.name, addForm.date, addForm.time, addForm.sport, null);
                     return (
                       <option key={v.id} value={v.name} disabled={occupied}>
                         {v.name}{occupied ? ' (Occupied)' : ''}
@@ -2719,7 +2906,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 >
                   <option value="">Select a venue</option>
                   {venues.map(v => {
-                    const occupied = venueOccupied(v.name, editForm.date, editForm.time, editForm.id);
+                    const occupied = venueOccupied(v.name, editForm.date, editForm.time, editForm.sport, editForm.id);
                     return (
                       <option key={v.id} value={v.name} disabled={occupied}>
                         {v.name}{occupied ? ' (Occupied)' : ''}
