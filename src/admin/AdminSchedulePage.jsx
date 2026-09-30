@@ -2070,7 +2070,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               <div className="msf-stats">
                 <div className="msf-stat"><span>Teams</span><b>{eligibleTeams.length}</b></div>
                 <div className="msf-stat">
-                  <span>{isRace ? 'Total races' : 'Total matches'}</span>
+                  <span>{isRace ? 'Total events' : 'Total matches'}</span>
                   <b>{totalMatches}{isDoubleBracket ? ` (up to ${totalMatches + 1})` : ''}</b>
                 </div>
               </div>
@@ -2319,7 +2319,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
                 <div className="msf-tsummary__row"><span>Rounds</span><b>{rounds.length}</b></div>
               )}
               <div className="msf-tsummary__total">
-                <span>{isRace ? 'Total Races' : 'Total Matches'}</span>
+                <span>{isRace ? 'Total Events' : 'Total Matches'}</span>
                 <b>{totalMatches}</b>
                 {isDoubleBracket && <em>(up to {totalMatches + 1} if necessary)</em>}
               </div>
@@ -2349,7 +2349,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
                 <div className="msf-summary__table">
                   {isRace ? (
-                    <RaceLanes teams={eligibleTeams} title={`Race 1 — ${eligibleTeams.length} teams`} />
+                    <RaceLanes teams={eligibleTeams} title={`Event 1 — ${eligibleTeams.length} teams`} />
                   ) : isDoubleBracket ? (
                     <>
                       <div className="msf-summary__leg">UPPER BRACKET (WINNER'S BRACKET)</div>
@@ -2752,7 +2752,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
               {addForm.raceTeams?.length >= 3 && (
                 <div className="msf-form-group">
-                  <RaceLanes teams={addForm.raceTeams.map(name => ({ name }))} title={`Race — ${addForm.raceTeams.length} teams`} />
+                  <RaceLanes teams={addForm.raceTeams.map(name => ({ name }))} title={`Event — ${addForm.raceTeams.length} teams`} />
                   <p className="msf-form-note" style={{ marginTop: 6 }}>
                     The moderator asked for all of these teams together, so they're scheduled as one race.
                   </p>
@@ -2885,7 +2885,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
               {isRaceMatch(editForm) ? (
                 <div className="msf-form-group">
-                  <RaceLanes teams={raceParticipants(editForm)} title={`Race — ${raceParticipants(editForm).length} teams`} />
+                  <RaceLanes teams={raceParticipants(editForm)} title={`Event — ${raceParticipants(editForm).length} teams`} />
                   <p className="msf-form-note" style={{ marginTop: 6 }}>
                     All teams race together in this one event. Teams are locked because this came from the schedule
                     generator — delete and re-generate to change who takes part.
@@ -3000,7 +3000,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
               <div className="msf-confirm-delete" onClick={e => e.stopPropagation()}>
                 <h3>Delete this schedule?</h3>
                 <p>
-                  This will permanently remove <b>{isRaceMatch(editForm) ? `the ${raceParticipants(editForm).length}-team race` : `${editForm.teamA} vs ${editForm.teamB}`}</b>
+                  This will permanently remove <b>{isRaceMatch(editForm) ? `the ${raceParticipants(editForm).length}-team event` : `${editForm.teamA} vs ${editForm.teamB}`}</b>
                   {editForm.date ? ` on ${editForm.date}` : ''}. This can't be undone.
                 </p>
                 {recordForMatch(editForm) && (
