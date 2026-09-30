@@ -161,6 +161,13 @@ const slotGapFor = (sport) =>
 const DAY_CUTOFF_MINUTES = 17 * 60; // 5:00 PM
 
 const scheduleGroupKey = (m) => m.stage ?? `round-${m.round}`;
+// Basketball/volleyball: every match gets its own 1:30 slot, even within
+// the same round/stage. Other sports still share one slot per round.
+const autoScheduleGroupKey = (m) => (
+  m.sport && SLOT_GAP_BY_SPORT[String(m.sport).trim().toLowerCase()]
+    ? m.id
+    : scheduleGroupKey(m)
+);
 const timeStrToMinutes = (t) => {
   const [h, m] = t.split(':').map(Number);
   return h * 60 + m;
@@ -205,11 +212,7 @@ function assignAutoSchedule(matches, startDate, startTime) {
   let isFirstGroup = true;
 
   return matches.map((m) => {
-    // Basketball/volleyball: every match gets its own 1:30 slot, even within
-    // the same round/stage. Other sports still share one slot per round.
-    const key = m.sport && SLOT_GAP_BY_SPORT[String(m.sport).trim().toLowerCase()]
-      ? m.id
-      : scheduleGroupKey(m);
+    const key = autoScheduleGroupKey(m);
     if (key !== prevKey) {
       if (!isFirstGroup) {
         currentMinutes += slotGapFor(m.sport);
@@ -236,7 +239,12 @@ function assignAutoSchedule(matches, startDate, startTime) {
    venue's window is already taken at that slot, the match is pushed
    slotGapFor(sport) minutes later (rolling to the next day past
    DAY_CUTOFF_MINUTES, same as assignAutoSchedule) and retried, so it
-   still lands on a free venue+time instead of blocking the save. */
+   still lands on a free venue+time instead of blocking the save.
+   A push never lets a later round/stage start before an earlier one has
+   ended: each group (same key as assignAutoSchedule) starts no earlier
+   than the latest end of every group before it, so one delayed match
+   delays everything after it instead of overlapping the next round (same
+   team in two games at once) or running a semifinal before its QF. */
 function assignAutoVenues(matches, venueNames, existingSchedules, dayStartTime) {
   if (!venueNames.length) return matches;
 
@@ -251,39 +259,73 @@ function assignAutoVenues(matches, venueNames, existingSchedules, dayStartTime) 
     return !bookedElsewhere.some(conflicts) && !placedThisBatch.some(conflicts);
   };
 
+  // Absolute minutes since the epoch (UTC-based, so no DST drift) so
+  // start/end comparisons work across day boundaries.
+  const toAbs = (date, time) => {
+    const [y, mo, d] = date.split('-').map(Number);
+    return Date.UTC(y, mo - 1, d) / 60000 + timeStrToMinutes(time);
+  };
+  const fromAbs = (abs) => {
+    const dt = new Date(Math.floor(abs / 1440) * 1440 * 60000);
+    const date = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+    return { date, time: minutesToTimeStr(abs % 1440) };
+  };
+  // Past the day cutoff → next day at the admin's start time.
+  const clampToDay = (abs) => {
+    if (abs % 1440 < DAY_CUTOFF_MINUTES) return abs;
+    return (Math.floor(abs / 1440) + 1) * 1440 + timeStrToMinutes(dayStartTime);
+  };
+
   let cursor = 0;
+  let prevKey = null;
+  let groupFloor = -Infinity; // earliest start allowed for the current group
+  let latestEnd = -Infinity;  // latest end of everything placed so far
+
   return matches.map((m) => {
-    let date = m.date;
-    let time = m.time;
+    const gap = slotGapFor(m.sport);
+    const key = autoScheduleGroupKey(m);
+    if (key !== prevKey) {
+      groupFloor = latestEnd;
+      prevKey = key;
+    }
+
+    let start = clampToDay(Math.max(toAbs(m.date, m.time), groupFloor));
+    let { date, time } = fromAbs(start);
     let tries = 0;
     const maxTries = venueNames.length * 50; // safety valve against runaway loops
+    let location = null;
 
     while (tries < maxTries) {
       const venue = venueNames[cursor % venueNames.length];
-      if (isFree(venue, date, time, m.sport)) {
-        cursor++;
-        const placed = { ...m, date, time, location: venue };
-        placedThisBatch.push(placed);
-        return placed;
-      }
       cursor++;
+      if (isFree(venue, date, time, m.sport)) { location = venue; break; }
       tries++;
       if (tries % venueNames.length === 0) {
-        const mins = timeStrToMinutes(time) + slotGapFor(m.sport);
-        if (mins >= DAY_CUTOFF_MINUTES) {
-          date = addDaysToDateStr(date, 1);
-          time = dayStartTime;
-        } else {
-          time = minutesToTimeStr(mins);
-        }
+        start = clampToDay(start + gap);
+        ({ date, time } = fromAbs(start));
       }
     }
     // Exhausted every venue across every retry (only possible with a huge
     // batch and a single checked venue) — hand it the first venue rather
     // than loop forever; the admin can still fix it via the Edit modal.
-    const placed = { ...m, date, time, location: venueNames[0] };
+    const placed = { ...m, date, time, location: location ?? venueNames[0] };
     placedThisBatch.push(placed);
+    latestEnd = Math.max(latestEnd, start + gap);
     return placed;
+  });
+}
+
+/* Venue double-bookings in a batch whose venues were picked by hand: each
+   match is checked against `existingSchedules` and every other match in
+   the batch. Returns the conflicting matches (empty = OK to save). */
+function findVenueConflicts(matches, existingSchedules) {
+  return matches.filter((m, i) => {
+    if (!m.location) return false;
+    const clashes = (other) => (
+      (other.location || '') === m.location
+      && timeWindowsOverlap(m.date, m.time, m.sport, other.date, other.time, other.sport)
+    );
+    return existingSchedules.some(clashes) || matches.some((o, j) => j !== i && clashes(o));
   });
 }
 
@@ -1023,22 +1065,6 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   const [selFormat,   setSelFormat]   = useState(null); // { id, label }
   const [activeRound, setActiveRound] = useState(0);
 
-  // Sport/category/format picks belong to one level's own sports list, so
-  // clear them when the level changes (e.g. Track and Field exists in
-  // Elementary but not College). Same "adjust state when a prop changes"
-  // render-time pattern as the pendingRequest handling below.
-  const [pickedLevel, setPickedLevel] = useState(level);
-  if (pickedLevel !== level) {
-    setPickedLevel(level);
-    setSelSport(null);
-    setSelCategory(null);
-    setSelFormat(null);
-    setActiveRound(0);
-    setVenueMode('manual');
-    setAutoVenueNames([]);
-    setManualMatchVenues({});
-  }
-
   /* Start date/time for auto-scheduling a freshly generated set — the admin
      picks these before saving, and every match still stays editable
      afterward via the per-match Edit modal. */
@@ -1055,6 +1081,23 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
   const [venueMode, setVenueMode] = useState('manual');
   const [autoVenueNames, setAutoVenueNames] = useState([]);
   const [manualMatchVenues, setManualMatchVenues] = useState({});
+
+  // Sport/category/format picks belong to one level's own sports list, so
+  // clear them when the level changes (e.g. Track and Field exists in
+  // Elementary but not College). Same "adjust state when a prop changes"
+  // render-time pattern as the pendingRequest handling below. Must stay
+  // below every useState it resets, or switching levels hits a TDZ error.
+  const [pickedLevel, setPickedLevel] = useState(level);
+  if (pickedLevel !== level) {
+    setPickedLevel(level);
+    setSelSport(null);
+    setSelCategory(null);
+    setSelFormat(null);
+    setActiveRound(0);
+    setVenueMode('manual');
+    setAutoVenueNames([]);
+    setManualMatchVenues({});
+  }
 
   const [savedSchedules, setSavedSchedules] = useState([]); // persisted matches, this level
   const [matchRecords, setMatchRecords] = useState([]);     // results saved by Moderator, this level
@@ -1418,8 +1461,15 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
     matches = assignAutoSchedule(matches, scheduleStartDate, scheduleStartTime);
 
+    // Saving replaces this level's existing copy of the same set (see
+    // saveGeneratedSchedule), so its old matches mustn't count as venue
+    // conflicts for the new ones.
+    const otherSchedules = allSchedules.filter(m => !(
+      m.level === level && inScheduleSet(m, selSport.name, selCategory.label, selCategory.value)
+    ));
+
     if (venueMode === 'automatic' && autoVenueNames.length > 0) {
-      matches = assignAutoVenues(matches, autoVenueNames, allSchedules, scheduleStartTime);
+      matches = assignAutoVenues(matches, autoVenueNames, otherSchedules, scheduleStartTime);
     } else if (venueMode === 'manual') {
       // Only round-robin/double round-robin matches (round set, no stage)
       // have a per-match venue picker on the generation screen — see
@@ -1432,6 +1482,14 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
         const picked = manualMatchVenues[`${m.round - 1}-${idx}`];
         return picked ? { ...m, location: picked } : m;
       });
+      const clashes = findVenueConflicts(matches, otherSchedules);
+      if (clashes.length > 0) {
+        const c = clashes[0];
+        setToast({
+          text: `${c.location} is already booked at ${c.date} ${c.time} (${c.teamA} vs ${c.teamB}, round ${c.round}) — pick a different venue or use automatic assignment.`,
+        });
+        return;
+      }
     }
 
     setSavingSchedule(true);
