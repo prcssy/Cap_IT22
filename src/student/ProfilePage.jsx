@@ -1,7 +1,6 @@
 import React, { useState, useContext, useEffect } from 'react';
 import './ProfilePage.css';
 import Contact from '../public/Landing/Contact/Contact';
-import { BrandingContext } from '../shared/context/BrandingContext';
 import EventsJoinedModal from '../shared/components/EventsJoinedModal/EventsJoinedModal';
 import AwardsModal from '../shared/components/AwardsModal/AwardsModal';
 import SubmittedRegistrationsModal from '../shared/components/SubmittedRegistrationsModal/SubmittedRegistrationsModal';
@@ -10,14 +9,16 @@ import {
   FaUserCircle, FaTrophy, FaMedal, FaClipboardList, FaChevronRight,
   FaEnvelope,
   FaUserGraduate, FaUsers, FaBasketballBall, FaUserTag,
-  FaKey, FaClock, FaEdit, FaUser, FaUserTie, FaPhoneAlt,
+  FaKey, FaClock, FaEdit, FaUser, FaUserTie, FaPhoneAlt, FaCamera,
 } from 'react-icons/fa';
 import { AuthContext } from '../shared/context/AuthContext';
-import { getMyRegistrations, subscribeCoaches } from '../shared/services/firestoreService';
+import { getMyRegistrations, subscribeCoaches, updateMyProfilePhoto } from '../shared/services/firestoreService';
+import { resizeImageToDataUrl } from '../shared/utils/resizeImage';
 import { getSchoolLevel } from '../shared/utils/schoolLevel';
 import { isMessengerUrl } from '../shared/utils/messengerLink';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { FaFacebookMessenger } from 'react-icons/fa6';
+import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
 function formatRegDate(value) {
   const date = value?.toDate ? value.toDate() : (value ? new Date(value) : null);
@@ -34,10 +35,12 @@ const STAFF_ROLES = ['admin', 'moderator', 'superadmin', 'coach'];
 // Shows the player's photo when we have one, otherwise a generic silhouette.
 // `failedSrc` tracks a URL that errored (deleted/expired) so we drop back to
 // the placeholder instead of leaving a broken-image icon in the card.
-function ProfileAvatar({ src, name }) {
+function ProfileAvatar({ src, name, onUpload, busy }) {
   const [failedSrc, setFailedSrc] = useState(null);
+  const inputRef = React.useRef(null);
   const showPhoto = src && src !== failedSrc;
   return (
+    <div className="profile-avatar-wrap">
     <div className="profile-avatar" aria-label={name ? `${name}'s photo` : 'Profile photo'}>
       {showPhoto ? (
         <img
@@ -49,6 +52,29 @@ function ProfileAvatar({ src, name }) {
       ) : (
         <FaUser className="profile-avatar__placeholder" aria-hidden="true" />
       )}
+    </div>
+    {/* Staff only: players' photo comes from their registration. */}
+    {onUpload && (
+      <>
+        <button
+          type="button"
+          className="profile-avatar__upload"
+          onClick={() => inputRef.current?.click()}
+          disabled={busy}
+          aria-label={src ? 'Change photo' : 'Upload photo'}
+          title={src ? 'Change photo' : 'Upload photo'}
+        >
+          <FaCamera />
+        </button>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          onChange={(e) => { const f = e.target.files?.[0]; e.target.value = ''; if (f) onUpload(f); }}
+        />
+      </>
+    )}
     </div>
   );
 }
@@ -154,7 +180,6 @@ function StatCard({ icon, count, label, arrow, onClick }) {
 
 export default function ProfilePage() {
   const { currentUser, userProfile, coachProfile, updatePassword } = useContext(AuthContext);
-  const { schoolName } = useContext(BrandingContext);
 
   /* ── All modal states ── */
   const [eventsModalOpen,        setEventsModalOpen]        = useState(false);
@@ -239,7 +264,36 @@ export default function ProfilePage() {
   // The profile photo is the one the student attached to their most recent
   // registration. Staff accounts have no registration, so they get the
   // placeholder silhouette.
-  const photoURL      = latestReg?.photoURL || coachProfile?.photoURL || '';
+  // Staff upload their own photo here (users/{uid}.photoURL); `staffPhoto`
+  // shows a fresh upload right away (userProfile is only read at login).
+  const [staffPhoto, setStaffPhoto] = useState(undefined);
+  const [photoBusy, setPhotoBusy] = useState(false);
+  const [photoMsg, setPhotoMsg] = useState(null);
+  const photoURL      = latestReg?.photoURL || coachProfile?.photoURL
+    || (staffPhoto !== undefined ? staffPhoto : userProfile?.photoURL) || '';
+  const canUploadPhoto = ['admin', 'moderator', 'superadmin'].includes(userProfile?.role);
+
+  const handlePhotoUpload = async (file) => {
+    if (!file.type.startsWith('image/') || file.size > 5 * 1024 * 1024) {
+      setPhotoMsg({ tone: 'error', text: 'Choose an image file (JPG, PNG or WEBP) up to 5MB.' });
+      return;
+    }
+    setPhotoBusy(true);
+    setPhotoMsg(null);
+    try {
+      const dataUrl = await resizeImageToDataUrl(file, {
+        maxWidth: 320, maxHeight: 320, mode: 'contain', format: 'jpeg', quality: 0.85, maxBytes: 60 * 1024,
+      });
+      await updateMyProfilePhoto(currentUser.uid, dataUrl, userProfile.role);
+      setStaffPhoto(dataUrl);
+      setPhotoMsg({ tone: 'success', text: 'Profile photo updated.' });
+    } catch (err) {
+      console.error('Failed to update profile photo:', err);
+      setPhotoMsg({ tone: 'error', text: 'Could not upload the photo — check your connection and try again.' });
+    } finally {
+      setPhotoBusy(false);
+    }
+  };
 
   // "Submitted Registrations" = every registration this student has ever
   // filed, regardless of decision. "Events Joined" = the subset staff has
@@ -287,7 +341,7 @@ export default function ProfilePage() {
     <div className="profile-page">
 
       <header className="dash-header">
-        <h1 className="dash-header__title">{schoolName}</h1>
+        <HeaderBrand titleClassName="dash-header__title" />
       </header>
 
       <div className="profile-page-intro">
@@ -299,9 +353,15 @@ export default function ProfilePage() {
 
         {/* Identity card */}
         <div className="profile-identity-card">
-          <ProfileAvatar src={photoURL} name={displayName} />
+          <ProfileAvatar
+            src={photoURL}
+            name={displayName}
+            onUpload={canUploadPhoto ? handlePhotoUpload : undefined}
+            busy={photoBusy}
+          />
           <div className="profile-identity-left">
             <h2 className="profile-full-name">{displayName.toUpperCase()}</h2>
+            {photoMsg && <p className={`profile-photo-msg profile-photo-msg--${photoMsg.tone}`}>{photoMsg.text}</p>}
             <p className="profile-student-number">
               Student Name
             </p>

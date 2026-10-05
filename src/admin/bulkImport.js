@@ -246,7 +246,7 @@ function sheetMatrix(ws) {
   return out;
 }
 
-/* Same navy-backed logo the manual upload produces (see LOGO_OPTIONS), plus
+/* Same transparent logo the manual upload produces (see LOGO_OPTIONS), plus
    the picture's own pixel size. Excel, by default, downsamples every picture
    to the size it's drawn on the sheet when the file is saved — a logo shrunk
    to fit a small Logo cell is stored at ~100 px, so it has to be stretched up

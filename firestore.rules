@@ -66,7 +66,9 @@ service cloud.firestore {
         && optionalString(data, 'email', 254)
         && optionalString(data, 'gender', 20)
         && optionalString(data, 'gradeLevel', 30)
-        && optionalString(data, 'section', 50);
+        && optionalString(data, 'section', 50)
+        // Staff profile photo: base64 data URL of a resized image (or null).
+        && (!('photoURL' in data) || data.photoURL == null || (data.photoURL is string && data.photoURL.size() <= 200000));
     }
 
     function validRegistration(data) {

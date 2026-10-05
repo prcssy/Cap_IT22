@@ -808,7 +808,7 @@
 .stm-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(0, 10, 25, .65);
+  background: rgba(var(--c-dark-rgb, 0, 10, 25), .65);
   backdrop-filter: blur(3px);
   display: flex;
   align-items: center;

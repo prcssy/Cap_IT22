@@ -830,3 +830,42 @@
 .profile-chat__join:hover {
   background: #006ee6;
 }
+
+/* ── Staff profile photo upload (camera button on the avatar) ── */
+.profile-avatar-wrap {
+  position: relative;
+  flex-shrink: 0;
+}
+
+.profile-avatar__upload {
+  position: absolute;
+  right: 0;
+  bottom: 2px;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 2px solid #fff;
+  background: var(--c-dark, #001529);
+  color: var(--c-gold, #fcbf19);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 13px;
+  cursor: pointer;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+}
+
+.profile-avatar__upload:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.profile-photo-msg {
+  margin: 2px 0 6px;
+  font-family: "Inter", sans-serif;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.profile-photo-msg--success { color: #15803d; }
+.profile-photo-msg--error { color: #dc2626; }

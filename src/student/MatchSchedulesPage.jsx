@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useCallback, useContext } from 'react';
-import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './MatchSchedulesPage.css';
 // Double Bracket tree (.msf-dbracket*/.msf-bracket-*/.msf-lbracket-leaf*) reuses
@@ -16,6 +15,7 @@ import VenueLink from '../shared/components/VenueLocator/VenueLocator';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
 import RaceDiagram, { RaceResults } from '../shared/components/RaceDiagram/RaceDiagram';
 import { isRaceMatch, raceParticipants, raceStandingsFromRecord, raceWinnerName, recordCoversRace } from '../shared/utils/raceFormat';
+import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
 /* ═══════════════════════════════════════════════════════════
    This page is fully data-driven: every match shown here comes
@@ -947,7 +947,6 @@ function ScheduleDayTable({ day, matches, resultFor, search }) {
 }
 
 export default function MatchSchedulesPage() {
-  const { schoolName } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
   /* No "All Levels" option: each level's matches are generated/numbered
      independently (its own round numbers, its own bracket stages), so
@@ -1265,13 +1264,23 @@ export default function MatchSchedulesPage() {
 
       {/* ── Top header ── */}
       <header className="ms-dash-header">
-        <h1 className="ms-dash-header__title">{schoolName}</h1>
+        <HeaderBrand titleClassName="ms-dash-header__title" />
       </header>
 
       {/* ── Page intro ── */}
       <div className="ms-page-intro">
         <h2 className="ms-page-title">Game Schedules</h2>
         <p className="ms-page-subtitle">Stay updated with real-time schedules. Follow every game from start to finish.</p>
+        {/* One dropdown: Sport, then that sport's Category, then its Division.
+            Pinned to the intro's top-right corner, beside the title (same as
+            Home and Top Rankings). */}
+        {!loading && hasAnyData && (
+          <SetPicker
+            tree={selectorTree}
+            value={{ sport: selSport, group: selGroup, division: selDivision }}
+            onChange={setPick}
+          />
+        )}
       </div>
 
       {/* ── Scrollable body ── */}
@@ -1297,15 +1306,6 @@ export default function MatchSchedulesPage() {
           </p>
         ) : (
           <>
-            {/* One dropdown: Sport, then that sport's Category, then its Division. */}
-            <div className="ms-toolbar ms-toolbar--selects">
-              <SetPicker
-                tree={selectorTree}
-                value={{ sport: selSport, group: selGroup, division: selDivision }}
-                onChange={setPick}
-              />
-            </div>
-
             {/* Bracket / rounds section (format) */}
             <div className="ms-bracket-card">
               <h3 className="ms-bracket-title">{setTitle}</h3>

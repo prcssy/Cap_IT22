@@ -45,6 +45,7 @@ import MatchCountdown from '../shared/components/MatchCountdown';
 import { sportCategoryOptions } from '../shared/utils/sportCategory';
 import VenueLink from '../shared/components/VenueLocator/VenueLocator';
 import SetPicker from '../shared/components/SetPicker/SetPicker';
+import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
 /* ═══════════════════════════════════════════
    LIVE MATCH STATUS
@@ -777,7 +778,6 @@ function scheduleDivisionOf(schedule, sports) {
 }
 
 function HomeView({ onOpenRegistration }) {
-  const { schoolName } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
   const contactFooterRef = useRef(null);
 
@@ -1017,7 +1017,7 @@ function HomeView({ onOpenRegistration }) {
   return (
     <div className="user-dashboard">
       <header className="dash-header">
-        <h1 className="dash-header__title">{schoolName}</h1>
+        <HeaderBrand titleClassName="dash-header__title" />
       </header>
       <div className="profile-page-intro dash-intro-row">
         <div>
@@ -1043,7 +1043,6 @@ function HomeView({ onOpenRegistration }) {
             tree={pickerTree}
             value={{ sport: sportFilter, group: activeGroup || (sportNode?.groups.length ? ALL_CATEGORIES : ''), division: activeDivision }}
             onChange={onPick}
-            showPath
           />
         </div>
       </div>
@@ -1242,7 +1241,7 @@ function clearRegistrationDraft(uid) {
 function PlayerRegistration({ onBack }) {
 
   const { currentUser, userProfile } = useContext(AuthContext);
-  const { schoolName, events } = useContext(BrandingContext);
+  const { events } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
   const [form, setForm] = useState(INITIAL);
   const [addr, setAddr] = useState(ADDR_INITIAL);
@@ -2060,7 +2059,7 @@ function PlayerRegistration({ onBack }) {
     return (
       <div className="reg-page">
         <header className="reg-dash-header">
-          <h1 className="reg-dash-header__title">{schoolName}</h1>
+          <HeaderBrand titleClassName="reg-dash-header__title" />
         </header>
         <div className="reg-page-intro">
           <button type="button" className="reg-back-btn" onClick={onBack}>&larr; Back to Home</button>
@@ -2125,7 +2124,7 @@ function PlayerRegistration({ onBack }) {
   return (
     <div className="reg-page">
       <header className="reg-dash-header">
-        <h1 className="reg-dash-header__title">{schoolName}</h1>
+        <HeaderBrand titleClassName="reg-dash-header__title" />
       </header>
 
       <div className="reg-page-intro">

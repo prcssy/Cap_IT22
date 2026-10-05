@@ -90,16 +90,19 @@ const dataUrlBytes = (dataUrl) => Math.ceil((dataUrl.length - dataUrl.indexOf(',
 export async function resizeImageToDataUrl(file, options = {}) {
   const { format = 'jpeg', quality = 0.85, maxBytes } = options;
   const canvas = await drawResizedImage(file, options);
-  const mime = format === 'png' ? 'image/png' : 'image/jpeg';
+  const mime = format === 'png' ? 'image/png' : format === 'webp' ? 'image/webp' : 'image/jpeg';
   let q = quality;
   let dataUrl = canvas.toDataURL(mime, q);
-  while (maxBytes && mime === 'image/jpeg' && dataUrlBytes(dataUrl) > maxBytes && q > MIN_QUALITY) {
+  // A browser that can't encode WebP silently returns a PNG instead —
+  // still transparent, just without the quality knob below.
+  const lossy = dataUrl.startsWith('data:image/jpeg') || dataUrl.startsWith('data:image/webp');
+  while (maxBytes && lossy && dataUrlBytes(dataUrl) > maxBytes && q > MIN_QUALITY) {
     q = Math.max(MIN_QUALITY, q - 0.07);
     dataUrl = canvas.toDataURL(mime, q);
   }
   // Still over budget at the lowest acceptable quality (a very detailed
   // photo): shrink the dimensions rather than dropping quality further.
-  if (maxBytes && mime === 'image/jpeg' && dataUrlBytes(dataUrl) > maxBytes && (options.maxWidth || 800) > 160) {
+  if (maxBytes && dataUrlBytes(dataUrl) > maxBytes && (options.maxWidth || 800) > 160) {
     return resizeImageToDataUrl(file, {
       ...options,
       maxWidth: Math.round((options.maxWidth || 800) * 0.85),
@@ -130,8 +133,11 @@ export async function resizeImageToBlob(file, options = {}) {
 /* Team/sport logos: stored inline on sportsTeamsConfig/{level}, which holds
    every sport and team logo of that level in ONE doc (1 MB cap). 192px
    covers the largest on-screen size (~96px) on 2× screens; the byte cap
-   keeps ~40+ logos per level comfortably under the doc limit. */
+   keeps ~40+ logos per level comfortably under the doc limit.
+   Transparent WebP (no background fill): these used to be JPEGs padded
+   with navy (#001529), which baked a dark-blue square into every logo
+   that no color theme could change. */
 export const LOGO_OPTIONS = {
-  maxWidth: 192, mode: 'square', format: 'jpeg', quality: 0.9,
-  background: '#001529', maxBytes: 14 * 1024,
+  maxWidth: 192, mode: 'square', format: 'webp', quality: 0.9,
+  background: null, maxBytes: 16 * 1024,
 };

@@ -1,0 +1,65 @@
+/* Logo sits just left of the school name; the pair stays one unit so a
+   header with justify-content: space-between doesn't push them apart. */
+.header-brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+}
+
+.header-brand__logo {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  object-fit: contain;
+}
+
+.header-brand h1 {
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .header-brand {
+    gap: 8px;
+  }
+
+  .header-brand__logo {
+    width: 24px;
+    height: 24px;
+  }
+}
+
+/* ── Phones: compact, formal top bar ──
+   Pages' own header rules leave 64px on the left for the floating ☰ button
+   (more than it needs, so a big gap showed before the logo) and nothing on
+   the right for the profile icon, which the long name ran into. These
+   override every page's header in one place (!important because those
+   rules use varying, higher-specificity selectors like
+   `body .user-dashboard .dash-header`). */
+@media (max-width: 768px) {
+  header:has(> .header-brand) {
+    padding-left: 54px !important;
+    padding-right: 58px !important;
+  }
+
+  .header-brand {
+    gap: 7px;
+  }
+
+  .header-brand__logo {
+    width: 26px;
+    height: 26px;
+  }
+
+  .header-brand h1 {
+    font-size: 14px !important;
+    line-height: 1.15 !important;
+    letter-spacing: 0.04em !important;
+  }
+}
+
+@media (max-width: 380px) {
+  .header-brand h1 {
+    font-size: 12.5px !important;
+  }
+}

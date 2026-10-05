@@ -201,7 +201,7 @@
   right: 0;
   z-index: 50;
   margin-top: 8px;
-  background: rgba(4, 18, 34, 0.92);
+  background: rgba(var(--c-dark-rgb, 4, 18, 34), 0.92);
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
   border: 1px solid rgba(255, 255, 255, 0.22);
@@ -1499,43 +1499,33 @@
     flex-wrap: nowrap;
   }
 
-  /* Player Registration gets its own compact line (it used to share the
-     nowrap row and got squeezed into two lines of text, pushing the Sport
-     filter off-screen). The ::before is a zero-height, full-width flex item
-     ordered between the button and the filters — a line break — so the
-     level tabs + Sport filter keep their one shared line underneath. */
-  .dash-filters-row:has(.dash-register-btn) {
-    flex-wrap: wrap;
-    row-gap: 8px;
+  /* Player Registration and the level tabs share ONE line (the Sport
+     selector is pinned to the title's corner, below). Both scale with the
+     screen width (clamp(…vw…)) so the pair fits phones from ~320px up;
+     on anything narrower the tabs scroll sideways (overflow-x on
+     .dash-lvltabs) instead of wrapping. Two-class selector so it beats the
+     base .dash-register-btn rule, which comes later in this file. */
+  .dash-filters-row {
+    gap: clamp(5px, 1.6vw, 8px);
   }
 
-  .dash-filters-row:has(.dash-register-btn)::before {
-    content: '';
-    order: 1;
-    flex-basis: 100%;
-    height: 0;
-  }
-
-
-  .dash-filters-row > :not(.dash-register-btn) {
-    order: 2;
-  }
-
-  /* Two-class selector so it beats the base .dash-register-btn rule,
-     which comes later in this file. */
   .dash-filters-row > .dash-register-btn {
-    order: 0;
     flex: 0 0 auto;
-    gap: 6px;
-    padding: 6px 12px;
+    gap: clamp(4px, 1.2vw, 6px);
+    padding: clamp(5px, 1.4vw, 7px) clamp(7px, 2.4vw, 11px);
     border-radius: 9px;
-    font-size: 11px;
+    font-size: clamp(8.5px, 2.6vw, 11px);
     white-space: nowrap;
   }
 
   .dash-filters-row > .dash-register-btn svg {
-    width: 12px;
-    height: 12px;
+    width: clamp(9px, 2.8vw, 12px);
+    height: clamp(9px, 2.8vw, 12px);
+  }
+
+  .dash-filters-row .dash-lvltabs {
+    flex: 0 1 auto;
+    min-width: 0;
   }
 
   /* Level tabs + Sport already fill a phone's width; once a sport is picked
@@ -2694,75 +2684,62 @@
 }
 
 @media (max-width: 600px) {
-  /* Same height as the level tabs beside it and centered on the same line
-     (it used to be shorter, so the two looked misaligned): the picker
-     stretches to the line's height and its button fills that height,
-     with its text centered inside. */
-  /* Every box from the row down to the button stretches (the picker's own
-     align-items: center used to keep the button at its natural, shorter
-     height even though the picker itself stretched). */
+  /* Phones: the selector sits at the top right, on the "Home" title's
+     line (pinned to the intro's corner), same as Top Rankings. Its menu
+     anchors right: 0 (rule above), opening leftward from the selector so
+     it stays on-screen. */
+  .user-dashboard .dash-intro-row {
+    position: relative;
+  }
+
   .dash-filters-row .ms-select {
-    align-self: stretch;
-    align-items: stretch;
-    flex-shrink: 1;
-    min-width: 0;
+    position: absolute;
+    top: 16px;
+    right: 16px;
   }
 
-  .dash-filters-row .ms-select__dd {
-    display: flex;
-    align-items: stretch;
-    min-width: 0;
-  }
-
-  /* Shares a line with the level tabs: cap it and let a long
-     "BASKETBALL › MEN › 5 V 5" cut off with … instead of overflowing. */
-  /* Own padding + min-height so it still looks right when there are no
-     level tabs beside it to stretch to (accounts locked to one level);
-     with the tabs, it stretches to their height as before. */
+  /* Capped so a long pick ("BASKETBALL › MEN › 5 V 5") stays compact: every
+     part can shrink, and what doesn't fit ends in "…". */
   .dash-filters-row .ms-select__trigger {
-    align-items: center;
-    min-height: 26px;
-    max-width: 45vw;
-    padding: 5px 11px;
-    gap: 5px;
-    border-width: 1.5px;
-    border-radius: 12px;
-    font-size: 9px;
-    line-height: 1.2;
+    max-width: 140px;
+    padding: 4px 9px;
+    gap: 4px;
+    border-radius: 10px;
+    font-size: 9.5px;
   }
 
   .dash-filters-row .ms-select__value {
     gap: 3px;
-    align-items: center;
+    min-width: 0;
   }
 
-  .dash-filters-row .ms-select__part:not(.ms-select__part--sport) {
+  .dash-filters-row .ms-select__part {
     flex-shrink: 1;
     min-width: 0;
   }
 
-  .dash-filters-row .ms-select__arrow {
-    font-size: 7px;
-  }
-
-  /* The open menu, lined up with the LEFT edge of the filters row.
-     Anchoring it to the trigger (at the right end of the row when the level
-     tabs are shown) ran the Sport column off the left edge of a phone, and
-     centering it left it floating mid-screen when the trigger is on the
-     left (accounts locked to one level, no tabs). The trigger's wrapper is
-     made static so the menu positions against the whole filters row. */
-  .dash-filters-row {
-    position: relative;
-  }
-
-  .dash-filters-row .ms-select__dd {
-    position: static;
-  }
-
   .dash-filters-row .ms-select__panel {
-    left: 0;
-    right: auto;
     min-width: 0;
-    max-width: 100%;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+  }
+}
+
+/* ── Phones: narrower level tabs + more space after Player Registration.
+   Last in the file so it beats the earlier .dash-lvltab sizing. ── */
+@media (max-width: 600px) {
+  .dash-filters-row {
+    gap: clamp(10px, 3vw, 14px);
+  }
+
+  .dash-filters-row .dash-lvltabs {
+    gap: 1px;
+    padding: 2px;
+  }
+
+  .dash-filters-row .dash-lvltab {
+    padding: clamp(3px, 0.9vw, 4px) clamp(4px, 1.3vw, 7px);
+    font-size: clamp(7.5px, 2.2vw, 9px);
+    letter-spacing: 0;
   }
 }

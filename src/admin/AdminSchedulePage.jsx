@@ -25,6 +25,7 @@ import {
   RACE_FORMAT_ID, RACE_FORMAT_LABEL, isRaceMatch, raceParticipants, buildRaceFields,
   raceStandingsFromRecord, raceWinnerName, recordCoversRace,
 } from '../shared/utils/raceFormat';
+import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
 
 /* ─── Grade-level bucketing ───────────────────────── */
@@ -3036,7 +3037,7 @@ function MatchScheduleFormatSection({ level, pendingRequest, onConsumedPrefill, 
 
 export default function AdminSchedulePage() {
   const { isAdmin, authLoading, userProfile } = useContext(AuthContext);
-  const { schoolName, events } = useContext(BrandingContext);
+  const { events } = useContext(BrandingContext);
   const LEVEL_LABELS = useContext(LevelLabelsContext);
   // Admins are scoped to one school level (set by a Super Admin); only a
   // Super Admin (staffLevel null) can switch between levels.
@@ -3270,7 +3271,7 @@ const fetchSummary = useCallback(async () => {
 
       {/* Header */}
       <header className="asp-header">
-        <h1 className="asp-header__title">{schoolName}</h1>
+        <HeaderBrand titleClassName="asp-header__title" />
       </header>
 
       {/* Intro */}

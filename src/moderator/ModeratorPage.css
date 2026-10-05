@@ -114,7 +114,7 @@
   gap: 10px;
   min-width: 200px;
   background: var(--c-dark, #001529);
-  border: 1.5px solid #33507a;
+  border: 1.5px solid var(--c-navy-3, #33507a);
   color: #fff;
   border-radius: 10px;
   padding: 10px 14px;
@@ -3879,7 +3879,7 @@ input.mp-text-input:disabled {
 }
 
 .mp-fs-requested--on .mp-fs-requested__count {
-  background: rgba(14, 31, 61, 0.18);
+  background: rgba(var(--c-dark-rgb, 14, 31, 61), 0.18);
 }
 
 @media (hover: hover) and (pointer: fine) {

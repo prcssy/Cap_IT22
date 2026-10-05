@@ -1,5 +1,4 @@
 import React, { useState, useEffect, useMemo, useContext } from 'react';
-import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './TeamAndSportsPage.css';
 import Contact from '../public/Landing/Contact/Contact';
@@ -7,6 +6,7 @@ import { subscribeSportsTeamsConfig, subscribeCoaches } from '../shared/services
 import { FaUserTie, FaPhoneAlt } from 'react-icons/fa';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
+import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
 /* ── Team logo placeholder ── */
 function TeamLogo({ name, logo }) {
@@ -119,7 +119,6 @@ function TeamCard({ team, index, levelLabels, sportsByName, coaches = [] }) {
 }
 
 export default function TeamsAndSportsPage() {
-  const { schoolName } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
   const LEVELS = useMemo(() => [
     { label: levelLabels.elementary, key: 'elementary' },
@@ -194,7 +193,7 @@ export default function TeamsAndSportsPage() {
 
       {/* ── Top header — same pattern as Profile & Registration ── */}
       <header className="ts-dash-header">
-        <h1 className="ts-dash-header__title">{schoolName}</h1>
+        <HeaderBrand titleClassName="ts-dash-header__title" />
       </header>
 
       {/* ── Page intro — same pattern as Profile & Registration ── */}

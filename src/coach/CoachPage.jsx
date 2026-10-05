@@ -5,7 +5,6 @@ import {
 } from 'react-icons/fa';
 import { FaFacebookMessenger } from 'react-icons/fa6';
 import { AuthContext } from '../shared/context/AuthContext';
-import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { getCoachRoster, updateMyCoachProfile } from '../shared/services/firestoreService';
 import { resizeImageToDataUrl } from '../shared/utils/resizeImage';
@@ -13,6 +12,7 @@ import { getSchoolLevel } from '../shared/utils/schoolLevel';
 import { categoryDivisionLabel } from '../shared/utils/sportCategory';
 import { isMessengerUrl, normalizeMessengerUrl } from '../shared/utils/messengerLink';
 import './CoachPage.css';
+import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
 const MAX_PHOTO_SOURCE_BYTES = 5 * 1024 * 1024;
 const PHOTO_OPTIONS = { maxWidth: 256, maxHeight: 256, mode: 'contain', format: 'jpeg', quality: 0.85, maxBytes: 60 * 1024 };
@@ -297,7 +297,6 @@ function PlayerModal({ player, onClose }) {
 
 export default function CoachPage() {
   const { currentUser, coachProfile } = useContext(AuthContext);
-  const { schoolName } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
 
   // The last finished roster load, tagged with the request it answered —
@@ -366,7 +365,7 @@ export default function CoachPage() {
   if (!coachProfile) {
     return (
       <div className="cp-page">
-        <header className="cp-header"><h1>{schoolName}</h1></header>
+        <header className="cp-header"><HeaderBrand /></header>
         <div className="cp-body"><p className="cp-empty">Your coach access was removed. Contact an admin if this is a mistake.</p></div>
       </div>
     );
@@ -376,7 +375,7 @@ export default function CoachPage() {
 
   return (
     <div className="cp-page">
-      <header className="cp-header"><h1>{schoolName}</h1></header>
+      <header className="cp-header"><HeaderBrand /></header>
 
       <div className="cp-intro">
         <h2>My Players</h2>

@@ -628,7 +628,9 @@
 }
 
 .ms-day-header {
-  background: var(--c-navy-4, #1a3a6e);
+  /* Darkest theme shade (was --c-navy-4, which read too light against the
+     navy page body). */
+  background: var(--c-dark, #001529);
   padding: 16px 18px;
   font-size: 12px;
   font-weight: 900;
@@ -1311,4 +1313,76 @@
 .ms-requested__match {
   width: 100%;
   max-width: 360px;
+}
+
+/* ── Sport → Category → Division selector (shared SetPicker), pinned to the
+   intro's top-right corner beside the "Game Schedules" title — same spot
+   as Home and Top Rankings. Its menu anchors right: 0 and opens leftward
+   so it stays on-screen (CLAUDE.md CSS gotchas). Two-class selectors so
+   these beat SetPicker.css regardless of load order. ── */
+.ms-page-intro {
+  position: relative;
+}
+
+.ms-page-intro .ms-select {
+  position: absolute;
+  top: 20px;
+  right: 25px;
+}
+
+.ms-page-intro .ms-select__panel {
+  left: auto;
+  right: 0;
+}
+
+.ms-page-intro .ms-select__trigger {
+  max-width: 320px;
+}
+
+.ms-page-intro .ms-select__value {
+  min-width: 0;
+}
+
+.ms-page-intro .ms-select__part {
+  flex-shrink: 1;
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  .ms-page-intro .ms-select {
+    top: 16px;
+    right: 16px;
+  }
+
+  /* Capped so a long pick stays beside the title: the sport keeps its
+     room, the rest ends in "…". */
+  .ms-page-intro .ms-select__trigger {
+    max-width: 120px;
+    padding: 4px 8px;
+    gap: 4px;
+    font-size: 9.5px;
+  }
+
+  .ms-page-intro .ms-select__panel {
+    min-width: 0;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+  }
+
+  /* Title slightly smaller on phones so it fits on one line beside the
+     selector, and kept clear of it. */
+  .ms-page-title {
+    font-size: 22px;
+    padding-right: 128px;
+  }
+}
+
+/* Same two-tone page as Home: dark title area, lighter navy content area
+   below it (Home's .dash-section--ongoing uses --c-navy). */
+.ms-body {
+  background-color: var(--c-navy, #0a1d52);
+  /* Breathing room between the title area and the first card (it used to
+     start flush against the dark band). Last in the file so it wins over
+     the shorthand padding rules above. */
+  padding-top: 16px;
 }

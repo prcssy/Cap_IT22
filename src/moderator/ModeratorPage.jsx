@@ -35,10 +35,10 @@ import { matchStart, matchEnd, EXTEND_STEP_MINUTES } from '../shared/utils/match
 import MatchCountdown from '../shared/components/MatchCountdown';
 import LevelTabs from '../shared/components/LevelTabs';
 import { AuthContext } from '../shared/context/AuthContext';
-import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { ScheduleRequestsContext } from '../shared/context/ScheduleRequestsContext';
 import { isRaceMatch, raceParticipants } from '../shared/utils/raceFormat';
+import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
 /* ═══════════════════════════════════════════
    CONSTANTS
@@ -1755,7 +1755,6 @@ const mkEntry = () => ({ id: uid(), teamId: '', points: '', time: '', violations
 export default function ModeratorPage() {
   const navigate = useNavigate();
   const { currentUser, userProfile } = useContext(AuthContext);
-  const { schoolName } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
   // Moderators are scoped to one school level (set by a Super Admin); only
   // a Super Admin (staffLevel null) can switch between levels.
@@ -3098,7 +3097,7 @@ export default function ModeratorPage() {
   return (
     <div className="mp-page">
       <header className="mp-header">
-        <h1 className="mp-header__title">{schoolName}</h1>
+        <HeaderBrand titleClassName="mp-header__title" />
       </header>
 
       <div className="mp-body">
@@ -3676,7 +3675,7 @@ export default function ModeratorPage() {
       {requestToast && (
         <div className="mp-toast" style={{
           position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
-          background: '#1c2540', color: '#fff', padding: '10px 18px', borderRadius: 10,
+          background: 'var(--c-dark-2, #1c2540)', color: '#fff', padding: '10px 18px', borderRadius: 10,
           fontSize: '0.85rem', fontWeight: 600, boxShadow: '0 8px 24px rgba(0,0,0,0.2)', zIndex: 9999,
         }}>
           {requestToast.text}

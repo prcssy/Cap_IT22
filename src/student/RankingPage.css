@@ -40,49 +40,15 @@
   line-height: 1;
 }
 
-.rk-search-wrap {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-}
 
-.rk-search-icon {
-  position: absolute;
-  left: 13px;
-  font-size: 12px;
-  color: rgba(255, 255, 255, 0.5);
-}
 
-.rk-search-input {
-  font-family: "Inter", sans-serif;
-  width: 200px;
-  background: rgba(255, 255, 255, 0.06);
-  border: 1.5px solid rgba(255, 255, 255, 0.25);
-  border-radius: 20px;
-  padding: 7px 14px 7px 32px;
-  font-size: 12px;
-  color: #fff;
-  box-sizing: border-box;
-  transition: border-color 0.2s, background 0.2s, width 0.2s;
-}
 
-.rk-search-input::placeholder {
-  color: rgba(255, 255, 255, 0.4);
-}
 
-.rk-search-input:focus {
-  outline: none;
-  width: 240px;
-  background: rgba(255, 255, 255, 0.1);
-  border-color: rgba(255, 255, 255, 0.6);
-}
 
 /* ── Page intro ── */
 .rk-page-intro {
   padding: 18px 25px 10px;
   flex-shrink: 0;
-  margin-left: -15px;
 }
 
 /* Intro row also carries the level tabs and search bar, laid out beside
@@ -473,38 +439,6 @@
 
 /* ── Responsive ── */
 @media (max-width: 560px) {
-  /* Search bar kept its full desktop padding/font/icon size here, so
-     next to the now much-smaller level tabs it read as oversized/
-     "chubby" — sized down to match. */
-  /* Compact fixed width (it used to fill the whole row, which spanned the
-     full screen on accounts locked to one level — no level tabs beside it).
-     Still shrinks if the level tabs leave less room. */
-  .rk-search-input {
-    width: 150px;
-    max-width: 100%;
-    padding: 5px 8px 5px 24px;
-    font-size: 10px;
-    border-radius: 14px;
-  }
-
-  .rk-search-icon {
-    left: 9px;
-    font-size: 10px;
-  }
-
-  /* Was flex: 1 1 100%, which forced the search bar onto its own full
-     width row — now it shares .rk-controls-row with the level tabs
-     instead, so it only needs to fill whatever space is left over. */
-  .rk-search-input:focus {
-    width: 170px;
-    max-width: 100%;
-  }
-
-  .rk-search-wrap {
-    flex: 0 1 auto;
-    min-width: 0;
-  }
-
   .rk-row,
   .rk-row--medal {
     grid-template-columns: 36px 36px 1fr repeat(auto-fit, minmax(48px, 1fr));
@@ -520,26 +454,28 @@
     font-size: 10.5px;
   }
 
-  /* Intro row + level tabs were sized for desktop (fixed padding, no
-     wrap on the tabs), so "College" ran off the right edge and got
-     clipped by .rk-body's overflow-x: hidden instead of wrapping.
-     .rk-page-intro sits inside .rk-body, so its own left/right padding
-     stacked on top of .rk-body's 14px (30px total) — the title/tabs
-     row sat noticeably further in than the ranking cards below, which
-     only get .rk-body's 14px. Dropped the left/right padding here so
-     both line up on the same left edge. */
+  /* The intro sits above .rk-body (it doesn't scroll), so it carries its
+     own 16px side padding, close to the ranking cards' 14px edge below. */
   .rk-page-intro {
-    padding: 14px 0 8px;
-    margin-left: 0;
+    padding: 14px 16px 8px;
   }
 
   .rk-top-row {
     flex-direction: column;
     align-items: flex-start;
+    gap: 10px;
   }
 
-  /* Level tabs + search bar stay on one row together below the title
-     (title keeps its own line above via .rk-top-row's column stack). */
+  .rk-section {
+    padding-top: 6px;
+  }
+
+  .rk-section-header {
+    margin-bottom: 8px;
+  }
+
+  /* Level tabs get their own row below the title (title keeps its own
+     line above via .rk-top-row's column stack). */
   .rk-controls-row {
     width: 100%;
     flex-wrap: nowrap;
@@ -758,7 +694,7 @@
     border-radius: 10px;
     padding: 8px 10px;
     margin-bottom: 6px;
-    box-shadow: 0 2px 8px rgba(0, 10, 30, 0.18);
+    box-shadow: 0 2px 8px rgba(var(--c-dark-rgb, 0, 10, 30), 0.18);
   }
 
   /* After .rk-row so display: none wins (the head row carries both). */
@@ -855,7 +791,7 @@
   height: 13px;
   padding: 0;
   border-radius: 50%;
-  border: 1px solid rgba(0, 21, 41, 0.3);
+  border: 1px solid rgba(var(--c-dark-rgb, 0, 21, 41), 0.3);
   background: rgba(255, 255, 255, 0.7);
   color: var(--c-dark, #001529);
   font-size: 6px;
@@ -879,7 +815,7 @@
   align-items: center;
   justify-content: center;
   padding: 16px;
-  background: rgba(0, 10, 25, 0.6);
+  background: rgba(var(--c-dark-rgb, 0, 10, 25), 0.6);
 }
 
 /* Rounded + clipped shell; only the body scrolls (CLAUDE.md "Known CSS
@@ -1003,4 +939,82 @@
   margin: 10px 0 0;
   font-size: 11px;
   color: #8a96ad;
+}
+
+/* ── The one Sport → Category → Division selector (shared SetPicker) in
+   the title row, driving both Potential Champion and Medal Tally. On
+   desktop it sits at the RIGHT end of the row, so its menu anchors
+   right: 0 and opens leftward instead of running off the right edge
+   (CLAUDE.md CSS gotchas). Two-class selectors so these beat
+   SetPicker.css regardless of load order. ── */
+.rk-controls-row .ms-select__panel {
+  left: auto;
+  right: 0;
+}
+
+@media (max-width: 560px) {
+  /* Phones: the selector sits at the top right, on the "Top Rankings"
+     title's line (pinned to the intro's corner); level tabs, if any, keep
+     their own row under the subtitle. The menu anchors right: 0 (rule
+     above), opening leftward from the selector so it stays on-screen. */
+  .rk-page-intro.rk-top-row {
+    position: relative;
+  }
+
+  .rk-controls-row .ms-select {
+    position: absolute;
+    top: 16px;
+    right: 16px;
+  }
+
+  /* With no level tabs the row has nothing left in its flow — drop its box
+     so it doesn't add an empty gap under the subtitle. */
+  .rk-controls-row:not(:has(.rk-lvltabs)) {
+    display: contents;
+  }
+
+  .rk-controls-row .ms-select__panel {
+    min-width: 0;
+    width: max-content;
+    max-width: calc(100vw - 32px);
+  }
+
+  /* Capped so a long pick ("Basketball › MEN › 5 v 5") never grows over
+     the title: every part can shrink, and what doesn't fit ends in "…". */
+  .rk-controls-row .ms-select__trigger {
+    max-width: 128px;
+    padding: 4px 8px;
+    gap: 4px;
+    font-size: 9.5px;
+  }
+
+  .rk-controls-row .ms-select__value {
+    gap: 3px;
+    min-width: 0;
+  }
+
+  .rk-controls-row .ms-select__part {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  /* Keep the title clear of the pinned selector (its max width + a gap). */
+  .rk-page-title {
+    padding-right: 136px;
+  }
+}
+
+/* Same two-tone page as Home: dark title area (the page's own background —
+   the intro sits above .rk-body and doesn't scroll), lighter navy content
+   area below it (Home's .dash-section--ongoing uses --c-navy). */
+.rk-body {
+  background-color: var(--c-navy, #0a1d52);
+  padding-top: 12px;
+}
+
+/* z-index keeps the intro (and the selector's open menu hanging below it)
+   above the scrolling rankings. */
+.rk-page-intro {
+  position: relative;
+  z-index: 5;
 }

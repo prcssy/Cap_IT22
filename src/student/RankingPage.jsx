@@ -1,8 +1,7 @@
 import React, { useState, useMemo, useEffect, useContext } from 'react';
-import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './RankingPage.css';
-import { FaSearch, FaCrown, FaMedal, FaInfo, FaTimes } from 'react-icons/fa';
+import { FaCrown, FaMedal, FaInfo, FaTimes } from 'react-icons/fa';
 import Contact from '../public/Landing/Contact/Contact';
 import LevelTabs from '../shared/components/LevelTabs';
 import SetPicker from '../shared/components/SetPicker/SetPicker';
@@ -11,6 +10,7 @@ import {
   subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchRecords, subscribeMatchSchedules,
 } from '../shared/services/firestoreService';
 import { applyPointDifferentialTieBreakers } from '../shared/utils/tieBreakers';
+import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
 /* ── Sport filter tabs (shared by both tables) ──
    The actual sport names are derived from the same team.sportIds data used
@@ -388,7 +388,7 @@ function MedalBreakdown({ team, onClose }) {
   );
 }
 
-function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
+function ChampionTable({ data, records, sportFilter, divisionFilter }) {
   const [explain, setExplain] = useState(null); // team whose rating breakdown is open
   /* Sorted highest rating first. Teams that land on the exact same rating
      (common at the shared 1200 baseline, or after a scope where nobody has
@@ -396,24 +396,14 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
      tie-breaker rules — head-to-head for a 2-team tie, point differential
      (then total points, then head-to-head) for a 3+-team tie — falling
      back to team name so the table still renders in a stable order when
-     no match history exists to break the tie.
-
-     Rank is assigned here, over the FULL unfiltered data, before the search
-     box ever narrows what's shown — so filtering the list for a search term
-     can never renumber a team's actual position (e.g. BASA sitting at rank 4
-     must still read "4" when you search "BASA", not jump to "1"). */
+     no match history exists to break the tie. */
   const ranked = useMemo(() => {
     const byRating = [...data].sort((a, b) => b.rating - a.rating || a.team.localeCompare(b.team));
     return applyEloTieBreakers(byRating, records, sportFilter, divisionFilter)
       .map((t, i) => ({ ...t, rank: i + 1 }));
   }, [data, records, sportFilter, divisionFilter]);
 
-  const visible = useMemo(() => {
-    const q = norm(search);
-    return q ? ranked.filter(t => norm(t.team).includes(q)) : ranked;
-  }, [ranked, search]);
-
-  if (visible.length === 0) {
+  if (ranked.length === 0) {
     return (
       <div className="rk-table-empty">
         {divisionFilter && divisionFilter !== 'All Divisions'
@@ -423,9 +413,8 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
     );
   }
 
-  // The phone podium replaces rows 1-3 — only while not searching, so a
-  // search still lists every match as a row with its real rank.
-  const showPodium = !norm(search);
+  // On phones the podium replaces rows 1-3 (see .rk-row--podium).
+  const showPodium = true;
 
   return (
     <>
@@ -440,7 +429,7 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
         <div className="rk-cell rk-cell-num" role="columnheader">RATING</div>
         <div className="rk-cell rk-cell-num" role="columnheader">WIN-LOSS</div>
       </div>
-      {visible.map((t) => {
+      {ranked.map((t) => {
         const rank = t.rank;
         const rankClass = rank <= 3 ? `rk-row--rank-${rank}` : '';
         const podiumClass = showPodium && rank <= 3 ? ' rk-row--podium' : '';
@@ -470,11 +459,9 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
 }
 
 /* ── Medal Tally table ── */
-function MedalTable({ data, search, records, sportFilter, divisionFilter }) {
+function MedalTable({ data, records, sportFilter, divisionFilter }) {
   const [explain, setExplain] = useState(null); // team whose medal breakdown is open
-  /* Same rule as ChampionTable: rank is fixed over the full data before the
-     search box filters what's displayed, so a filtered team keeps its real
-     rank instead of being renumbered starting from 1. Teams tied on
+  /* Teams tied on
      gold/total/silver are resolved by applyMedalTieBreakers — the same
      head-to-head/point-differential rules ChampionTable uses for rating
      ties — so a team that already wins the tie-break there (e.g. by
@@ -488,16 +475,11 @@ function MedalTable({ data, search, records, sportFilter, divisionFilter }) {
       .map((t, i) => ({ ...t, rank: i + 1 }));
   }, [data, records, sportFilter, divisionFilter]);
 
-  const visible = useMemo(() => {
-    const q = norm(search);
-    return q ? ranked.filter(t => norm(t.team).includes(q)) : ranked;
-  }, [ranked, search]);
-
-  if (visible.length === 0) {
+  if (ranked.length === 0) {
     return <div className="rk-table-empty">No teams found for this sport/level yet.</div>;
   }
 
-  const showPodium = !norm(search);
+  const showPodium = true;
 
   return (
     <>
@@ -514,7 +496,7 @@ function MedalTable({ data, search, records, sportFilter, divisionFilter }) {
         <div className="rk-cell rk-cell-num">BRONZE</div>
         <div className="rk-cell rk-cell-num">TOTAL</div>
       </div>
-      {visible.map((t) => {
+      {ranked.map((t) => {
         const rank = t.rank;
         const rankClass = rank <= 3 ? `rk-row--rank-${rank}` : '';
         return (
@@ -543,7 +525,6 @@ function MedalTable({ data, search, records, sportFilter, divisionFilter }) {
 }
 
 export default function RankingPage() {
-  const { schoolName } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
   const LEVELS = useMemo(() => [
     { key: 'elementary', label: levelLabels.elementary },
@@ -557,7 +538,6 @@ export default function RankingPage() {
   const [medalSport, setMedalSport] = useState('All Sports');
   const [medalCategory, setMedalCategory] = useState('All Categories');
   const [medalDivName, setMedalDivName] = useState('All Divisions');
-  const [search, setSearch] = useState('');
   const contactRef = React.useRef(null);
 
   const [teams, setTeams] = useState([]);
@@ -652,12 +632,14 @@ export default function RankingPage() {
 
   // One SetPicker pick → the section's sport / category / division state.
   const pickerTree = useMemo(() => rankingPickerTree(availableSports, sports), [availableSports, sports]);
-  const onChampionPick = ({ sport, group, division }) => {
+  // ONE selector (beside the page title) drives both Potential Champion and
+  // Medal Tally, so the two sections always show the same sport/category/
+  // division. Both keep their own state (the calculations below read them)
+  // but are always set together.
+  const onPick = ({ sport, group, division }) => {
     setChampionSport(sport);
     setChampionCategory(group || 'All Categories');
     setChampionDivName(division || 'All Divisions');
-  };
-  const onMedalPick = ({ sport, group, division }) => {
     setMedalSport(sport);
     setMedalCategory(group || 'All Categories');
     setMedalDivName(division || 'All Divisions');
@@ -742,9 +724,6 @@ export default function RankingPage() {
       ? bySport.filter(t => namesInDivision.has(norm(t.name)))
       : bySport;
 
-    /* Search is applied later, inside ChampionTable, AFTER rank is computed —
-       narrowing the roster here would shrink the field a team is ranked
-       against and shift its rank whenever a search term is typed. */
     return inDivision.map((t) => {
       /* A rating is an Elo value, not a score you can bank. Ratings from
          several sports/divisions are therefore AVERAGED (within one sport)
@@ -919,9 +898,6 @@ export default function RankingPage() {
       });
     }
 
-    /* Search is applied later, inside MedalTable, AFTER rank is computed —
-       narrowing the roster here would shrink the field a team is ranked
-       against and shift its rank whenever a search term is typed. */
     // Keep registered teams visible even before they have a recorded win.
     teams.forEach((team) => {
       if (medalSport !== 'All Sports' && !(team.sportIds || []).some((s) => norm(s) === norm(medalSport))) return;
@@ -1074,44 +1050,40 @@ export default function RankingPage() {
 
       {/* ── Top header ── */}
       <header className="rk-dash-header">
-        <h1 className="rk-dash-header__title">{schoolName}</h1>
+        <HeaderBrand titleClassName="rk-dash-header__title" />
       </header>
+
+      {/* Page intro — title + level tabs + selector. Outside .rk-body so it
+          stays put while the rankings scroll (same as Game Schedules). */}
+      <div className="rk-page-intro rk-top-row">
+        <div>
+          <h2 className="rk-page-title">Top Rankings</h2>
+          <p className="rk-page-subtitle">Ranked by performance, not by chance. Every game counts. Every rank matters.</p>
+        </div>
+        {/* Level tabs (when the account isn't locked to one level) + the
+            ONE Sport → Category → Division selector for both sections.
+            Beside the title on desktop; their own row under it on phones. */}
+        <div className="rk-controls-row">
+        {!lockedLevel && (
+        <LevelTabs
+          levels={LEVELS}
+          value={levelKey}
+          onChange={setLevelKey}
+          containerClassName="rk-lvltabs"
+          tabClassName="rk-lvltab"
+          activeClassName="rk-lvltab--active"
+        />
+        )}
+        <SetPicker
+          tree={pickerTree}
+          value={pickerValue(championSport, championCategory, championDivName)}
+          onChange={onPick}
+        />
+        </div>
+      </div>
 
       {/* ── Scrollable body ── */}
       <div className="rk-body">
-
-        {/* Page intro — title/level tabs/search bar share one row */}
-        <div className="rk-page-intro rk-top-row">
-          <div>
-            <h2 className="rk-page-title">Top Rankings</h2>
-            <p className="rk-page-subtitle">Ranked by performance, not by chance. Every game counts. Every rank matters.</p>
-          </div>
-          {/* Level tabs + search bar are grouped so they can be kept on one
-              row together on mobile (see .rk-controls-row), while the
-              title above them still gets its own line. */}
-          <div className="rk-controls-row">
-          {!lockedLevel && (
-          <LevelTabs
-            levels={LEVELS}
-            value={levelKey}
-            onChange={setLevelKey}
-            containerClassName="rk-lvltabs"
-            tabClassName="rk-lvltab"
-            activeClassName="rk-lvltab--active"
-          />
-          )}
-          <div className="rk-search-wrap">
-            <FaSearch className="rk-search-icon" />
-            <input
-              type="text"
-              className="rk-search-input"
-              placeholder="Search team"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-            />
-          </div>
-          </div>
-        </div>
 
         {loadError && <p className="rk-load-error">{loadError}</p>}
 
@@ -1124,21 +1096,12 @@ export default function RankingPage() {
           {/* Each label+dropdown grouped so flex-wrap wraps them as a pair
               instead of stranding "Division" on one line and its dropdown
               alone on the next. */}
-          <div className="rk-division-row">
-            <SetPicker
-              tree={pickerTree}
-              value={pickerValue(championSport, championCategory, championDivName)}
-              onChange={onChampionPick}
-              showPath
-            />
-          </div>
           <div className="rk-card">
             {loading ? (
               <div className="rk-table-empty">Loading…</div>
             ) : (
               <ChampionTable
                 data={championData}
-                search={search}
                 records={records}
                 sportFilter={championSport}
                 divisionFilter={championDivision === 'All Divisions' ? championDivision : baseDivision(championDivision)}
@@ -1153,18 +1116,9 @@ export default function RankingPage() {
             <h3 className="rk-section-title"><FaMedal className="rk-section-icon" /> Medal Tally</h3>
             <p className="rk-section-subtitle">Win and Loss</p>
           </div>
-          <div className="rk-division-row">
-            <SetPicker
-              tree={pickerTree}
-              value={pickerValue(medalSport, medalCategory, medalDivName)}
-              onChange={onMedalPick}
-              showPath
-            />
-          </div>
           <div className="rk-card rk-card--light">
             <MedalTable
               data={medalData}
-              search={search}
               records={records}
               sportFilter={medalSport}
               divisionFilter={medalDivision === 'All Divisions' ? medalDivision : baseDivision(medalDivision)}

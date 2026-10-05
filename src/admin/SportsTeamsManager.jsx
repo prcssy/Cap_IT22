@@ -6,6 +6,7 @@ import {
 } from 'react-icons/fa';
 import './SportsTeamsManager.css';
 import { buildImport, readBulkWorkbook, downloadBulkTemplate } from './bulkImport';
+import { stripLogoBackground } from '../shared/utils/stripLogoBackground';
 import {
   getSportsTeamsConfig, saveSportsConfig, saveTeamsConfig,
   getSportDeletionImpact, applySportChange, getAllRegistrations,
@@ -1254,6 +1255,39 @@ export default function SportsTeamsManager({ level }) {
     }
   };
 
+  /* ── One-time cleanup: strip the navy padding older uploads baked into
+     logos (see stripLogoBackground). Matches show each team's CURRENT logo
+     (withCurrentLogos), so cleaning the roster fixes every match card. ── */
+  const [cleaning, setCleaning] = useState(false);
+  const cleanLogos = async () => {
+    setCleaning(true);
+    try {
+      const clean = async (list) => {
+        let changed = 0;
+        const next = await Promise.all(list.map(async (item) => {
+          const logo = item.logo ? await stripLogoBackground(item.logo).catch(() => null) : null;
+          if (!logo) return item;
+          changed += 1;
+          return { ...item, logo };
+        }));
+        return { next, changed };
+      };
+      const [teams, sports] = await Promise.all([clean(teamsList), clean(sportsList)]);
+      if (teams.changed + sports.changed === 0) {
+        flash('No logos with a dark background were found — nothing to clean.');
+        return;
+      }
+      if (sports.changed) { await saveSportsConfig(level, sports.next, actorRole); setSportsList(sports.next); }
+      if (teams.changed) { await saveTeamsConfig(level, teams.next, actorRole); setTeamsList(teams.next); }
+      flash(`✓ Cleaned ${teams.changed + sports.changed} logo${teams.changed + sports.changed === 1 ? '' : 's'}.`);
+    } catch (err) {
+      console.error('Logo cleanup failed:', err);
+      flash('Could not clean the logos — nothing was saved. Please try again.');
+    } finally {
+      setCleaning(false);
+    }
+  };
+
   /* ── Sport row helpers ── */
   const setSportsCount = (n) => setSportsRows(prev => {
     const next = [...prev];
@@ -1862,6 +1896,15 @@ export default function SportsTeamsManager({ level }) {
               <FaFileExcel /> {bulkBusy === 'teams' ? 'Reading…' : '2. Upload Excel File'}
             </button>
           </div>
+          <button
+            type="button"
+            className="stm-link-btn"
+            onClick={cleanLogos}
+            disabled={cleaning || saving || loading}
+            title="Removes the dark-blue square behind older team and sport logos for this level"
+          >
+            ✨ {cleaning ? 'Cleaning…' : 'Clean logo backgrounds'}
+          </button>
         </div>
 
         {teamsRows.length > 0 && (

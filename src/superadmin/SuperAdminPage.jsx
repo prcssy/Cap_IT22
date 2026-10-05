@@ -18,6 +18,7 @@ import {
   FaSync, FaDownload, FaChartPie, FaChevronDown, FaCheck, FaUserShield, FaSearch,
 } from 'react-icons/fa';
 import { matchStart, matchEnd } from '../shared/utils/matchTime';
+import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
 /* ═══════════════════════════════════════════════════════════════
    DATA ANALYTICS — super admin only
@@ -1121,7 +1122,7 @@ export default function SuperAdminPage() {
     <div className="sa-page">
 
       <header className="sa-header">
-        <h1 className="sa-header__title">{schoolName}</h1>
+        <HeaderBrand titleClassName="sa-header__title" />
       </header>
 
       <div className="sa-body">

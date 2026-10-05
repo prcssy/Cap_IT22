@@ -548,7 +548,7 @@ export default function LandingPageSettings({ actorEmail, actorRole }) {
             <div
               className="lp-preview-hero"
               style={draftHero.backgroundImageURL ? {
-                backgroundImage: `linear-gradient(to right, rgba(0,21,41,0.88), rgba(0,21,41,0.35)), url(${draftHero.backgroundImageURL})`,
+                backgroundImage: `linear-gradient(to right, rgba(var(--c-dark-rgb, 0, 21, 41), 0.88), rgba(var(--c-dark-rgb, 0, 21, 41), 0.35)), url(${draftHero.backgroundImageURL})`,
               } : undefined}
             >
               <img src={branding.logo} alt="Logo preview" className="ws-preview-logo" />

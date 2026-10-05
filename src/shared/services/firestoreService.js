@@ -206,6 +206,23 @@ export async function createUserProfile(uid, profile) {
   });
 }
 
+/**
+ * Staff (admin / moderator / super admin) profile photo — they have no
+ * player registration, which is where a player's photo comes from. Stored
+ * as a small base64 data URL on users/{uid}.photoURL (null removes it).
+ * `role`/`isAdmin` are written alongside because firestore.rules checks
+ * them on every own-profile write (and a staff account created before it
+ * ever signed up may have no users doc yet).
+ */
+export async function updateMyProfilePhoto(uid, photoURL, role) {
+  if (!db) throw new Error('Firestore not initialized.');
+  await setDoc(doc(db, 'users', uid), {
+    photoURL: photoURL || null,
+    role,
+    isAdmin: role === 'admin' || role === 'superadmin',
+  }, { merge: true });
+}
+
 export async function getUserProfile(uid) {
   if (!db) {
     console.warn('Firestore not initialized. Cannot fetch user profile.');

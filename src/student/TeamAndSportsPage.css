@@ -360,7 +360,7 @@
   padding: 10px 12px;
   border-radius: 10px;
   /* Opaque, not a thin glass tint — it opens over busy card content. */
-  background: rgba(4, 18, 34, 0.97);
+  background: rgba(var(--c-dark-rgb, 4, 18, 34), 0.97);
   border: 1px solid rgba(252, 191, 25, 0.45);
   box-shadow: 0 10px 28px rgba(0, 0, 0, 0.45);
   text-transform: none;
@@ -579,5 +579,34 @@
   .ts-coaches {
     grid-template-columns: 1fr;
     padding-left: 0;
+  }
+}
+
+/* Same two-tone page as Home: dark title area, lighter navy content area
+   below it (Home's .dash-section--ongoing uses --c-navy). */
+.ts-body {
+  background-color: var(--c-navy, #0a1d52);
+}
+
+/* ── Phones: compact level tabs — only as wide as their labels (same
+   sizing as Home's), instead of stretched across the full screen. Last in
+   the file so it overrides the width: 100% / flex: 1 rules above. Sizes
+   scale with the screen (clamp(…vw…)) so the three tabs fit on one line
+   on any phone. ── */
+@media (max-width: 768px) {
+  .ts-lvltabs {
+    width: auto;
+    flex-wrap: nowrap;
+    gap: clamp(2px, 0.7vw, 4px);
+    padding: clamp(2px, 0.7vw, 4px);
+    border-radius: 12px;
+  }
+
+  .ts-lvltab {
+    flex: 0 0 auto;
+    padding: clamp(3px, calc(0.73px + 0.71vw), 5px) clamp(6px, calc(0.42px + 1.8vw), 11px);
+    font-size: clamp(8.5px, calc(5.73px + 0.8vw), 10.5px);
+    letter-spacing: 0.02em;
+    border-radius: 9px;
   }
 }

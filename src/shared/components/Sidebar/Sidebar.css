@@ -5,7 +5,10 @@
   width: 60px;
   height: 100vh;
   height: 100dvh;
-  background-color: var(--c-navy, #0a1d52);
+  /* Darkest theme shade (same as the top bar), so the rail stands apart
+     from the lighter navy page content beside it and flows seamlessly into
+     the top bar (no divider line — it showed as a stray line there). */
+  background-color: var(--c-dark, #001529);
   flex-shrink: 0;
   position: relative;
   z-index: 300;
@@ -163,6 +166,18 @@
   flex-direction: column;
   padding: 0.75rem 1.25rem 2rem;
   /* top matches icon rail padding */
+  /* Scrolls when its links are taller than the screen (small phones,
+     landscape), instead of cutting off the bottom ones. overscroll-
+     behavior keeps the page behind from scrolling along with it. No
+     border-radius here, so a scrollbar on this element is fine. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+  box-sizing: border-box;
+}
+
+.sidebar-panel > * {
+  flex-shrink: 0;
 }
 
 .sidebar-panel.open {
