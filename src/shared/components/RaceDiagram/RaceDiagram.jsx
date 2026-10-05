@@ -56,7 +56,7 @@ export default function RaceDiagram({ teams, standings = [], championName = null
           </svg>
 
           <div className="race-diagram__headers" style={{ top: 0 }}>
-            <div style={{ width: LEAF_W }}>Race</div>
+            <div style={{ width: LEAF_W }}>Event</div>
           </div>
 
           {teams.map((t, i) => {
@@ -106,7 +106,7 @@ export function RaceResults({ standings }) {
   if (!standings.length) return null;
   return (
     <div className="race-results">
-      <h4 className="race-results__title">Race results</h4>
+      <h4 className="race-results__title">Event results</h4>
       {standings.map((s, i) => (
         <div key={`${s.name}-${i}`} className={`race-results__row${s.place === 1 ? ' race-results__row--first' : ''}`}>
           <span className="race-results__place">{s.place ? ordinal(s.place) : '—'}</span>

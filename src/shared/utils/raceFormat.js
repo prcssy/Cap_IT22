@@ -1,8 +1,12 @@
-/* Single-Race format: every team competes in ONE event (swimming heat,
-   track race, …) and the winner is the champion.
+/* Single-Event format: every team competes in ONE event — either a timed
+   field (swimming heat, track race, …) or a scored field (archery, …) —
+   and the winner is the champion. Internal naming/field names below still
+   say "race" (a pre-existing convention that also covers point-scored
+   sports like archery); only the user-facing label changed to something
+   format-neutral.
 
    A race is saved as a single match in matchSchedules/{level}.matches:
-     { …usual match fields, format: 'Single-Race Format', race: true,
+     { …usual match fields, format: 'Single-Event Format', race: true,
        participants: [{ name, logo }, …],
        teamA / teamB (+ logos) = the first two participants }
    teamA/teamB are kept only so code that predates races (and filters on
@@ -11,7 +15,7 @@
    mistaken for a bracket. Pure functions only (no Firebase/React). */
 
 export const RACE_FORMAT_ID = 'single-race';
-export const RACE_FORMAT_LABEL = 'Single-Race Format';
+export const RACE_FORMAT_LABEL = 'Single-Event Format';
 
 const norm = (v) => String(v ?? '').trim().toLowerCase();
 

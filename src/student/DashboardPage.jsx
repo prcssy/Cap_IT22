@@ -471,7 +471,7 @@ function FinishedCard({ match, isActive, width }) {
    comebacks are small chips on the row so a big field still fits the card. */
 function RaceStandings({ standings, isActive }) {
   return (
-    <ol className="fc-race" aria-label="Race results">
+    <ol className="fc-race" aria-label="Event results">
       {standings.map((t, i) => (
         <li
           key={`${t.label}-${i}`}

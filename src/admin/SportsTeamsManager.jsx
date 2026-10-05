@@ -838,7 +838,6 @@ function SportsConfirmModal({ sports, saving, onClose, onSave }) {
                 {r.sport ? (
                   <span className="stm-confirm-sport-name">
                     {r.sport.name}
-                    <span className="stm-confirm-edit-icon"><FaEdit /></span>
                   </span>
                 ) : <span />}
               </div>

@@ -3232,7 +3232,7 @@ export default function ModeratorPage() {
                       <div className="mp-finished-card__pills">
                         {(s.stage || s.round != null) && (
                           <span className="mp-finished-card__label-pill">
-                            {isRaceMatch(s) ? `Race · ${raceParticipants(s).length} teams` : (s.stage || `Round ${s.round}`)}
+                            {isRaceMatch(s) ? `Event · ${raceParticipants(s).length} teams` : (s.stage || `Round ${s.round}`)}
                           </span>
                         )}
                         {s.matchLabel && (
@@ -3253,7 +3253,7 @@ export default function ModeratorPage() {
                     <div className="mp-finished-card__meta">
                       {s.date || s.time
                         ? `${s.date || ''}${s.date && s.time ? ' · ' : ''}${s.time || ''}`
-                        : (s.stage || (s.round != null ? (isRaceMatch(s) ? 'Race' : `Round ${s.round}`) : 'Date to be set'))}
+                        : (s.stage || (s.round != null ? (isRaceMatch(s) ? 'Event' : `Round ${s.round}`) : 'Date to be set'))}
                     </div>
                     {done ? (
                       <div className="mp-finished-card__status"><FaEdit /> Recorded — click to edit</div>

@@ -91,7 +91,7 @@ function formatSignInDate(date) {
 function SignedInBadge({ lastSignInAt }) {
   const date = toDate(lastSignInAt);
   return date
-    ? <span className="asp-status-badge asp-status--signedin" title={formatSignInDate(date)}>Signed In</span>
+    ? <span className="asp-status-badge asp-status--signedin" title={formatSignInDate(date)}>Registered</span>
     : <span className="asp-status-badge asp-status--notsignedin">Not Signed In Yet</span>;
 }
 
