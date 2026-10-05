@@ -2743,3 +2743,24 @@
     letter-spacing: 0;
   }
 }
+
+/* Wraps the whole registration form so it can be locked in one go (player
+   already registered). Invisible otherwise — no fieldset border/padding. */
+.reg-fieldset {
+  border: 0;
+  margin: 0;
+  padding: 0;
+  min-width: 0;
+  /* Same row spacing .reg-form gave its direct children before. */
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.reg-fieldset:disabled {
+  opacity: 0.6;
+}
+
+.reg-fieldset:disabled * {
+  cursor: not-allowed !important;
+}

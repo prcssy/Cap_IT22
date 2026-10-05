@@ -37,6 +37,7 @@ import {
   subscribeSportsTeamsConfig,
   getSportsTeamsConfig,
   createRegistration,
+  getMyRegistrations,
   getEventRegistrationCounts,
   getEventKey,
 } from '../shared/services/firestoreService';
@@ -1260,6 +1261,26 @@ function PlayerRegistration({ onBack }) {
   // the outcome of the last upload ({ filled, warnings } or { error }).
   const [excelBusy, setExcelBusy] = useState('');
   const [excelResult, setExcelResult] = useState(null);
+
+  /* One registration per player (createRegistration enforces it on save
+     too — a rejected one doesn't count, so they can submit a corrected
+     one). Loaded up front so the form says so right away, and picking an
+     event shows it on that field, instead of only failing at Save. */
+  const [existingReg, setExistingReg] = useState(null);
+  useEffect(() => {
+    let cancelled = false;
+    if (!currentUser?.uid) return undefined;
+    getMyRegistrations(currentUser.uid)
+      .then((regs) => { if (!cancelled) setExistingReg(regs.find((r) => r.status !== 'rejected') || null); })
+      .catch(() => { /* the save-time check still applies */ });
+    return () => { cancelled = true; };
+  }, [currentUser?.uid]);
+  const existingLabel = existingReg
+    ? [existingReg.event, existingReg.sport].filter(Boolean).join(' — ') || 'an event'
+    : '';
+  const existingStatus = existingReg
+    ? (existingReg.status === 'approved' ? 'approved' : 'pending review')
+    : '';
   const excelInputRef = useRef(null);
 
   // Sport / Team options, sourced live from the admin's Sports & Teams
@@ -1985,6 +2006,12 @@ function PlayerRegistration({ onBack }) {
     // attribute on the submit button doesn't catch it in time.
     if (submitting) return;
 
+    if (existingReg) {
+      setErrors((prev) => ({ ...prev, event: `You're already registered for ${existingLabel}. Only one registration is allowed per player.` }));
+      if (cardRef.current) cardRef.current.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      return;
+    }
+
     const validationErrors = validate();
     if (Object.keys(validationErrors).length > 0) {
       setErrors(validationErrors);
@@ -2142,6 +2169,19 @@ function PlayerRegistration({ onBack }) {
             <h2 className="reg-card__title">Player Registration</h2>
           </div>
 
+          {existingReg && (
+            <div className="reg-notice" role="alert">
+              <svg className="reg-notice__icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2 1 21h22L12 2zm0 5.5 6.9 12H5.1L12 7.5zM11 10v5h2v-5h-2zm0 6.5V18h2v-1.5h-2z"/>
+              </svg>
+              <span>
+                You&apos;re already registered for <strong>{existingLabel}</strong> ({existingStatus}).
+                Only one registration is allowed per player, so you can&apos;t submit another one.
+                You can check it on your Profile under Submitted Registrations.
+              </span>
+            </div>
+          )}
+
           {showNotice && Object.keys(errors).length > 0 && (
             <div className="reg-notice" role="alert">
               <svg className="reg-notice__icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
@@ -2178,7 +2218,7 @@ function PlayerRegistration({ onBack }) {
               <button type="button" className="reg-btn-reset" onClick={handleDownloadTemplate} disabled={!!excelBusy}>
                 {excelBusy === 'download' ? 'Preparing…' : 'Download Template'}
               </button>
-              <button type="button" className="reg-btn-save" onClick={() => excelInputRef.current?.click()} disabled={!!excelBusy}>
+              <button type="button" className="reg-btn-save" onClick={() => excelInputRef.current?.click()} disabled={!!excelBusy || !!existingReg}>
                 {excelBusy === 'upload' ? 'Reading…' : 'Upload Filled Template'}
               </button>
               <input
@@ -2221,6 +2261,9 @@ function PlayerRegistration({ onBack }) {
           )}
 
           <form className="reg-form" onSubmit={handleSave} noValidate>
+            {/* Already registered → the whole form is locked: a disabled
+                fieldset disables every field, Reset and Save at once. */}
+            <fieldset className="reg-fieldset" disabled={!!existingReg}>
 
             {/* Row 0: Which event is this registration for?
                 Intramurals, Sportsfest and Prisaa all use this exact
@@ -2228,7 +2271,22 @@ function PlayerRegistration({ onBack }) {
             <div className="reg-event-block">
               <div className="reg-event-block__grid">
                 <Field label="Register For Event" required error={errors.event}>
-                  <select className="reg-select" value={form.event} onChange={set('event')} required>
+                  <select
+                    className="reg-select"
+                    value={form.event}
+                    onChange={(e) => {
+                      set('event')(e);
+                      if (existingReg && e.target.value) {
+                        setErrors((prev) => ({
+                          ...prev,
+                          event: norm(e.target.value) === norm(existingReg.event)
+                            ? `You're already registered for ${existingReg.event}. Only one registration is allowed per player.`
+                            : `You're already registered for ${existingLabel}. Only one registration is allowed per player.`,
+                        }));
+                      }
+                    }}
+                    required
+                  >
                     <option value="">Select Event</option>
                     {events.map(ev => (
                       <option key={ev.key} value={ev.label}>{ev.label}</option>
@@ -2554,13 +2612,19 @@ function PlayerRegistration({ onBack }) {
                 <button type="button" className="reg-btn-reset" onClick={handleReset}>
                   Reset ↺
                 </button>
-                <button type="submit" className="reg-btn-save" disabled={submitting}>
+                <button
+                  type="submit"
+                  className="reg-btn-save"
+                  disabled={submitting || !!existingReg}
+                  title={existingReg ? 'You already have a registration' : undefined}
+                >
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><path d="M17 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14c1.1 0 2-.9 2-2V7l-4-4zm-5 16c-1.66 0-3-1.34-3-3s1.34-3 3-3 3 1.34 3 3-1.34 3-3 3zm3-10H5V5h10v4z"/></svg>
                   {submitting ? 'Saving...' : 'Save Registration'}
                 </button>
               </div>
             </div>
 
+            </fieldset>
           </form>
         </div>
 
