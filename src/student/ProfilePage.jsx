@@ -16,7 +16,6 @@ import { getMyRegistrations, subscribeCoaches, updateMyProfilePhoto } from '../s
 import { resizeImageToDataUrl } from '../shared/utils/resizeImage';
 import { getSchoolLevel } from '../shared/utils/schoolLevel';
 import { isMessengerUrl } from '../shared/utils/messengerLink';
-import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import { FaFacebookMessenger } from 'react-icons/fa6';
 import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
 
@@ -92,16 +91,16 @@ function InfoRow({ icon: Icon, label, value }) {
 /* "My Coach" — shown once a player's registration is approved: the coach(es)
    assigned to their team (and sport, when a coach only handles some of the
    team's sports) in the Admin console's Coaches tab. */
-function CoachCard({ coaches, teamName, sport }) {
+function CoachCard({ coaches, event, teamName, sport }) {
   return (
     <div className="profile-card profile-coach-card">
       <div className="profile-card-header">
         <span className="profile-card-title">My Coach</span>
-        <span className="profile-coach-card__for">{[teamName, sport].filter(Boolean).join(' · ')}</span>
+        <span className="profile-coach-card__for">{[event, teamName, sport].filter(Boolean).join(' · ')}</span>
       </div>
       <div className="profile-card-body">
         {coaches.length === 0 ? (
-          <p className="profile-coach-card__empty">No coach has been assigned to your team yet.</p>
+          <p className="profile-coach-card__empty">No coach has been assigned for {sport || 'this sport'} on your team yet.</p>
         ) : coaches.map((c) => (
           <div className="profile-coach" key={c.id}>
             <span className="profile-coach__avatar">
@@ -124,10 +123,10 @@ function CoachCard({ coaches, teamName, sport }) {
   );
 }
 
-/* "Sports Group Chats" — every coach's Messenger group chat link (set per
-   team on their My Players page), for anyone to join the chat of a sport
-   they're interested in. Scoped to the viewer's school level when known. */
-function GroupChatsCard({ chats, showLevel }) {
+/* "Sports Group Chats" — the Messenger group chats of the coaches handling
+   the sports this player joined (approved registrations only; see
+   groupChats in the page). Hidden when there are none. */
+function GroupChatsCard({ chats }) {
   if (chats.length === 0) return null;
   return (
     <div className="profile-card profile-chats-card">
@@ -135,15 +134,14 @@ function GroupChatsCard({ chats, showLevel }) {
         <span className="profile-card-title">Sports Group Chats</span>
       </div>
       <div className="profile-card-body">
-        <p className="profile-chats-card__hint">Join a team&apos;s Messenger group chat to get updates and participate in its sports.</p>
+        <p className="profile-chats-card__hint">Join your team&apos;s Messenger group chat for the sports you joined.</p>
         {chats.map((c) => (
-          <div className="profile-chat" key={`${c.coachId}-${c.team}`}>
+          <div className="profile-chat" key={`${c.coachId}-${c.team}-${c.sport}`}>
             <span className="profile-chat__icon"><FaFacebookMessenger /></span>
             <div className="profile-chat__info">
               <span className="profile-chat__team">{c.team}</span>
               <span className="profile-chat__meta">
-                {[c.sports.length ? c.sports.join(', ') : 'All sports', showLevel ? c.levelLabel : '', `Coach ${c.coachName}`]
-                  .filter(Boolean).join(' · ')}
+                {[c.sport, c.event, `Coach ${c.coachName}`].filter(Boolean).join(' · ')}
               </span>
             </div>
             <a className="profile-chat__join" href={c.url} target="_blank" rel="noopener noreferrer">Join</a>
@@ -208,40 +206,44 @@ export default function ProfilePage() {
 
   const latestReg = myRegistrations[0] || null;
 
-  // The coach is only shown once the registration is approved — a pending
-  // or rejected player isn't on the team yet.
-  const approvedReg = myRegistrations.find((r) => r.status === 'approved') || null;
+  // Coaches and group chats follow what the player actually JOINED: each
+  // approved registration (one per event) is matched to the coach(es)
+  // handling that exact team + sport (+ level). No coach for it → no coach
+  // and no group chat for it. Pending/rejected players aren't on the team yet.
+  const approvedRegs = myRegistrations.filter((r) => r.status === 'approved');
   const [coaches, setCoaches] = useState([]);
-  // Every coach — for My Coach (approved players) and Sports Group Chats (everyone).
   useEffect(() => {
-    if (!currentUser?.uid) return undefined;
+    if (!currentUser?.uid || approvedRegs.length === 0) return undefined;
     return subscribeCoaches(null, setCoaches, () => setCoaches([]));
-  }, [currentUser?.uid]);
+  }, [currentUser?.uid, approvedRegs.length]);
 
-  const levelLabels = useContext(LevelLabelsContext);
-  const myLevel = getSchoolLevel(userProfile?.gradeLevel);
-  const groupChats = coaches
-    .filter((c) => !myLevel || !c.level || c.level === myLevel)
-    .flatMap((c) => (c.chats || [])
-      .filter((ch) => ch?.team && isMessengerUrl(ch.url) && (c.teams || []).includes(ch.team))
-      .map((ch) => ({
-        coachId: c.id,
-        coachName: c.name || c.id,
-        team: ch.team,
-        url: ch.url,
-        sports: c.sports || [],
-        levelLabel: levelLabels[c.level] || c.level || '',
-      })))
-    .sort((a, b) => a.team.localeCompare(b.team) || a.coachName.localeCompare(b.coachName));
-  const myCoaches = approvedReg
-    ? coaches.filter((c) => {
-        // Team names repeat across levels, so match the player's level too.
-        const regLevel = getSchoolLevel(approvedReg.gradeLevel);
-        return (c.teams || []).includes(approvedReg.teamName)
-          && (!(c.sports || []).length || c.sports.includes(approvedReg.sport))
-          && (!regLevel || !c.level || c.level === regLevel);
-      })
-    : [];
+  // Team names repeat across levels, so the player's level must match too.
+  const coachesFor = (reg) => {
+    const regLevel = getSchoolLevel(reg.gradeLevel);
+    return coaches.filter((c) => (c.teams || []).includes(reg.teamName)
+      && (!(c.sports || []).length || c.sports.includes(reg.sport))
+      && (!regLevel || !c.level || c.level === regLevel));
+  };
+  const coachGroups = approvedRegs.map((reg) => ({ reg, coaches: coachesFor(reg) }));
+
+  // Only the chats of the coaches handling the player's own team + sport.
+  const seenChats = new Set();
+  const groupChats = coachGroups.flatMap(({ reg, coaches: list }) => list.flatMap((c) => (c.chats || [])
+    .filter((ch) => ch?.team === reg.teamName && isMessengerUrl(ch.url))
+    .filter((ch) => {
+      const key = `${c.id}|${ch.team}|${reg.sport}`;
+      if (seenChats.has(key)) return false;
+      seenChats.add(key);
+      return true;
+    })
+    .map((ch) => ({
+      coachId: c.id,
+      coachName: c.name || c.id,
+      team: ch.team,
+      url: ch.url,
+      sport: reg.sport,
+      event: reg.event,
+    }))));
 
   // `users/{uid}` docs are written with a `name` field (see AuthContext.signup /
   // firestoreService.createUserProfile). `fullName` was never actually stored
@@ -425,11 +427,11 @@ export default function ProfilePage() {
           </div>
         )}
 
-        {approvedReg && (
-          <CoachCard coaches={myCoaches} teamName={approvedReg.teamName} sport={approvedReg.sport} />
-        )}
+        {coachGroups.map(({ reg, coaches: list }) => (
+          <CoachCard key={reg.id} coaches={list} event={reg.event} teamName={reg.teamName} sport={reg.sport} />
+        ))}
 
-        <GroupChatsCard chats={groupChats} showLevel={!myLevel} />
+        <GroupChatsCard chats={groupChats} />
 
         {/* Info + Security */}
         <div className="profile-details-grid">

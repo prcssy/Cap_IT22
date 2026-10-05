@@ -6,6 +6,15 @@ function norm(value) {
   return (value || '').trim().toLowerCase();
 }
 
+/* Display only: "ALL SPORTS" → "All Sports", "MEN" → "Men", "5 V 5" → "5 v 5".
+   Values passed to onChange are untouched, so filtering still matches. */
+const SMALL_WORDS = new Set(['v', 'vs', 'of', 'and', 'the', 'a', 'an', 'in', 'on', 'for']);
+function titleCase(value) {
+  return String(value || '').toLowerCase().replace(/[^\s·/-]+/g, (word, i) => (
+    i > 0 && SMALL_WORDS.has(word) ? word : word.charAt(0).toUpperCase() + word.slice(1)
+  ));
+}
+
 /* ONE dropdown for Sport → Category → Division, step by step: it opens on
    the Sport list only; clicking a sport shows its categories beside it,
    clicking a category shows its divisions beside that, and clicking a
@@ -85,7 +94,7 @@ export default function SetPicker({ tree, value, onChange, showPath = false }) {
       className={`ms-select__option${active ? ' ms-select__option--active' : ''}${path ? ' ms-select__option--path' : ''}`}
       onClick={onClick}
     >
-      <span>{label}</span>
+      <span>{titleCase(label)}</span>
       {more && <span className="ms-select__more" aria-hidden="true">›</span>}
     </button>
   );
@@ -104,13 +113,13 @@ export default function SetPicker({ tree, value, onChange, showPath = false }) {
           {/* Just the sport here — the category/division show in the set's
               title below, and in the menu once it's open. */}
           <span className="ms-select__value">
-            <span className="ms-select__part ms-select__part--sport">{value.sport}</span>
+            <span className="ms-select__part ms-select__part--sport">{titleCase(value.sport)}</span>
             {/* `showPath`: also show the picked category/division in the box,
                 for pages with no set title below to show them (Home). */}
             {showPath && current.slice(1).map((part) => (
               <React.Fragment key={part}>
                 <span className="ms-select__sep" aria-hidden="true">›</span>
-                <span className="ms-select__part">{part}</span>
+                <span className="ms-select__part">{titleCase(part)}</span>
               </React.Fragment>
             ))}
           </span>

@@ -497,12 +497,17 @@ function forceDownloadMetadata(file) {
 export async function createRegistration(uid, email, formData, photoFile, waiverFile, actorRole = 'student', eventList = EVENT_TYPES) {
   if (!db) throw new Error('Firestore not initialized.');
 
-  // One player registration per student. A rejected one doesn't count, so
-  // a student whose registration was turned down can submit a corrected one.
-  // Checked before any upload so a blocked attempt leaves nothing in Storage.
+  // One registration per student PER EVENT (Intramurals, Sportsfest, …). A
+  // rejected one doesn't count, so a student whose registration was turned
+  // down can submit a corrected one. Checked before any upload so a blocked
+  // attempt leaves nothing in Storage.
+  const eventKey = getEventKey(formData.event, eventList);
   const existing = await getMyRegistrations(uid);
-  if (existing.some((r) => r.status !== 'rejected')) {
-    throw new Error('You have already submitted a player registration. Only one registration is allowed per student.');
+  const sameEvent = existing.find((r) => r.status !== 'rejected'
+    && ((r.eventKey && r.eventKey === eventKey)
+      || String(r.event || '').trim().toLowerCase() === String(formData.event || '').trim().toLowerCase()));
+  if (sameEvent) {
+    throw new Error(`You have already registered for ${sameEvent.event || 'this event'}. You can register once per event.`);
   }
 
   // Upload both files in parallel — either can be null (optional).
