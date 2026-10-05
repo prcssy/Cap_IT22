@@ -1,6 +1,6 @@
 import { useContext } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
-import { FaBars, FaTimes, FaUserCircle, FaHome, FaFlag, FaCalendarAlt, FaMedal, FaUserEdit, FaUserLock } from "react-icons/fa";
+import { FaBars, FaTimes, FaUserCircle, FaHome, FaFlag, FaCalendarAlt, FaMedal, FaUserEdit, FaUserLock, FaClipboardList } from "react-icons/fa";
 import { FaUserGear } from "react-icons/fa6";
 import { SidebarContext } from "./SidebarContext";
 import { AuthContext } from "../../context/AuthContext";
@@ -80,6 +80,18 @@ function Sidebar() {
             >
               <FaMedal />
             </button>
+
+            {/* My Players — coaches only */}
+            {userProfile?.role === 'coach' && (
+              <button
+                className={`sidebar-btn ${location.pathname === "/coach" ? "active" : ""}`}
+                aria-label="My Players"
+                data-label="My Players"
+                onClick={() => navigate('/coach')}
+              >
+                <FaClipboardList />
+              </button>
+            )}
 
             {/* Admin Panel icon — only visible to admins */}
             {userProfile?.isAdmin && (
@@ -162,6 +174,14 @@ function Sidebar() {
             <FaMedal className="panel-nav-icon" />
             <span>Ranking</span>
           </Link>
+
+          {/* My Players — coaches only */}
+          {userProfile?.role === 'coach' && (
+            <Link to="/coach" className={`panel-nav-item ${location.pathname === "/coach" ? "active" : ""}`}>
+              <FaClipboardList className="panel-nav-icon" />
+              <span>My Players</span>
+            </Link>
+          )}
 
           {/* Admin Panel link — only visible to admins */}
           {userProfile?.isAdmin && (

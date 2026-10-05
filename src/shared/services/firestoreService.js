@@ -528,6 +528,10 @@ export async function createRegistration(uid, email, formData, photoFile, waiver
     teamName: formData.teamName || '',
     sport:    formData.sport    || '',
     position: formData.position || '',
+    // Category/division of the sport, when it has any (e.g. Male · 5 V 5).
+    category:   formData.category   || '',
+    division:   formData.division   || '',
+    divisionId: formData.divisionId || '',
 
     // Extra
     message: (formData.message || '').trim(),
@@ -703,8 +707,25 @@ export async function getAllUsers() {
       console.warn('Firestore not initialized. Cannot load users.');
       return [];
     }
-    const snap = await getDocs(collection(db, 'users'));
-    return snap.docs.map((d) => ({ id: d.id, ...d.data() }));
+    const [snap, coachSnap] = await Promise.all([
+      getDocs(collection(db, 'users')),
+      getDocs(collection(db, 'coaches')).catch((err) => {
+        console.warn('Could not load coaches while listing users:', err);
+        return { docs: [] };
+      }),
+    ]);
+    // A coach's users/{uid} doc stays role 'student' (the coach role lives
+    // in coaches/{email}, see AuthContext), so without this every coach
+    // would count as a player in the student-only tables/tiles that filter
+    // on role === 'student'. Staff roles still win over coach.
+    const coachEmails = new Set(coachSnap.docs.map((d) => d.id));
+    return snap.docs.map((d) => {
+      const user = { id: d.id, ...d.data() };
+      const isPlainStudent = (user.role || 'student').toLowerCase() === 'student';
+      return isPlainStudent && coachEmails.has((user.email || '').toLowerCase())
+        ? { ...user, role: 'coach' }
+        : user;
+    });
   });
 }
 
@@ -721,10 +742,17 @@ export async function getStaffRoster() {
       console.warn('Firestore not initialized. Cannot load staff roster.');
       return [];
     }
-    const [superadmins, admins, moderators] = await Promise.all([
+    const [superadmins, admins, moderators, coaches] = await Promise.all([
       getDocs(collection(db, 'superadmins')),
       getDocs(collection(db, 'admins')),
       getDocs(collection(db, 'moderators')),
+      // Coaches aren't staff (see the Coaches section below), but they're
+      // listed alongside. Caught on its own so a failed coaches read never
+      // empties the whole staff list.
+      getDocs(collection(db, 'coaches')).catch((err) => {
+        console.warn('Could not load coaches for the staff roster:', err);
+        return { docs: [] };
+      }),
     ]);
     const toEntries = (snap, role) => snap.docs.map((d) => ({
       email: d.id,
@@ -739,6 +767,14 @@ export async function getStaffRoster() {
       ...toEntries(superadmins, 'superadmin'),
       ...toEntries(admins, 'admin'),
       ...toEntries(moderators, 'moderator'),
+      ...coaches.docs.map((d) => ({
+        email: d.id,
+        role: 'coach',
+        level: d.data().level || null,
+        name: d.data().name || '',
+        teams: d.data().teams || [],
+        addedAt: d.data().addedAt || null,
+      })),
     ];
   });
 }
@@ -1452,6 +1488,37 @@ export async function saveVenues(venues, actorRole) {
   return venues;
 }
 
+/* ── Venue locations ──
+   Each venue in venuesConfig/global.venues may also carry where it is, so
+   students (e.g. freshmen) can find it from any schedule:
+     mapX/mapY   pin on the campus map, as % of the image (0-100), or null
+     photo       small base64 photo of the venue/entrance
+     directions  short text ("Behind the main building, 2nd floor")
+     mapsUrl     Google Maps link, mainly for off-campus venues
+   The campus map image itself lives in its own doc, venuesConfig/campusMap
+   ({ image }), so one large picture can't push the venue list past the
+   1 MB document limit. Same rules as the venue list (read: signed in,
+   write: staff). */
+export async function getCampusMap() {
+  return dedupeRead('campusMap', async () => {
+    if (!db) return null;
+    const snap = await getDoc(doc(db, 'venuesConfig', 'campusMap'));
+    return snap.exists() ? snap.data().image || null : null;
+  });
+}
+
+export async function saveCampusMap(image, actorRole) {
+  if (!db) throw new Error('Firestore not initialized.');
+  await setDoc(doc(db, 'venuesConfig', 'campusMap'), { image: image || null, updatedAt: serverTimestamp() });
+  logActivity({
+    actorRole,
+    type: 'Venues Updated',
+    details: image ? 'Uploaded the campus map' : 'Removed the campus map',
+    targetType: 'venuesConfig',
+    targetId: 'campusMap',
+  });
+}
+
 /* All matches across every school level, each tagged with its level —
    used to check whether a venue is already booked at a given date/time
    (a physical venue can just as easily be double-booked across levels
@@ -2010,6 +2077,8 @@ export const DEFAULT_BRANDING = {
   logoURL: null,
   // Site-wide color theme key (see src/shared/constants/themes.js).
   themeKey: 'santa-rita',
+  // Colors for themeKey 'custom' ({ primary, accent, accent2 } hex strings).
+  customTheme: null,
   events: EVENT_TYPES,
   // Contact footer shown on the public landing page (Contact.jsx). Icons
   // for these 4 fixed rows (address/phone/email/facebook) are chosen by
@@ -2234,3 +2303,149 @@ export async function updateLandingPageConfig(fields, actorEmail, actorRole = 's
 // each file client-side to a base64 data URL (src/utils/resizeImage.js)
 // and passes it straight into updateLandingPageConfig({ hero }) /
 // ({ gallery }).
+/* ─────────────────────────────────────────────
+   Coaches
+   Stored at: coaches/{email}  (doc id = lowercase email, same convention
+   as the admins/moderators/superadmins allowlists)
+
+   A coach is NOT staff — the coaches collection is deliberately separate
+   from the three staff allowlists, so a coach never passes isStaff() in
+   firestore.rules or requireStaff() in the Cloud Functions. What a coach
+   gets is read access to the registrations of the players they're in
+   charge of: every registration whose teamName is in `teams` and (unless
+   `sports` is empty = all of that team's sports) whose sport is in
+   `sports`. Assigned by an Admin of that level or a Super Admin from the
+   Admin console's Coaches tab; the coach can edit only their own profile
+   fields (name, contact number, photo, bio).
+
+   Shape: { email, name, contactNumber, photoURL, bio, level,
+            teams: [teamName], sports: [sportName] }
+───────────────────────────────────────────── */
+export const COACH_PROFILE_FIELDS = ['name', 'contactNumber', 'photoURL', 'bio'];
+
+export function normalizeCoachEmail(email) {
+  return String(email || '').trim().toLowerCase();
+}
+
+/** Live list of coaches — one level's, or every level's when `level` is null. */
+export function subscribeCoaches(level, callback, onError) {
+  if (!db) {
+    callback([]);
+    return () => {};
+  }
+  const ref = level
+    ? query(collection(db, 'coaches'), where('level', '==', level))
+    : collection(db, 'coaches');
+  return onSnapshot(ref, (snap) => {
+    callback(
+      snap.docs
+        .map((d) => ({ id: d.id, ...d.data() }))
+        .sort((a, b) => (a.name || a.id).localeCompare(b.name || b.id)),
+    );
+  }, (error) => {
+    console.warn('Coaches listener failed:', error);
+    if (onError) onError(error); else callback([]);
+  });
+}
+
+/** Admin/Super Admin: create or fully update a coach's assignment + profile. */
+export async function saveCoach(coach, actorRole, { isNew = false } = {}) {
+  if (!db) throw new Error('Firestore not initialized.');
+  const email = normalizeCoachEmail(coach.email);
+  if (!email || !email.includes('@')) throw new Error('A valid email is required.');
+  const data = {
+    email,
+    name: (coach.name || '').trim(),
+    contactNumber: (coach.contactNumber || '').trim(),
+    bio: (coach.bio || '').trim(),
+    level: coach.level,
+    teams: [...new Set((coach.teams || []).filter(Boolean))],
+    sports: [...new Set((coach.sports || []).filter(Boolean))],
+    updatedAt: serverTimestamp(),
+  };
+  if (isNew) data.addedAt = serverTimestamp();
+  await setDoc(doc(db, 'coaches', email), data, { merge: true });
+  logActivity({
+    actorRole,
+    type: isNew ? 'Coach Added' : 'Coach Updated',
+    details: `${isNew ? 'Added' : 'Updated'} coach ${data.name || email} (${data.teams.join(', ') || 'no team'}${data.sports.length ? ` · ${data.sports.join(', ')}` : ''})`,
+    targetType: 'coach',
+    targetId: email,
+    targetLabel: data.name || email,
+  });
+}
+
+/**
+ * Creates the coach's Firebase Auth login if their email has none yet
+ * (ensureCoachAccount Cloud Function — only the Admin SDK can create
+ * someone else's account). `password` is optional; a temporary one is
+ * generated when blank. Returns `{ created, tempPassword }` — tempPassword
+ * is set only when a password was generated; an existing account is
+ * never changed.
+ */
+export async function ensureCoachAccount({ email, name, level, password = '' }) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'ensureCoachAccount');
+  const { data } = await call({ email: normalizeCoachEmail(email), name, level, password });
+  return data;
+}
+
+/**
+ * Removes a coach AND deletes their login account (removeCoach Cloud
+ * Function — only the Admin SDK can delete someone else's account). The
+ * login is kept when it's also a staff or registered-player account:
+ * returns { accountDeleted, keptReason: 'staff' | 'player' | 'no-account' | null }.
+ */
+export async function removeCoachAndAccount(email) {
+  if (!functions) throw new Error('Firebase Functions not initialized.');
+  const call = httpsCallable(functions, 'removeCoach');
+  const { data } = await call({ email: normalizeCoachEmail(email), deleteAccount: true });
+  return data;
+}
+
+export async function deleteCoach(email, actorRole, label) {
+  if (!db) throw new Error('Firestore not initialized.');
+  const id = normalizeCoachEmail(email);
+  await deleteDoc(doc(db, 'coaches', id));
+  logActivity({
+    actorRole,
+    type: 'Coach Removed',
+    details: `Removed coach ${label || id}`,
+    targetType: 'coach',
+    targetId: id,
+    targetLabel: label || id,
+  });
+}
+
+/** The signed-in coach edits their OWN profile fields (never teams/sports/level). */
+export async function updateMyCoachProfile(email, fields) {
+  if (!db) throw new Error('Firestore not initialized.');
+  const patch = {};
+  COACH_PROFILE_FIELDS.forEach((k) => {
+    if (k in fields) patch[k] = typeof fields[k] === 'string' ? fields[k].trim() : fields[k];
+  });
+  await updateDoc(doc(db, 'coaches', normalizeCoachEmail(email)), { ...patch, updatedAt: serverTimestamp() });
+}
+
+/**
+ * The registrations of every player a coach is in charge of. One query per
+ * team (or per team+sport pair when the coach is limited to some sports),
+ * all equality filters — firestore.rules only lets a coach read a
+ * registration whose teamName/sport match their own coaches/{email} doc,
+ * and a query is only allowed when every document it could return passes
+ * that check, so a broad query over all registrations would be rejected.
+ */
+export async function getCoachRoster(coach) {
+  if (!db || !coach) return [];
+  const teams = coach.teams || [];
+  const sports = coach.sports || [];
+  const queries = teams.flatMap((team) => (
+    sports.length
+      ? sports.map((sport) => query(collection(db, 'registrations'), where('teamName', '==', team), where('sport', '==', sport)))
+      : [query(collection(db, 'registrations'), where('teamName', '==', team))]
+  ));
+  const snaps = await Promise.all(queries.map((q) => getDocs(q)));
+  const byId = new Map();
+  snaps.forEach((snap) => snap.docs.forEach((d) => byId.set(d.id, { id: d.id, ...d.data() })));
+  return [...byId.values()].sort((a, b) => (a.fullName || '').localeCompare(b.fullName || ''));
+}

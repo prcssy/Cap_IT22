@@ -3,6 +3,7 @@ import { FaSearch, FaTimes, FaUserGraduate, FaCheck, FaTrash, FaFilePdf, FaFileW
 // jspdf/jspdf-autotable are loaded on demand (see handleDownloadPdf below),
 // not imported statically here.
 import { db } from '../shared/firebase';
+import { categoryDivisionLabel } from '../shared/utils/sportCategory';
 import { getAllRegistrations, getAllUsers, getSportsTeamsConfig, getEventKey, getEventLabel, updateRegistrationStatus, deleteRegistration, getUsersLastSignIn, deleteStudentAccount } from '../shared/services/firestoreService';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
@@ -632,6 +633,7 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
     ]);
     section('Sports & Team', [
       ['Sport', sportLabel(reg)],
+      ['Category / Division', categoryDivisionLabel(reg) || 'N/A'],
       ['Position', reg.position || 'N/A'],
       ['Team Name', reg.teamName || 'N/A'],
     ]);
@@ -989,6 +991,11 @@ export default function StudentRegistrationDetails({ scope = 'registrants', leve
                       <DetailField label="Sport" value={selectedStudent.sportRemoved ? sportLabel(selectedStudent) : selectedStudent.sport} />
                       <DetailField label="Position" value={selectedStudent.position} center />
                     </div>
+                    {categoryDivisionLabel(selectedStudent) && (
+                      <div className="asp-form-row">
+                        <DetailField label="Category / Division" value={categoryDivisionLabel(selectedStudent)} />
+                      </div>
+                    )}
                     <div className="asp-form-row">
                       <DetailField label="Team Name" value={selectedStudent.teamName} />
                       <DetailField label="Event" value={selectedStudent.event} center />

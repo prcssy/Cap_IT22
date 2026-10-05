@@ -1499,6 +1499,45 @@
     flex-wrap: nowrap;
   }
 
+  /* Player Registration gets its own compact line (it used to share the
+     nowrap row and got squeezed into two lines of text, pushing the Sport
+     filter off-screen). The ::before is a zero-height, full-width flex item
+     ordered between the button and the filters — a line break — so the
+     level tabs + Sport filter keep their one shared line underneath. */
+  .dash-filters-row:has(.dash-register-btn) {
+    flex-wrap: wrap;
+    row-gap: 8px;
+  }
+
+  .dash-filters-row:has(.dash-register-btn)::before {
+    content: '';
+    order: 1;
+    flex-basis: 100%;
+    height: 0;
+  }
+
+
+  .dash-filters-row > :not(.dash-register-btn) {
+    order: 2;
+  }
+
+  /* Two-class selector so it beats the base .dash-register-btn rule,
+     which comes later in this file. */
+  .dash-filters-row > .dash-register-btn {
+    order: 0;
+    flex: 0 0 auto;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 9px;
+    font-size: 11px;
+    white-space: nowrap;
+  }
+
+  .dash-filters-row > .dash-register-btn svg {
+    width: 12px;
+    height: 12px;
+  }
+
   /* Level tabs + Sport already fill a phone's width; once a sport is picked
      the Division filter takes its own line underneath instead of squeezing
      the row. Its dropdown still anchors right: 0 (see the panel note above). */
@@ -2636,5 +2675,90 @@
 
   .ongoing-card--race {
     flex: 0 0 calc(var(--race-n) * 9.375rem + (var(--race-n) - 1) * 4px + 16px);
+  }
+}
+
+/* ── Sport → Category → Division selector on Home (shared SetPicker, see
+   src/shared/components/SetPicker). It sits at the RIGHT end of the
+   filters row, so its menu anchors right: 0 and opens leftward — the
+   picker's default left: 0 would run the menu off the right edge
+   (CLAUDE.md CSS gotchas). Two-class selectors so these beat
+   SetPicker.css regardless of load order. ── */
+.dash-filters-row .ms-select__panel {
+  left: auto;
+  right: 0;
+}
+
+.dash-filters-row .ms-select__trigger {
+  min-width: 0;
+}
+
+@media (max-width: 600px) {
+  /* Same height as the level tabs beside it and centered on the same line
+     (it used to be shorter, so the two looked misaligned): the picker
+     stretches to the line's height and its button fills that height,
+     with its text centered inside. */
+  /* Every box from the row down to the button stretches (the picker's own
+     align-items: center used to keep the button at its natural, shorter
+     height even though the picker itself stretched). */
+  .dash-filters-row .ms-select {
+    align-self: stretch;
+    align-items: stretch;
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .dash-filters-row .ms-select__dd {
+    display: flex;
+    align-items: stretch;
+    min-width: 0;
+  }
+
+  /* Shares a line with the level tabs: cap it and let a long
+     "BASKETBALL › MEN › 5 V 5" cut off with … instead of overflowing. */
+  .dash-filters-row .ms-select__trigger {
+    align-items: center;
+    max-width: 38vw;
+    padding: 0 9px;
+    gap: 5px;
+    border-width: 1.5px;
+    border-radius: 12px;
+    font-size: clamp(8px, calc(5.73px + 0.71vw), 10px); /* same as the level tabs */
+    line-height: 1;
+  }
+
+  .dash-filters-row .ms-select__value {
+    gap: 3px;
+    align-items: center;
+  }
+
+  .dash-filters-row .ms-select__part:not(.ms-select__part--sport) {
+    flex-shrink: 1;
+    min-width: 0;
+  }
+
+  .dash-filters-row .ms-select__arrow {
+    font-size: 7px;
+  }
+
+  /* The open menu, centered on the screen under the filters. Anchoring it
+     to the trigger (which sits at the right end of the row) ran the Sport
+     column off the left edge of a phone. The trigger's wrapper is made
+     static so the menu positions against the whole filters row instead,
+     then centers itself within it. */
+  .dash-filters-row {
+    position: relative;
+  }
+
+  .dash-filters-row .ms-select__dd {
+    position: static;
+  }
+
+  .dash-filters-row .ms-select__panel {
+    left: 50%;
+    right: auto;
+    transform: translateX(-50%);
+    min-width: 0;
+    max-width: 100%;
   }
 }

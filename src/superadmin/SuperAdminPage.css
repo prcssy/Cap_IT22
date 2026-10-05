@@ -682,6 +682,18 @@
   color: #15803d;
 }
 
+.sa-role--coach {
+  background: #cffafe;
+  color: #0e7490;
+}
+
+/* Teams a coach handles, under their level in the Staff List. */
+.sa-staff-teams {
+  margin-top: 2px;
+  font-size: 11px;
+  color: #64748b;
+}
+
 .sa-role--admin {
   background: #fff3d6;
   color: #92600b;

@@ -25,6 +25,7 @@ const ProfilePage = lazy(() => import('./student/ProfilePage'));
 const TeamAndSportsPage = lazy(() => import('./student/TeamAndSportsPage'));
 const MatchSchedulesPage = lazy(() => import('./student/MatchSchedulesPage'));
 const RankingPage = lazy(() => import('./student/RankingPage'));
+const CoachPage = lazy(() => import('./coach/CoachPage'));
 const PrivacyPolicyPage = lazy(() => import('./public/PrivacyPolicy/PrivacyPolicyPage'));
 
 function App() {
@@ -80,6 +81,15 @@ function App() {
                 element={
                   <ProtectedRoute allowedRoles={["moderator", "superadmin"]}>
                     <ModeratorPage />
+                  </ProtectedRoute>
+                }
+              />
+              {/* Coaches: their own profile + the roster of players they're in charge of. */}
+              <Route
+                path="/coach"
+                element={
+                  <ProtectedRoute allowedRoles={["coach"]}>
+                    <CoachPage />
                   </ProtectedRoute>
                 }
               />

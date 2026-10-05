@@ -97,6 +97,76 @@ export const THEMES = [
 
 function wrap(spec) { return { colors: buildTheme(spec) }; }
 
-export function getTheme(key) {
+/* ── Custom theme ──────────────────────────────────────────────────
+   Super Admin can pick their own colors instead of a preset: a primary
+   (the dark "navy" family) and an accent pair. The navy family is still
+   derived from the original shades — the primary's hue and saturation
+   are applied to them, and its brightness only nudges theirs within a
+   clamped range — so white text and cards keep readable contrast no
+   matter what color is picked. Stored as siteConfig/branding.customTheme. */
+export const CUSTOM_THEME_KEY = 'custom';
+
+export const DEFAULT_CUSTOM_COLORS = { primary: '#0a1d52', accent: '#fcbf19', accent2: '#f5a623' };
+
+const HEX_RE = /^#[0-9a-f]{6}$/i;
+export const isHexColor = (v) => typeof v === 'string' && HEX_RE.test(v);
+
+// How far the primary's lightness may move the navy family (relative to
+// the original navy). Brighter than this and white text stops reading.
+const MIN_L_SHIFT = -0.08;
+const MAX_L_SHIFT = 0.1;
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+export function normalizeCustomColors(custom) {
+  const c = custom || {};
+  return {
+    primary: isHexColor(c.primary) ? c.primary.toLowerCase() : DEFAULT_CUSTOM_COLORS.primary,
+    accent: isHexColor(c.accent) ? c.accent.toLowerCase() : DEFAULT_CUSTOM_COLORS.accent,
+    accent2: isHexColor(c.accent2) ? c.accent2.toLowerCase() : DEFAULT_CUSTOM_COLORS.accent2,
+  };
+}
+
+export function buildCustomColors(custom) {
+  const { primary, accent, accent2 } = normalizeCustomColors(custom);
+  const [ph, ps, pl] = rgbToHsl(hexToRgb(primary));
+  const [, ns, nl] = rgbToHsl(hexToRgb(BASE.navy));
+  const lShift = clamp(pl - nl, MIN_L_SHIFT, MAX_L_SHIFT);
+  const colors = { gold: accent, 'gold-2': accent2 };
+  Object.entries(BASE).forEach(([k, hex]) => {
+    const [h, s, l] = rgbToHsl(hexToRgb(hex));
+    // Keep each shade's hue offset from navy, and scale its saturation by
+    // how saturated the primary is compared with the original navy.
+    const hue = (ph + (h - rgbToHsl(hexToRgb(BASE.navy))[0]) + 360) % 360;
+    const sat = ns === 0 ? ps : clamp(s * (ps / ns), 0, 1);
+    colors[k] = toHex(hslToRgb([hue, sat, clamp(l + lShift, 0.02, 0.4)]));
+  });
+  return colors;
+}
+
+// A slightly deeper tone of an accent, used to auto-fill "Accent (deep)".
+export function deepenColor(hex) {
+  if (!isHexColor(hex)) return hex;
+  const [h, s, l] = rgbToHsl(hexToRgb(hex));
+  return toHex(hslToRgb([h, s, clamp(l - 0.08, 0, 1)]));
+}
+
+// WCAG contrast ratio between two hex colors (1–21).
+export function contrastRatio(a, b) {
+  const lum = (hex) => {
+    const [r, g, bl] = hexToRgb(hex).map((v) => {
+      const c = v / 255;
+      return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+    });
+    return 0.2126 * r + 0.7152 * g + 0.0722 * bl;
+  };
+  const [hi, lo] = [lum(a), lum(b)].sort((x, y) => y - x);
+  return (hi + 0.05) / (lo + 0.05);
+}
+
+export function getTheme(key, customColors) {
+  if (key === CUSTOM_THEME_KEY) {
+    return { key, name: 'Custom', tagline: 'Your own colors', colors: buildCustomColors(customColors) };
+  }
   return THEMES.find((t) => t.key === key) || THEMES[0];
 }

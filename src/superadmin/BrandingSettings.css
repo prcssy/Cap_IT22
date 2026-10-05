@@ -421,3 +421,75 @@
   font-weight: 600;
   color: #64748b;
 }
+
+/* ── Custom theme color pickers ── */
+.ws-custom-theme {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+}
+
+.ws-color-field {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.ws-color-field__picker {
+  flex-shrink: 0;
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border: 2px solid #e2e8f0;
+  border-radius: 8px;
+  background: none;
+  cursor: pointer;
+}
+
+.ws-color-field__picker::-webkit-color-swatch-wrapper { padding: 2px; }
+.ws-color-field__picker::-webkit-color-swatch { border: none; border-radius: 5px; }
+.ws-color-field__picker::-moz-color-swatch { border: none; border-radius: 5px; }
+
+.ws-color-field__text {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+.ws-color-field__label {
+  font-size: 13px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.ws-color-field__hint {
+  font-size: 11px;
+  color: #64748b;
+}
+
+.ws-color-field__hex {
+  flex-shrink: 0;
+  width: 92px;
+  padding: 7px 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 13px;
+  color: #0f172a;
+  background: #fff;
+  border: 1px solid #cbd5e1;
+  border-radius: 6px;
+}
+
+.ws-color-field__hex:focus {
+  outline: 2px solid #1d4ed8;
+  outline-offset: 1px;
+}
+
+.ws-color-field__hex--invalid {
+  border-color: #dc2626;
+}

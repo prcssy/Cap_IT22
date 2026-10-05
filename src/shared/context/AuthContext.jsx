@@ -34,6 +34,20 @@ const ROLE_COLLECTIONS = [
 
 const EMPTY_STAFF_DOCS = { admin: false, moderator: false, superadmin: false, adminLevel: null, moderatorLevel: null };
 
+// A coach is not staff: coaches/{email} is its own collection (see
+// subscribeCoaches in firestoreService.js), checked only when the email is
+// on none of the staff allowlists, so staff always outranks coach.
+async function fetchCoachDoc(email) {
+  if (!db || !email) return null;
+  try {
+    const snap = await getDoc(doc(db, 'coaches', email.toLowerCase()));
+    return snap.exists() ? { id: snap.id, ...snap.data() } : null;
+  } catch (error) {
+    console.warn('Failed to check coaches status:', error);
+    return null;
+  }
+}
+
 export const AuthContext = createContext({
   authModal: { isOpen: false, screen: 'login' },
   openAuthModal: () => {},
@@ -44,6 +58,7 @@ export const AuthContext = createContext({
   userRole: 'guest',
   isAdmin: false,
   staffLevel: null,
+  coachProfile: null,
   authLoading: false,
   login: async () => {},
   signup: async () => {},
@@ -119,6 +134,9 @@ export function AuthProvider({ children }) {
   // immediately — resolveStaffRole() below is only a ONE-SHOT lookup used
   // for the initial login/signup decision, it never re-fires on its own.
   const [staffDocs, setStaffDocs] = useState(EMPTY_STAFF_DOCS);
+  // The signed-in user's own coaches/{email} doc (null if not a coach),
+  // kept live the same way as staffDocs.
+  const [coachDoc, setCoachDoc] = useState(null);
   // Bumped on every onAuthStateChanged invocation so a slow-resolving
   // earlier call (e.g. the initial sign-in during an unverified login,
   // which login() then immediately signs back out) can detect it's been
@@ -139,7 +157,13 @@ export function AuthProvider({ children }) {
         try {
           const profile = await getUserProfile(user.uid);
           // Resolve staff role from Firestore (superadmins / admins / moderators)
-          const { role: staffRole, level: staffLevel } = await resolveStaffAccess(user.email);
+          const { role: resolvedStaffRole, level: resolvedStaffLevel } = await resolveStaffAccess(user.email);
+          // Resolved here (not only by the live listener below) so a coach's
+          // role is known before authLoading flips false — otherwise
+          // ProtectedRoute would bounce them off /coach on a page reload.
+          const coach = resolvedStaffRole === 'student' ? await fetchCoachDoc(user.email) : null;
+          const staffRole = coach ? 'coach' : resolvedStaffRole;
+          const staffLevel = coach ? coach.level || null : resolvedStaffLevel;
           // A newer auth event (e.g. login()'s forced sign-out of an
           // unverified account, or signup()'s forced sign-out after
           // account creation) has already fired and set the correct state
@@ -150,6 +174,7 @@ export function AuthProvider({ children }) {
           // Seed the live-listener state from this same lookup, so the
           // recompute effect below doesn't start from all-false and briefly
           // flash a demoted role before its own onSnapshot listeners land.
+          setCoachDoc(coach);
           setStaffDocs({
             admin: staffRole === 'admin',
             moderator: staffRole === 'moderator',
@@ -206,6 +231,7 @@ export function AuthProvider({ children }) {
         }
       } else {
         setUserProfile(null);
+        setCoachDoc(null);
       }
       if (callId === authCallIdRef.current) setAuthLoading(false);
     });
@@ -243,6 +269,20 @@ export function AuthProvider({ children }) {
     return () => unsubs.forEach((unsub) => unsub());
   }, [currentUser?.email]);
 
+  // Live coach doc — an Admin adding/removing this coach, or changing the
+  // teams they handle, reaches an open session immediately.
+  useEffect(() => {
+    if (!db || !currentUser?.email) {
+      setCoachDoc(null);
+      return undefined;
+    }
+    return onSnapshot(doc(db, 'coaches', currentUser.email.toLowerCase()), (snap) => {
+      setCoachDoc(snap.exists() ? { id: snap.id, ...snap.data() } : null);
+    }, (error) => {
+      console.warn('Role listener failed for coaches:', error);
+    });
+  }, [currentUser?.email]);
+
   /* Recomputes the effective role every time the live staffDocs flags
      change (same superadmin > admin > moderator > student priority as
      resolveStaffRole), and merges it onto the existing profile. Sidebar
@@ -250,9 +290,12 @@ export function AuthProvider({ children }) {
      guards all read userProfile/userRole, so this one state update is what
      makes every one of them react live. */
   useEffect(() => {
-    const role = staffDocs.superadmin ? 'superadmin' : staffDocs.admin ? 'admin' : staffDocs.moderator ? 'moderator' : 'student';
+    const role = staffDocs.superadmin ? 'superadmin' : staffDocs.admin ? 'admin' : staffDocs.moderator ? 'moderator' : coachDoc ? 'coach' : 'student';
     const isAdminRole = role === 'admin' || role === 'superadmin';
-    const staffLevel = role === 'admin' ? staffDocs.adminLevel : role === 'moderator' ? staffDocs.moderatorLevel : null;
+    const staffLevel = role === 'admin' ? staffDocs.adminLevel
+      : role === 'moderator' ? staffDocs.moderatorLevel
+      : role === 'coach' ? coachDoc.level || null
+      : null;
     setUserProfile((prev) => {
       if (prev) {
         if (prev.role === role && prev.isAdmin === isAdminRole && (prev.staffLevel ?? null) === staffLevel) return prev;
@@ -264,7 +307,7 @@ export function AuthProvider({ children }) {
       if (role === 'student' || !currentUser) return prev;
       return { role, isAdmin: isAdminRole, staffLevel, email: currentUser.email, name: currentUser.displayName || '' };
     });
-  }, [staffDocs, currentUser]);
+  }, [staffDocs, coachDoc, currentUser]);
 
   const openAuthModal = useCallback((screen = 'login') => {
     setAuthModal({ isOpen: true, screen });
@@ -452,6 +495,7 @@ export function AuthProvider({ children }) {
     userRole: userProfile?.role ?? 'guest',
     isAdmin: userProfile?.isAdmin ?? false,
     staffLevel: userProfile?.staffLevel ?? null,
+    coachProfile: userProfile?.role === 'coach' ? coachDoc : null,
     authLoading,
     login,
     signup,
@@ -461,7 +505,7 @@ export function AuthProvider({ children }) {
     logout,
   }), [
     authModal, openAuthModal, closeAuthModal, switchScreen,
-    currentUser, userProfile, authLoading,
+    currentUser, userProfile, coachDoc, authLoading,
     login, signup, resendVerificationEmail, resetPassword, updatePassword, logout,
   ]);
 

@@ -15,12 +15,13 @@ export function getSchoolLevel(gradeLevel) {
 
 /* The school level a signed-in user is locked to: a student's level (from the
    grade/year they picked at signup), or an admin/moderator's assigned level
-   (`staffLevel`). null for Super Admins / accounts with no grade — those keep
+   (`staffLevel`), or the level a coach is assigned to (also `staffLevel`).
+   null for Super Admins / accounts with no grade — those keep
    the level switcher. */
 export function useLockedLevel() {
   const { userProfile } = useContext(AuthContext);
   if (!userProfile) return null;
-  if (userProfile.role === 'admin' || userProfile.role === 'moderator') return userProfile.staffLevel || null;
+  if (userProfile.role === 'admin' || userProfile.role === 'moderator' || userProfile.role === 'coach') return userProfile.staffLevel || null;
   if (userProfile.role && userProfile.role !== 'student') return null;
   return getSchoolLevel(userProfile.gradeLevel);
 }

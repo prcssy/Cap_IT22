@@ -5,7 +5,10 @@ import {
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { updateBrandingInfo, saveSchoolEvents } from '../shared/services/firestoreService';
 import { resizeImageToDataUrl } from '../shared/utils/resizeImage';
-import { THEMES, DEFAULT_THEME_KEY, getTheme, themeToCssVars } from '../shared/constants/themes';
+import {
+  THEMES, DEFAULT_THEME_KEY, CUSTOM_THEME_KEY, getTheme, themeToCssVars,
+  normalizeCustomColors, isHexColor, deepenColor, contrastRatio,
+} from '../shared/constants/themes';
 import './BrandingSettings.css';
 
 // Source-file gate before resizing — generous, since the canvas resize
@@ -52,6 +55,7 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
   );
   const [draftContact, setDraftContact] = useState(branding.contact);
   const [draftTheme, setDraftTheme] = useState(branding.themeKey || DEFAULT_THEME_KEY);
+  const [draftCustom, setDraftCustom] = useState(normalizeCustomColors(branding.customTheme));
 
   // Seed the draft exactly once, the first time real data arrives —
   // never again afterward, so a Firestore push (including the one this
@@ -68,7 +72,8 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
     setDraftEvents(branding.events.map((e) => ({ _id: uid(), key: e.key, label: e.label })));
     setDraftContact(branding.contact);
     setDraftTheme(branding.themeKey || DEFAULT_THEME_KEY);
-  }, [branding.loading, branding.schoolName, branding.tagline, branding.motto, branding.copyrightText, branding.events, branding.contact, branding.themeKey]);
+    setDraftCustom(normalizeCustomColors(branding.customTheme));
+  }, [branding.loading, branding.schoolName, branding.tagline, branding.motto, branding.copyrightText, branding.events, branding.contact, branding.themeKey, branding.customTheme]);
 
   /* ── Logo ── */
   const fileInputRef = useRef(null);
@@ -228,13 +233,47 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
   const [themeBusy, setThemeBusy] = useState(false);
   const [themeMsg, setThemeMsg] = useState(null);
   const savedTheme = branding.themeKey || DEFAULT_THEME_KEY;
+  const savedCustom = normalizeCustomColors(branding.customTheme);
+  const isCustom = draftTheme === CUSTOM_THEME_KEY;
+  // Hex text inputs can hold a half-typed value; only valid hexes count.
+  const customValid = ['primary', 'accent', 'accent2'].every((k) => isHexColor(draftCustom[k]));
+  const customChanged = ['primary', 'accent', 'accent2'].some((k) => draftCustom[k].toLowerCase() !== savedCustom[k]);
+  const themeDirty = draftTheme !== savedTheme || (isCustom && customChanged);
+  // The preview/swatches fall back to the last saved custom colors while a
+  // hex field is mid-edit, so a half-typed value never breaks the preview.
+  const previewCustom = customValid ? draftCustom : savedCustom;
+  const previewColors = getTheme(draftTheme, previewCustom).colors;
+  const customSwatch = getTheme(CUSTOM_THEME_KEY, previewCustom).colors;
+  // Accents are used as text on the dark surfaces, so they need contrast.
+  const accentLowContrast = isCustom && customValid
+    && Math.min(contrastRatio(previewColors.gold, previewColors.dark), contrastRatio(previewColors.gold, previewColors.navy)) < 4.5;
+
+  // Keep the deep accent in step with the main accent until it's edited
+  // by hand.
+  const accent2TouchedRef = useRef(false);
+  const setCustomColor = (key, value) => {
+    if (key === 'accent2') accent2TouchedRef.current = true;
+    setDraftCustom((prev) => {
+      const next = { ...prev, [key]: value };
+      if (key === 'accent' && isHexColor(value) && !accent2TouchedRef.current) {
+        next.accent2 = deepenColor(value);
+      }
+      return next;
+    });
+  };
 
   const handleSaveTheme = async () => {
+    if (isCustom && !customValid) {
+      setThemeMsg({ tone: 'error', text: 'Enter each color as a 6-digit hex code, e.g. #0a1d52.' });
+      return;
+    }
     setThemeBusy(true);
     setThemeMsg(null);
     try {
-      await updateBrandingInfo({ themeKey: draftTheme }, actorEmail, actorRole);
-      setThemeMsg({ tone: 'success', text: `“${getTheme(draftTheme).name}” applied to the whole site.` });
+      const fields = { themeKey: draftTheme };
+      if (isCustom) fields.customTheme = normalizeCustomColors(draftCustom);
+      await updateBrandingInfo(fields, actorEmail, actorRole);
+      setThemeMsg({ tone: 'success', text: `“${getTheme(draftTheme).name}” theme applied to the whole site.` });
     } catch (err) {
       console.error('Failed to save color theme:', err);
       setThemeMsg({ tone: 'error', text: friendlyBrandingError(err, 'Could not save the color theme') });
@@ -290,7 +329,7 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
           {/* ── Color Theme ── */}
           <div className="sa-card">
             <h3 className="ws-card-title">Color Theme</h3>
-            <p className="ws-card-hint">Pick a matched color set for the entire site. Selecting one previews it on the right; it goes live for everyone when you save.</p>
+            <p className="ws-card-hint">Pick a matched color set for the entire site, or choose Custom to set your own colors. Selecting one previews it on the right; it goes live for everyone when you save.</p>
 
             <div className="ws-theme-grid" role="radiogroup" aria-label="Color theme">
               {THEMES.map((t) => {
@@ -319,11 +358,78 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
                   </button>
                 );
               })}
+              <button
+                type="button"
+                role="radio"
+                aria-checked={isCustom}
+                className={`ws-theme${isCustom ? ' ws-theme--active' : ''}`}
+                onClick={() => setDraftTheme(CUSTOM_THEME_KEY)}
+              >
+                <span className="ws-theme__swatch" aria-hidden="true">
+                  <span style={{ background: customSwatch.dark }} />
+                  <span style={{ background: customSwatch.navy }} />
+                  <span style={{ background: customSwatch['navy-3'] }} />
+                  <span style={{ background: customSwatch.gold }} />
+                  <span style={{ background: customSwatch['gold-2'] }} />
+                </span>
+                <span className="ws-theme__name">Custom</span>
+                <span className="ws-theme__tag">
+                  Your own colors{savedTheme === CUSTOM_THEME_KEY ? ' · Current' : ''}
+                </span>
+              </button>
             </div>
+
+            {isCustom && (
+              <div className="ws-custom-theme">
+                {[
+                  { key: 'primary', label: 'Primary', hint: 'Header, sidebar & dark backgrounds' },
+                  { key: 'accent', label: 'Accent', hint: 'Buttons, highlights & active items' },
+                  { key: 'accent2', label: 'Accent (deep)', hint: 'Hover states & gradients' },
+                ].map(({ key, label, hint }) => {
+                  const value = draftCustom[key];
+                  const valid = isHexColor(value);
+                  return (
+                    <div className="ws-color-field" key={key}>
+                      <input
+                        type="color"
+                        className="ws-color-field__picker"
+                        value={valid ? value.toLowerCase() : savedCustom[key]}
+                        onChange={(e) => setCustomColor(key, e.target.value)}
+                        aria-label={`${label} color`}
+                      />
+                      <div className="ws-color-field__text">
+                        <label className="ws-color-field__label" htmlFor={`ws-color-${key}`}>{label}</label>
+                        <span className="ws-color-field__hint">{hint}</span>
+                      </div>
+                      <input
+                        id={`ws-color-${key}`}
+                        type="text"
+                        className={`ws-color-field__hex${valid ? '' : ' ws-color-field__hex--invalid'}`}
+                        value={value}
+                        maxLength={7}
+                        spellCheck={false}
+                        onChange={(e) => {
+                          const v = e.target.value.trim();
+                          setCustomColor(key, v.startsWith('#') ? v : `#${v}`);
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+                <p className="ws-card-hint">
+                  The primary color&apos;s brightness is adjusted automatically so white text stays readable on it.
+                </p>
+                {accentLowContrast && (
+                  <p className="ws-msg ws-msg--error">
+                    This accent is hard to read on the primary color — try a brighter accent.
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="ws-card-actions">
               {themeMsg && <p className={`ws-msg ws-msg--${themeMsg.tone}`}>{themeMsg.text}</p>}
-              <button type="button" className="sa-export" onClick={handleSaveTheme} disabled={themeBusy || draftTheme === savedTheme}>
+              <button type="button" className="sa-export" onClick={handleSaveTheme} disabled={themeBusy || !themeDirty || (isCustom && !customValid)}>
                 {themeBusy && <FaSync className="sa-spin" />} Apply Theme
               </button>
             </div>
@@ -503,7 +609,7 @@ export default function BrandingSettings({ actorEmail, actorRole }) {
 
         {/* ── Preview ── */}
         <div className="ws-col ws-col--preview">
-          <div className="sa-card ws-preview-card" style={themeToCssVars(getTheme(draftTheme).colors)}>
+          <div className="sa-card ws-preview-card" style={themeToCssVars(previewColors)}>
             <h3 className="ws-card-title">Preview</h3>
             <div className="ws-preview-hero">
               <img src={branding.logo} alt="Logo preview" className="ws-preview-logo" />

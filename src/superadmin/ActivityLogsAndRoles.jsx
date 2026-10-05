@@ -454,14 +454,20 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
                     <Icon /> {busyRole === role ? 'Working…' : label}
                   </button>
                 ))}
+                {/* Coach access lives in coaches/{email}, not the staff
+                    allowlists removeStaffRole clears — Remove would report
+                    success while leaving them a coach. */}
                 <button
                   className="arl-role-btn arl-role-btn--danger"
-                  disabled={selectedRole === 'student' || busyRole !== null}
+                  disabled={selectedRole === 'student' || selectedRole === 'coach' || busyRole !== null}
                   onClick={handleRemove}
                 >
                   <FaUserSlash /> {busyRole === 'remove' ? 'Working…' : 'Remove'}
                 </button>
               </div>
+            )}
+            {!isSelf && selectedRole === 'coach' && (
+              <p className="arl-self-note">To remove coach access, use the Admin console&apos;s Coaches tab.</p>
             )}
 
             {actionMsg && (

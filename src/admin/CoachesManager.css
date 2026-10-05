@@ -1,0 +1,263 @@
+/* CoachesManager — layout/card styles only. Buttons, overlays, form
+   groups and toasts reuse the `msf-*` classes in AdminSchedulePage.css
+   (this component only renders inside AdminSchedulePage). */
+
+.cm-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+  gap: 14px;
+  margin-top: 16px;
+}
+
+.cm-card {
+  background: #fafbfd;
+  border: 1px solid #eef0f5;
+  border-radius: 12px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.cm-card__top {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+
+.cm-avatar {
+  width: 48px;
+  height: 48px;
+  flex-shrink: 0;
+  border-radius: 50%;
+  overflow: hidden;
+  background: var(--c-dark, #001529);
+  color: var(--c-gold-2, #f5a623);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+}
+
+.cm-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.cm-card__id {
+  flex: 1;
+  min-width: 0;
+}
+
+.cm-card__name {
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--c-dark, #001529);
+  word-break: break-word;
+}
+
+.cm-card__line {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 3px;
+  font-size: 12px;
+  color: #5b678a;
+  word-break: break-all;
+}
+
+.cm-card__line svg { flex-shrink: 0; }
+
+.cm-card__actions {
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.cm-icon-delete {
+  background: #fdeeea;
+  color: #c0301f;
+  border: none;
+  border-radius: 6px;
+  width: 28px;
+  height: 28px;
+  cursor: pointer;
+}
+
+.cm-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.cm-chip {
+  padding: 3px 9px;
+  border-radius: 999px;
+  background: #eef2ff;
+  color: var(--c-navy, #0a1d52);
+  font-size: 11.5px;
+  font-weight: 700;
+}
+
+.cm-chip--team {
+  background: var(--c-dark, #001529);
+  color: var(--c-gold, #fcbf19);
+}
+
+.cm-chip--stale {
+  background: #fee2e2;
+  color: #991b1b;
+  text-decoration: line-through;
+}
+
+.cm-card__count {
+  font-size: 12px;
+  font-weight: 700;
+  color: #5b678a;
+}
+
+/* ── Add/Edit modal: clipped rounded shell, scrolling inner body ── */
+.cm-modal {
+  width: 100%;
+  max-width: 520px;
+  max-height: calc(100vh - 48px);
+  margin: auto;
+  display: flex;
+  flex-direction: column;
+  background: #fff;
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.35);
+}
+
+.cm-modal__head {
+  flex-shrink: 0;
+  padding: 16px 22px;
+  background: var(--c-dark, #001529);
+}
+
+.cm-modal__head h3 {
+  margin: 0;
+  color: var(--c-gold, #fcbf19);
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.cm-modal__body {
+  overflow-y: auto;
+  padding: 18px 22px 20px;
+  color: var(--c-dark, #001529);
+}
+
+.cm-modal__body textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 12px;
+  border: 1px solid #d8dceb;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 13px;
+  resize: vertical;
+}
+
+.cm-modal__body input:disabled {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.cm-pickgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+  padding: 10px;
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+}
+
+.cm-hint {
+  margin: 4px 0 6px;
+  font-size: 11.5px;
+  color: #64748b;
+}
+
+.cm-error {
+  margin: 0 0 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #dc2626;
+}
+
+.cm-spin { animation: cm-spin 0.9s linear infinite; }
+@keyframes cm-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 560px) {
+  .cm-modal__body .msf-form-row { flex-direction: column; gap: 0; }
+}
+
+/* ── "Coach account created" login details ── */
+.cm-account { max-width: 420px; }
+
+.cm-account h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.cm-account__row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.cm-account__label {
+  flex-basis: 100%;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #64748b;
+}
+
+.cm-account__row code {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--c-dark, #001529);
+  background: #f7f9fc;
+  border: 1.5px solid #dbe3ee;
+  border-radius: 6px;
+  padding: 7px 9px;
+}
+
+/* ── Remove coach: access only vs. delete account ── */
+.cm-remove { max-width: 420px; }
+
+.cm-remove__options {
+  margin: 0 0 12px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: #475569;
+}
+
+.cm-remove__options li + li { margin-top: 4px; }
+
+.cm-remove__actions {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.cm-remove__actions button {
+  width: 100%;
+  justify-content: center;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}

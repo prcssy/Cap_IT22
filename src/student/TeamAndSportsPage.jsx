@@ -3,7 +3,8 @@ import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './TeamAndSportsPage.css';
 import Contact from '../public/Landing/Contact/Contact';
-import { subscribeSportsTeamsConfig } from '../shared/services/firestoreService';
+import { subscribeSportsTeamsConfig, subscribeCoaches } from '../shared/services/firestoreService';
+import { FaUserTie, FaPhoneAlt } from 'react-icons/fa';
 import LevelTabs from '../shared/components/LevelTabs';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
 
@@ -64,8 +65,33 @@ function SportTag({ name, sport }) {
   );
 }
 
+/* Who's in charge of a team — one row per coach assigned to it. */
+function TeamCoaches({ coaches }) {
+  if (!coaches.length) return null;
+  return (
+    <div className="ts-coaches">
+      {coaches.map((c) => (
+        <div className="ts-coach" key={c.id}>
+          <span className="ts-coach__avatar">
+            {c.photoURL ? <img src={c.photoURL} alt="" /> : <FaUserTie />}
+          </span>
+          <span className="ts-coach__text">
+            <span className="ts-coach__label">Coach{c.sports?.length ? ` · ${c.sports.join(', ')}` : ''}</span>
+            <span className="ts-coach__name">{c.name || c.id}</span>
+            {c.contactNumber && (
+              <a className="ts-coach__phone" href={`tel:${c.contactNumber.replace(/[^+0-9]/g, '')}`}>
+                <FaPhoneAlt /> {c.contactNumber}
+              </a>
+            )}
+          </span>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ── Single team card ── */
-function TeamCard({ team, index, levelLabels, sportsByName }) {
+function TeamCard({ team, index, levelLabels, sportsByName, coaches = [] }) {
   const sports = team.sportIds || [];
   return (
     <div className="ts-team-card" style={{ animationDelay: `${index * 0.07}s` }}>
@@ -87,6 +113,7 @@ function TeamCard({ team, index, levelLabels, sportsByName }) {
       ) : (
         <p className="ts-card-empty">No sports assigned to this team yet.</p>
       )}
+      <TeamCoaches coaches={coaches} />
     </div>
   );
 }
@@ -107,6 +134,9 @@ export default function TeamsAndSportsPage() {
   const [teamsByLevel, setTeamsByLevel] = useState({ elementary: [], highSchool: [], college: [] });
   const [sportsByLevel, setSportsByLevel] = useState({ elementary: [], highSchool: [], college: [] });
   const contactRef = React.useRef(null);
+  const [coaches, setCoaches] = useState([]);
+
+  useEffect(() => subscribeCoaches(null, setCoaches, () => setCoaches([])), []);
 
   /* ── Live data from Firestore for every level ──
      Listeners, so a team or sport the admin adds/edits shows up here
@@ -141,6 +171,16 @@ export default function TeamsAndSportsPage() {
     () => new Map((sportsByLevel[level.key] || []).map((s) => [norm(s.name), s])),
     [level, sportsByLevel],
   );
+
+  // "level::team name" → the coaches assigned to that team.
+  const coachesByTeam = useMemo(() => {
+    const map = new Map();
+    coaches.forEach((c) => (c.teams || []).forEach((t) => {
+      const key = `${c.level}::${t}`;
+      map.set(key, [...(map.get(key) || []), c]);
+    }));
+    return map;
+  }, [coaches]);
 
   /* ── Stats always reflect the currently selected level ── */
   const totalTeams = visibleTeams.length;
@@ -200,7 +240,7 @@ export default function TeamsAndSportsPage() {
         ) : (
           <div className="ts-cards-list">
             {visibleTeams.map((team, i) => (
-              <TeamCard key={`${team.level}-${team.id}`} team={team} index={i} levelLabels={levelLabels} sportsByName={sportsByName} />
+              <TeamCard key={`${team.level}-${team.id}`} team={team} index={i} levelLabels={levelLabels} sportsByName={sportsByName} coaches={coachesByTeam.get(`${team.level}::${team.name}`) || []} />
             ))}
           </div>
         )}

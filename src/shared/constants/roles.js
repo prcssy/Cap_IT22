@@ -30,6 +30,7 @@ export const ROLE_LABELS = {
   moderator: 'Moderator',
   admin: 'Admin',
   superadmin: 'Super Admin',
+  coach: 'Coach',
   audience: 'Audience',
 };
 
@@ -38,6 +39,7 @@ export const ROLE_COLORS = {
   moderator: '#16a34a',
   admin: '#dc2626',
   superadmin: '#7c3aed',
+  coach: '#0891b2',
   audience: '#1d4ed8',
 };
 

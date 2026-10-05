@@ -85,8 +85,39 @@ service cloud.firestore {
         && requiredString(data, 'teamName', 100)
         && requiredString(data, 'sport', 100)
         && requiredString(data, 'position', 100)
+        && optionalString(data, 'category', 100)
+        && optionalString(data, 'division', 100)
+        && optionalString(data, 'divisionId', 100)
         && optionalString(data, 'message', 500)
         && optionalString(data, 'studentEmail', 254);
+    }
+
+    // ── Coach helpers (see match /coaches below) ──
+    function isAdminOfLevel(level) {
+      let adminPath = /databases/$(database)/documents/admins/$(staffEmail());
+      return isSuperAdmin()
+        || (signedIn() && exists(adminPath) && get(adminPath).data.get('level', 'elementary') == level);
+    }
+
+    function validCoach(data) {
+      return data.email is string && data.email.size() <= 254
+        && data.level in ['elementary', 'highSchool', 'college']
+        && data.teams is list && data.teams.size() <= 20
+        && data.sports is list && data.sports.size() <= 30
+        && optionalString(data, 'name', 100)
+        && optionalString(data, 'contactNumber', 20)
+        && optionalString(data, 'bio', 500)
+        // base64 data URL of a resized photo
+        && optionalString(data, 'photoURL', 200000);
+    }
+
+    // True if the signed-in user is a coach whose teams (and sports, when
+    // limited to some) cover this registration.
+    function coachHandles(data) {
+      let coachPath = /databases/$(database)/documents/coaches/$(staffEmail());
+      return signedIn() && exists(coachPath)
+        && data.teamName in get(coachPath).data.teams
+        && (get(coachPath).data.sports.size() == 0 || data.sport in get(coachPath).data.sports);
     }
 
     // ── User profiles ──────────────────────────────────────────
@@ -163,6 +194,31 @@ service cloud.firestore {
       // cards (getMyRegistrations in firestoreService.js).
       allow read: if signedIn() && resource.data.uid == request.auth.uid;
       allow read, update, delete: if isStaff();
+      // A coach may READ (never change) the registrations of the players
+      // they're in charge of — see coachHandles() above.
+      allow read: if coachHandles(resource.data);
+    }
+
+    // ── Coaches (doc id = lowercase email) ─────────────────────
+    // Deliberately NOT one of the staff allowlists above: a coach never
+    // passes isStaff(). An Admin of the coach's level (or a Super Admin)
+    // assigns them to teams/sports; the coach may only edit their own
+    // profile fields. Readable by any signed-in user so players can see
+    // who their coach is on the Team & Sports page.
+    match /coaches/{email} {
+      allow read: if signedIn();
+      allow create: if isAdminOfLevel(request.resource.data.level)
+                    && request.resource.data.email == email
+                    && validCoach(request.resource.data);
+      allow update: if validCoach(request.resource.data)
+                    && request.resource.data.email == email
+                    && (
+                      (isAdminOfLevel(resource.data.level) && isAdminOfLevel(request.resource.data.level))
+                      || (signedIn() && email == staffEmail()
+                          && request.resource.data.diff(resource.data).affectedKeys()
+                               .hasOnly(['name', 'contactNumber', 'photoURL', 'bio', 'updatedAt']))
+                    );
+      allow delete: if isAdminOfLevel(resource.data.level);
     }
 
     // ── Public aggregate counters ───────────────────────────────

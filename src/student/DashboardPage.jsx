@@ -13,7 +13,7 @@ import {
   getBarangaysByMunicipality,
   getBarangayByCode,
 } from '@aivangogh/ph-address';
-import { FiAlertTriangle, FiChevronLeft, FiChevronRight, FiChevronDown, FiTrendingUp, FiClock, FiMapPin, FiCheckCircle } from 'react-icons/fi';
+import { FiAlertTriangle, FiChevronLeft, FiChevronRight, FiTrendingUp, FiClock, FiMapPin, FiCheckCircle } from 'react-icons/fi';
 import { FaCrown } from 'react-icons/fa';
 import './DashboardPage.css';
 import Contact from '../public/Landing/Contact/Contact';
@@ -42,6 +42,9 @@ import {
 } from '../shared/services/firestoreService';
 import { matchStart, matchEnd } from '../shared/utils/matchTime';
 import MatchCountdown from '../shared/components/MatchCountdown';
+import { sportCategoryOptions } from '../shared/utils/sportCategory';
+import VenueLink from '../shared/components/VenueLocator/VenueLocator';
+import SetPicker from '../shared/components/SetPicker/SetPicker';
 
 /* ═══════════════════════════════════════════
    LIVE MATCH STATUS
@@ -306,7 +309,7 @@ function OngoingCard({ match }) {
             </>
           )}
         </div>
-        <div className="ft-venue">{match.sport} | {match.venue}</div>
+        <div className="ft-venue">{match.sport} | <VenueLink name={match.venue} /></div>
       </div>
     </div>
   );
@@ -349,7 +352,7 @@ function UpcomingCard({ match }) {
             : `${match.teamA.label}${match.teamB ? ` VS ${match.teamB.label}` : ''}`}
         </div>
         <div className="uc-hover-info__row"><FiClock /> {match.date} &middot; {match.time}</div>
-        <div className="uc-hover-info__row"><FiMapPin /> {match.venue}</div>
+        <div className="uc-hover-info__row"><FiMapPin /> <VenueLink name={match.venue} /></div>
         <span className="uc-hover-info__sport">{match.sport}</span>
       </div>
     </div>
@@ -743,88 +746,16 @@ function ScrollRow({ children, label, count, noun, variant, isEmpty, emptyText }
   );
 }
 
-/* Global Dashboard-wide sport filter — lives beside the level tabs in the
-   header so it reads as "this controls the whole page", not just one
-   section. Every section below (Ongoing/Upcoming/Finished) filters off
-   the same `value`, so switching sports here can never leave one section
-   showing a different sport than the others.
-   Styled to match the landing page's Levels dropdown (compact glass
-   pill trigger, translucent blurred panel with text list options)
-   instead of a native <select>, so the sizing/arrangement reads the
-   same way as the public homepage. */
-function SportFilter({ sports, value, onChange }) {
-  return (
-    <DashFilter
-      label="Sport"
-      ariaLabel="Filter the whole dashboard by sport"
-      options={[{ key: 'ALL SPORTS', label: 'All Sports' }, ...sports.map((sport) => ({ key: sport, label: sport }))]}
-      value={value}
-      onChange={onChange}
-    />
-  );
-}
-
-/* Same control, for the divisions of the picked sport ("MALE · 5 V 5"). */
-function DivisionFilter({ divisions, value, onChange }) {
-  return (
-    <DashFilter
-      label="Division"
-      ariaLabel="Filter the whole dashboard by division"
-      className="dash-sport-filter--division"
-      options={[{ key: ALL_DIVISIONS, label: 'All Divisions' }, ...divisions.map((d) => ({ key: d, label: d }))]}
-      value={value}
-      onChange={onChange}
-    />
-  );
-}
-
-function DashFilter({ label, ariaLabel, options, value, onChange, className = '' }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-
-  useEffect(() => {
-    const onClick = (event) => {
-      if (wrapRef.current && !wrapRef.current.contains(event.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onClick);
-    return () => document.removeEventListener('mousedown', onClick);
-  }, []);
-
-  const selected = options.find((o) => o.key === value) || options[0];
-
-  return (
-    <div className={`dash-sport-filter ${className}`} ref={wrapRef}>
-      <span className="dash-sport-filter__label">{label}</span>
-      <div className="dash-sport-filter__dd">
-        <button
-          type="button"
-          className="dash-sport-filter__trigger"
-          onClick={() => setOpen((p) => !p)}
-          aria-label={ariaLabel}
-        >
-          <span>{selected.label}</span>
-          <FiChevronDown className={`dash-sport-filter__arrow ${open ? 'dash-sport-filter__arrow--open' : ''}`} />
-        </button>
-
-        <div className={`dash-sport-filter__panel ${open ? 'dash-sport-filter__panel--open' : ''}`}>
-          {options.map((o) => (
-            <button
-              key={o.key}
-              type="button"
-              className={`dash-sport-filter__option ${o.key === value ? 'dash-sport-filter__option--active' : ''}`}
-              onClick={() => { onChange(o.key); setOpen(false); }}
-            >
-              {o.label}
-            </button>
-          ))}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-
 const ALL_DIVISIONS = 'ALL DIVISIONS';
+const ALL_CATEGORIES = 'ALL CATEGORIES';
+const ALL_SPORTS = 'ALL SPORTS';
+
+/* "MALE · 5 V 5" → { group: 'MALE', division: '5 V 5' } (see divisionLabel). */
+function splitDivisionLabel(label) {
+  const text = String(label || '');
+  const at = text.indexOf(' · ');
+  return at < 0 ? { group: text, division: '' } : { group: text.slice(0, at), division: text.slice(at + 3) };
+}
 
 /* "MALE · 5 V 5" for a group with its own named division, plain "MALE" when
    the division is just the group itself. Resolved from the schedule's
@@ -868,7 +799,9 @@ function HomeView({ onOpenRegistration }) {
   // Finished) reads from this same value, so there is exactly one source
   // of truth for "which sport am I looking at" across the whole Dashboard.
   const [sportFilter, setSportFilter] = useState('ALL SPORTS');
-  const [divisionFilter, setDivisionFilter] = useState(ALL_DIVISIONS);
+  // Category/division within the picked sport, as split from a match's
+  // "MALE · 5 V 5" division label. '' = all.
+  const [catFilter, setCatFilter] = useState({ group: '', division: '' });
   const [availableSports, setAvailableSports] = useState([]);
   const [sportsConfig, setSportsConfig] = useState([]); // full sports list, for division names
   const [now, setNow] = useState(() => new Date());
@@ -1015,37 +948,71 @@ function HomeView({ onOpenRegistration }) {
     }
   }, [sportFilter, filterSports]);
 
-  /* Divisions of the picked sport: every one configured in Sports & Teams,
-     plus any that only appear on a match (older data), in config order. */
-  const filterDivisions = useMemo(() => {
-    if (sportFilter === 'ALL SPORTS') return [];
-    const sport = sportsConfig.find((s) => (s.name || '').trim().toUpperCase() === sportFilter);
-    const fromConfig = (sport?.categoryGroups || []).flatMap((g) => (
-      (g.divisions || []).length ? g.divisions.map((d) => divisionLabel(g, d)) : [divisionLabel(g, null)]
-    ));
-    const fromMatches = [...ongoing, ...upcoming, ...finished]
-      .filter((m) => m.sport === sportFilter)
-      .map((m) => m.division);
-    return Array.from(new Set([...fromConfig, ...fromMatches])).filter(Boolean);
-  }, [sportFilter, sportsConfig, ongoing, upcoming, finished]);
+  /* Sport → Category → Division tree for the selector (same one as Game
+     Schedules): every category/division configured in Sports & Teams, plus
+     any that only appear on a match (older data). "All …" entries keep the
+     dashboard's show-everything options at each level. */
+  const pickerTree = useMemo(() => {
+    const labelsBySport = new Map(filterSports.map((sp) => [sp, new Set()]));
+    sportsConfig.forEach((sp) => {
+      const set = labelsBySport.get((sp.name || '').trim().toUpperCase());
+      if (!set) return;
+      (sp.categoryGroups || []).forEach((g) => {
+        ((g.divisions || []).length ? g.divisions : [null]).forEach((d) => set.add(divisionLabel(g, d)));
+      });
+    });
+    [...ongoing, ...upcoming, ...finished].forEach((m) => labelsBySport.get(m.sport)?.add(m.division));
+    return [
+      { sport: ALL_SPORTS, groups: [] },
+      ...filterSports.map((sport) => {
+        const byGroup = new Map();
+        [...labelsBySport.get(sport)].filter(Boolean).forEach((label) => {
+          const { group, division } = splitDivisionLabel(label);
+          if (!byGroup.has(group)) byGroup.set(group, []);
+          if (division && !byGroup.get(group).includes(division)) byGroup.get(group).push(division);
+        });
+        if (byGroup.size === 0) return { sport, groups: [] };
+        return {
+          sport,
+          groups: [
+            { group: ALL_CATEGORIES, divisions: [] },
+            ...[...byGroup].map(([group, divisions]) => ({
+              group,
+              divisions: divisions.length ? [ALL_DIVISIONS, ...divisions] : [],
+            })),
+          ],
+        };
+      }),
+    ];
+  }, [filterSports, sportsConfig, ongoing, upcoming, finished]);
 
-  // A division only exists within its sport — switching sport (or level)
-  // falls back to All Divisions instead of filtering everything out.
-  const activeDivision = filterDivisions.includes(divisionFilter) ? divisionFilter : ALL_DIVISIONS;
-  const pickSport = (value) => { setSportFilter(value); setDivisionFilter(ALL_DIVISIONS); };
+  // A category/division only exists within its sport — switching sport (or
+  // level) falls back to all of them instead of filtering everything out.
+  const sportNode = pickerTree.find((n) => n.sport === sportFilter);
+  const groupNode = sportNode?.groups.find((g) => g.group === catFilter.group);
+  const activeGroup = groupNode && catFilter.group !== ALL_CATEGORIES ? catFilter.group : '';
+  const activeDivision = activeGroup && groupNode.divisions.includes(catFilter.division) && catFilter.division !== ALL_DIVISIONS
+    ? catFilter.division : '';
 
-  const inView = useCallback((match) => (
-    (sportFilter === 'ALL SPORTS' || match.sport === sportFilter)
-    && (activeDivision === ALL_DIVISIONS || match.division === activeDivision)
-  ), [sportFilter, activeDivision]);
+  const onPick = ({ sport, group, division }) => {
+    setSportFilter(sport);
+    setCatFilter({ group: group || '', division: division || '' });
+  };
+
+  const inView = useCallback((match) => {
+    if (sportFilter !== ALL_SPORTS && match.sport !== sportFilter) return false;
+    if (!activeGroup) return true;
+    const parts = splitDivisionLabel(match.division);
+    return parts.group === activeGroup && (!activeDivision || parts.division === activeDivision);
+  }, [sportFilter, activeGroup, activeDivision]);
 
   const visibleOngoing = useMemo(() => ongoing.filter(inView), [ongoing, inView]);
   const visibleUpcoming = useMemo(() => upcoming.filter(inView), [upcoming, inView]);
   const visibleFinished = useMemo(() => finished.filter(inView), [finished, inView]);
 
-  const sportSuffix = sportFilter === 'ALL SPORTS'
+  const sportSuffix = sportFilter === ALL_SPORTS
     ? ''
-    : ` ${sportFilter}${activeDivision === ALL_DIVISIONS ? '' : ` ${activeDivision}`}`;
+    : ` ${[sportFilter, activeGroup, activeDivision].filter(Boolean).join(' ')}`;
 
   return (
     <div className="user-dashboard">
@@ -1072,10 +1039,12 @@ function HomeView({ onOpenRegistration }) {
             activeClassName="dash-lvltab--active"
           />
           )}
-          <SportFilter sports={filterSports} value={sportFilter} onChange={pickSport} />
-          {filterDivisions.length > 0 && (
-            <DivisionFilter divisions={filterDivisions} value={activeDivision} onChange={setDivisionFilter} />
-          )}
+          <SetPicker
+            tree={pickerTree}
+            value={{ sport: sportFilter, group: activeGroup || (sportNode?.groups.length ? ALL_CATEGORIES : ''), division: activeDivision }}
+            onChange={onPick}
+            showPath
+          />
         </div>
       </div>
       <div className="dash-body">
@@ -1216,6 +1185,9 @@ const INITIAL = {
   emergencyContactName: '', emergencyContactNational: '', emergencyContactPhone: '',
   gradeLevel: '', section: '',
   teamName: '', sport: '', position: '',
+  // Category/division of the sport (e.g. Male · 5 V 5), when the sport has
+  // any in Sports & Teams. divisionId is what matches reference.
+  category: '', division: '', divisionId: '',
   message: '',
 };
 
@@ -1636,7 +1608,7 @@ function PlayerRegistration({ onBack }) {
       restoringDraftRef.current = false;
       return;
     }
-    setForm(prev => ({ ...prev, teamName: '', sport: '', position: '' }));
+    setForm(prev => ({ ...prev, teamName: '', sport: '', position: '', category: '', division: '', divisionId: '' }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [schoolLevel]);
 
@@ -1691,6 +1663,31 @@ function PlayerRegistration({ onBack }) {
     return selectedSportConfig ? ['Player'] : [];
   }, [selectedSportConfig]);
 
+  // The selected sport's categories (e.g. Male / Female) and, inside the
+  // picked category, its divisions (e.g. 5 V 5) — both from Sports & Teams.
+  const categoryOptions = useMemo(() => sportCategoryOptions(selectedSportConfig), [selectedSportConfig]);
+  const selectedCategory = categoryOptions.find(g => g.label === form.category) || null;
+  const divisionOptions = selectedCategory?.divisions || [];
+
+  const clearErrors = (...keys) => setErrors(prev => {
+    if (!keys.some(k => prev[k])) return prev;
+    const next = { ...prev };
+    keys.forEach(k => delete next[k]);
+    return next;
+  });
+
+  const handleCategoryChange = (e) => {
+    const category = e.target.value;
+    setForm(prev => ({ ...prev, category, division: '', divisionId: '' }));
+    clearErrors('category', 'division');
+  };
+
+  const handleDivisionChange = (e) => {
+    const div = divisionOptions.find(d => d.id === e.target.value);
+    setForm(prev => ({ ...prev, divisionId: div?.id || '', division: div?.name || '' }));
+    clearErrors('division');
+  };
+
   const handleTeamChange = (e) => {
     const teamName = e.target.value;
     const team = teamsConfig.find(t => t.name === teamName);
@@ -1711,7 +1708,7 @@ function PlayerRegistration({ onBack }) {
     setForm(prev => {
       const team = teamsConfig.find(t => t.name === prev.teamName);
       const teamStillValid = !team || !(team.sportIds || []).length || !sportName || team.sportIds.includes(sportName);
-      return { ...prev, sport: sportName, teamName: teamStillValid ? prev.teamName : '', position: '' };
+      return { ...prev, sport: sportName, teamName: teamStillValid ? prev.teamName : '', position: '', category: '', division: '', divisionId: '' };
     });
     setErrors(prev => {
       if (!prev.sport) return prev;
@@ -1972,6 +1969,10 @@ function PlayerRegistration({ onBack }) {
     if (!form.teamName)               errs.teamName         = 'Please select a team';
     if (!form.sport)                  errs.sport            = 'Please select a sport';
     if (!form.position)               errs.position         = 'Please select a position';
+    if (categoryOptions.length && !form.category)
+                                       errs.category         = 'Please select a category';
+    if (divisionOptions.length && !form.divisionId)
+                                       errs.division         = 'Please select a division';
     // Waiver upload is temporarily optional: Firebase Storage isn't
     // provisioned on the project yet (requires the Blaze plan), so there's
     // nowhere to save the file. Re-add this check once Storage is enabled.
@@ -2452,6 +2453,36 @@ function PlayerRegistration({ onBack }) {
                 </select>
               </Field>
             </div>
+
+            {/* Row 5b: Category / Division — only for a sport that has them */}
+            {categoryOptions.length > 0 && (
+              <div className="reg-row reg-row--2">
+                <Field label="Category" required error={errors.category}>
+                  <select className="reg-select" value={form.category} onChange={handleCategoryChange} required>
+                    <option value="">Select Category</option>
+                    {categoryOptions.map(g => <option key={g.id || g.label} value={g.label}>{g.label}</option>)}
+                  </select>
+                </Field>
+                <Field label="Division" required={divisionOptions.length > 0} error={errors.division}>
+                  <select
+                    className="reg-select"
+                    value={form.divisionId}
+                    onChange={handleDivisionChange}
+                    disabled={!form.category || divisionOptions.length === 0}
+                    required={divisionOptions.length > 0}
+                  >
+                    <option value="">
+                      {!form.category
+                        ? 'Select Category first'
+                        : divisionOptions.length === 0
+                          ? 'No divisions for this category'
+                          : 'Select Division'}
+                    </option>
+                    {divisionOptions.map(d => <option key={d.id} value={d.id}>{d.name}</option>)}
+                  </select>
+                </Field>
+              </div>
+            )}
 
             {/* Row 6: Uploads + Message */}
             <div className="reg-uploads-row">

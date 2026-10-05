@@ -17,6 +17,7 @@ import { savedSlotRef, savedBracketResolved } from '../shared/utils/savedBracket
 import { generateRounds, stageCodeFor, generateBracket, generateDoubleBracket, buildScheduleMatches } from '../shared/utils/scheduleFormats';
 import SportsTeamsManager from './SportsTeamsManager';
 import VenuesManager from './VenuesManager';
+import CoachesManager from './CoachesManager';
 import LevelTabs from '../shared/components/LevelTabs';
 import StudentRegistrationDetails from '../superadmin/StudentRegistrationDetails';
 import RaceDiagram, { RaceLanes, RaceResults } from '../shared/components/RaceDiagram/RaceDiagram';
@@ -92,10 +93,11 @@ function buildEventCounts(registrations, eventList = EVENT_TYPES) {
   return counts;
 }
 
-const TABS = ['Registration', 'Venues', 'Sports & Teams', 'Match Schedules Format', 'Schedule Requests'];
+const TABS = ['Registration', 'Venues', 'Sports & Teams', 'Coaches', 'Match Schedules Format', 'Schedule Requests'];
 const VENUES_TAB_INDEX = TABS.indexOf('Venues');
 const REGISTRATION_TAB_INDEX = TABS.indexOf('Registration');
 const SPORTS_TEAMS_TAB_INDEX = TABS.indexOf('Sports & Teams');
+const COACHES_TAB_INDEX = TABS.indexOf('Coaches');
 const MATCH_SCHEDULES_TAB_INDEX = TABS.indexOf('Match Schedules Format');
 const SCHEDULE_REQUESTS_TAB_INDEX = TABS.indexOf('Schedule Requests');
 
@@ -3462,6 +3464,11 @@ const fetchSummary = useCallback(async () => {
             </div>
             <SportsTeamsManager level={level} />
           </div>
+        )}
+
+        {/* ══ COACHES TAB ══ */}
+        {activeTab === COACHES_TAB_INDEX && (
+          <CoachesManager level={level} levelLabel={LEVELS.find(l => l.key === level)?.label || level} />
         )}
 
         {/* ══ MATCH SCHEDULES FORMAT TAB ══ */}

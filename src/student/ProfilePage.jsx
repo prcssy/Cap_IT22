@@ -10,10 +10,11 @@ import {
   FaUserCircle, FaTrophy, FaMedal, FaClipboardList, FaChevronRight,
   FaEnvelope,
   FaUserGraduate, FaUsers, FaBasketballBall, FaUserTag,
-  FaKey, FaClock, FaHashtag, FaEdit, FaUser,
+  FaKey, FaClock, FaEdit, FaUser, FaUserTie, FaPhoneAlt,
 } from 'react-icons/fa';
 import { AuthContext } from '../shared/context/AuthContext';
-import { getMyRegistrations } from '../shared/services/firestoreService';
+import { getMyRegistrations, subscribeCoaches } from '../shared/services/firestoreService';
+import { getSchoolLevel } from '../shared/utils/schoolLevel';
 
 function formatRegDate(value) {
   const date = value?.toDate ? value.toDate() : (value ? new Date(value) : null);
@@ -21,11 +22,11 @@ function formatRegDate(value) {
   return date.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// Staff/role accounts (admin, moderator, superadmin) don't join events,
+// Staff/role accounts (admin, moderator, superadmin, coach) don't join events,
 // earn awards, or submit player registrations — those concepts only apply
 // to student/player accounts. Anyone whose resolved role falls in here
 // never sees the Events / Awards / Registrations stat cards at all.
-const STAFF_ROLES = ['admin', 'moderator', 'superadmin'];
+const STAFF_ROLES = ['admin', 'moderator', 'superadmin', 'coach'];
 
 // Shows the player's photo when we have one, otherwise a generic silhouette.
 // `failedSrc` tracks a URL that errored (deleted/expired) so we drop back to
@@ -59,6 +60,41 @@ function InfoRow({ icon: Icon, label, value }) {
   );
 }
 
+/* "My Coach" — shown once a player's registration is approved: the coach(es)
+   assigned to their team (and sport, when a coach only handles some of the
+   team's sports) in the Admin console's Coaches tab. */
+function CoachCard({ coaches, teamName, sport }) {
+  return (
+    <div className="profile-card profile-coach-card">
+      <div className="profile-card-header">
+        <span className="profile-card-title">My Coach</span>
+        <span className="profile-coach-card__for">{[teamName, sport].filter(Boolean).join(' · ')}</span>
+      </div>
+      <div className="profile-card-body">
+        {coaches.length === 0 ? (
+          <p className="profile-coach-card__empty">No coach has been assigned to your team yet.</p>
+        ) : coaches.map((c) => (
+          <div className="profile-coach" key={c.id}>
+            <span className="profile-coach__avatar">
+              {c.photoURL ? <img src={c.photoURL} alt={c.name || 'Coach'} /> : <FaUserTie />}
+            </span>
+            <div className="profile-coach__info">
+              <span className="profile-coach__name">{c.name || c.id}</span>
+              <div className="profile-coach__contacts">
+                {c.contactNumber && (
+                  <a href={`tel:${c.contactNumber.replace(/[^+0-9]/g, '')}`}><FaPhoneAlt /> {c.contactNumber}</a>
+                )}
+                <a href={`mailto:${c.id}`}><FaEnvelope /> {c.id}</a>
+              </div>
+              {c.bio && <p className="profile-coach__bio">{c.bio}</p>}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function StatCard({ icon, count, label, arrow, onClick }) {
   return (
     <div
@@ -84,7 +120,7 @@ function StatCard({ icon, count, label, arrow, onClick }) {
 }
 
 export default function ProfilePage() {
-  const { currentUser, userProfile, updatePassword } = useContext(AuthContext);
+  const { currentUser, userProfile, coachProfile, updatePassword } = useContext(AuthContext);
   const { schoolName } = useContext(BrandingContext);
 
   /* ── All modal states ── */
@@ -114,6 +150,25 @@ export default function ProfilePage() {
 
   const latestReg = myRegistrations[0] || null;
 
+  // The coach is only shown once the registration is approved — a pending
+  // or rejected player isn't on the team yet.
+  const approvedReg = myRegistrations.find((r) => r.status === 'approved') || null;
+  const [coaches, setCoaches] = useState([]);
+  const approvedTeam = approvedReg?.teamName || '';
+  useEffect(() => {
+    if (!approvedTeam) return undefined;
+    return subscribeCoaches(null, setCoaches, () => setCoaches([]));
+  }, [approvedTeam]);
+  const myCoaches = approvedReg
+    ? coaches.filter((c) => {
+        // Team names repeat across levels, so match the player's level too.
+        const regLevel = getSchoolLevel(approvedReg.gradeLevel);
+        return (c.teams || []).includes(approvedReg.teamName)
+          && (!(c.sports || []).length || c.sports.includes(approvedReg.sport))
+          && (!regLevel || !c.level || c.level === regLevel);
+      })
+    : [];
+
   // `users/{uid}` docs are written with a `name` field (see AuthContext.signup /
   // firestoreService.createUserProfile). `fullName` was never actually stored
   // there, so reading it always fell through to the hardcoded placeholder
@@ -121,7 +176,6 @@ export default function ProfilePage() {
   // field first, and only fall back to values that trace back to this actual
   // account instead of fake sample data.
   const displayName   = userProfile?.name || userProfile?.fullName || currentUser?.displayName || currentUser?.email || '';
-  const studentNumber = userProfile?.studentNumber || '';
   const role          = userProfile?.role          || 'Player';
   const gradeLevel    = userProfile?.gradeLevel    || '';
   const section       = userProfile?.section       || '';
@@ -136,7 +190,7 @@ export default function ProfilePage() {
   // The profile photo is the one the student attached to their most recent
   // registration. Staff accounts have no registration, so they get the
   // placeholder silhouette.
-  const photoURL      = latestReg?.photoURL || '';
+  const photoURL      = latestReg?.photoURL || coachProfile?.photoURL || '';
 
   // "Submitted Registrations" = every registration this student has ever
   // filed, regardless of decision. "Events Joined" = the subset staff has
@@ -262,6 +316,10 @@ export default function ProfilePage() {
           </div>
         )}
 
+        {approvedReg && (
+          <CoachCard coaches={myCoaches} teamName={approvedReg.teamName} sport={approvedReg.sport} />
+        )}
+
         {/* Info + Security */}
         <div className="profile-details-grid">
 
@@ -270,13 +328,11 @@ export default function ProfilePage() {
               <span className="profile-card-title">My Information</span>
             </div>
             <div className="profile-card-body">
-              <InfoRow icon={FaHashtag}       label="Student Number"   value={studentNumber} />
               <InfoRow icon={FaUserCircle}     label="Full Name"        value={displayName} />
               <InfoRow icon={FaEnvelope}       label="Email Address"    value={email} />
               <InfoRow icon={FaUserGraduate}   label="Grade/Year Level" value={gradeLevel} />
               <InfoRow icon={FaUsers}          label="Section"          value={section} />
               <InfoRow icon={FaBasketballBall} label="Sports"           value={sport} />
-              <InfoRow icon={FaUserTag}        label="Role"             value={position} />
               <InfoRow icon={FaEdit}           label="Position"         value={position} />
               <InfoRow icon={FaUsers}          label="Team Name"        value={teamName} />
             </div>

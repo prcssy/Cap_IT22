@@ -73,3 +73,16 @@ describe('buildImport', () => {
     expect(plan.teams.find(t => t.id === 't1').sportIds).toEqual(['Basketball']);
   });
 });
+
+describe('low-resolution logo note', () => {
+  it('warns when an embedded logo is too small to look sharp', () => {
+    const plan = buildImport({
+      teamRows: [
+        { team: 'Red', sports: '', logo: 'data:a', logoSize: { width: 96, height: 90 } },
+        { team: 'Blue', sports: '', logo: 'data:b', logoSize: { width: 400, height: 400 } },
+      ],
+    });
+    expect(plan.warnings.some(w => w.includes('"Red"') && w.includes('96×90'))).toBe(true);
+    expect(plan.warnings.some(w => w.includes('"Blue"'))).toBe(false);
+  });
+});

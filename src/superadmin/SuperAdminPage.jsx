@@ -835,9 +835,11 @@ export default function SuperAdminPage() {
      `users`, since that's the actual source of authorization. */
   const staffList = useMemo(() => {
     const usersByEmail = new Map(users.map(u => [(u.email || '').toLowerCase(), u]));
-    const ROLE_ORDER = { superadmin: 0, admin: 1, moderator: 2 };
+    const ROLE_ORDER = { superadmin: 0, admin: 1, moderator: 2, coach: 3 };
     return [...staffRoster]
-      .map(s => ({ ...s, name: usersByEmail.get(s.email)?.name || '' }))
+      // A coach's own coaches/{email} doc carries a name too — used when
+      // their account's profile has none (or there's no account yet).
+      .map(s => ({ ...s, name: usersByEmail.get(s.email)?.name || s.name || '' }))
       .sort((a, b) => (ROLE_ORDER[a.role] - ROLE_ORDER[b.role])
         || (a.name || a.email).localeCompare(b.name || b.email, undefined, { sensitivity: 'base' }));
   }, [staffRoster, users]);
@@ -1354,6 +1356,9 @@ export default function SuperAdminPage() {
                       </td>
                       <td className="asp-col-center" data-label="Level">
                         {s.role === 'superadmin' ? 'All Levels' : (levelLabels[s.level] || s.level || '—')}
+                        {s.role === 'coach' && s.teams?.length > 0 && (
+                          <div className="sa-staff-teams">{s.teams.join(', ')}</div>
+                        )}
                       </td>
                     </tr>
                   ))}

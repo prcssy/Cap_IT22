@@ -329,7 +329,9 @@
 
 /* ── Match card ── */
 .match-card {
-  background: rgba(8, 18, 42, 0.88);
+  /* Theme-aware (--c-dark-rgb is set by BrandingContext for non-default
+     themes); the fallback is the original navy. */
+  background: rgba(var(--c-dark-rgb, 8, 18, 42), 0.88);
   border: 1px solid rgba(255, 255, 255, 0.1);
   backdrop-filter: blur(14px);
   border-radius: 20px;
@@ -455,8 +457,8 @@
   margin-top: 0.4rem;
   padding: 0.1rem 0.45rem;
   border-radius: 4px;
-  background: #f5a623;
-  color: #001529;
+  background: var(--c-gold-2, #f5a623);
+  color: var(--c-dark, #001529);
   font-family: "Inter", sans-serif;
   font-size: 0.66rem;
   font-weight: 800;

@@ -1,11 +1,23 @@
 import { useState, useEffect, useCallback, useRef, useContext } from 'react';
-import { FaMapMarkerAlt, FaEdit, FaTrash, FaTimes, FaPlus, FaCheck } from 'react-icons/fa';
+import { FaMapMarkerAlt, FaEdit, FaTrash, FaTimes, FaPlus, FaCheck, FaMapMarkedAlt } from 'react-icons/fa';
 import './VenuesManager.css';
-import { getVenues, saveVenues, getAllMatchSchedules } from '../shared/services/firestoreService';
+import { getVenues, saveVenues, getAllMatchSchedules, getCampusMap, saveCampusMap } from '../shared/services/firestoreService';
+import { CampusMapCard, VenueLocationEditor } from './VenueLocationEditor';
+import { hasLocation } from '../shared/utils/venueLocation';
 import { AuthContext } from '../shared/context/AuthContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 
 const uid = () => Math.random().toString(36).slice(2, 10);
+
+// Common school sports venues offered in the Add Venue dropdown, so most
+// venues are picked instead of typed (consistent names across schedules).
+// "Other" still allows any custom name, so the list never limits anyone.
+const SUGGESTED_VENUES = [
+  'Gymnasium', 'Covered Court', 'Basketball Court', 'Volleyball Court', 'Badminton Court',
+  'Tennis Court', 'Football Field', 'Track Oval', 'Swimming Pool', 'Table Tennis Area',
+  'Chess Room', 'Multi-Purpose Hall', 'Auditorium', 'Open Field', 'Classroom', 
+];
+const OTHER_VENUE = '__other__';
 const norm = (v) => (v || '').trim().toLowerCase();
 
 /* ── Team badge: uploaded logo if present, else a colored initial circle.
@@ -37,6 +49,8 @@ export default function VenuesManager() {
   const [toast, setToast] = useState(null);
 
   const [newVenueName, setNewVenueName] = useState('');
+  // Dropdown pick: a suggested venue name, OTHER_VENUE (type a custom one), or ''.
+  const [venueChoice, setVenueChoice] = useState('');
   const [adding, setAdding] = useState(false);
 
   const [renamingId, setRenamingId] = useState(null);
@@ -45,13 +59,21 @@ export default function VenuesManager() {
 
   const [confirmDeleteVenue, setConfirmDeleteVenue] = useState(null);
   const [scheduleModalVenue, setScheduleModalVenue] = useState(null);
+  // Campus map image + the venue whose location is being edited.
+  const [campusMap, setCampusMap] = useState(null);
+  const [locationVenue, setLocationVenue] = useState(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [v, s] = await Promise.all([getVenues(), getAllMatchSchedules()]);
+      const [v, s, map] = await Promise.all([
+        getVenues(),
+        getAllMatchSchedules(),
+        getCampusMap().catch(() => null),
+      ]);
       setVenues(v);
       setAllSchedules(s);
+      setCampusMap(map);
     } catch (e) {
       console.error('Failed to load venues:', e);
     } finally {
@@ -90,6 +112,7 @@ export default function VenuesManager() {
       await saveVenues(next, userProfile?.role);
       setVenues(next);
       setNewVenueName('');
+      setVenueChoice('');
       setToast({ text: 'Venue added.' });
     } catch (e) {
       console.error('Failed to add venue:', e);
@@ -149,6 +172,15 @@ export default function VenuesManager() {
         <div className="msf-level-banner__bar" />
       </div>
 
+      <CampusMapCard
+        image={campusMap}
+        onSave={async (image) => {
+          await saveCampusMap(image, userProfile?.role);
+          setCampusMap(image);
+          setToast({ text: image ? 'Campus map saved.' : 'Campus map removed.' });
+        }}
+      />
+
       <div className="msf-card">
         <div className="msf-list-head">
           <div>
@@ -158,12 +190,30 @@ export default function VenuesManager() {
             </p>
           </div>
           <form className="vm-add-form" onSubmit={handleAddVenue}>
-            <input
-              type="text"
-              placeholder="e.g. Main Gym"
-              value={newVenueName}
-              onChange={e => setNewVenueName(e.target.value)}
-            />
+            <select
+              aria-label="Venue"
+              value={venueChoice}
+              onChange={e => {
+                const v = e.target.value;
+                setVenueChoice(v);
+                setNewVenueName(v === OTHER_VENUE ? '' : v);
+              }}
+            >
+              <option value="">Select a venue</option>
+              {SUGGESTED_VENUES
+                .filter(name => !venues.some(v => norm(v.name) === norm(name)))
+                .map(name => <option key={name} value={name}>{name}</option>)}
+              <option value={OTHER_VENUE}>Other (type a venue name)</option>
+            </select>
+            {venueChoice === OTHER_VENUE && (
+              <input
+                type="text"
+                placeholder="e.g. Main Gym"
+                value={newVenueName}
+                onChange={e => setNewVenueName(e.target.value)}
+                autoFocus
+              />
+            )}
             <button className="msf-btn-primary" type="submit" disabled={adding || !newVenueName.trim()}>
               <FaPlus /> Add Venue
             </button>
@@ -209,8 +259,14 @@ export default function VenuesManager() {
                   <div className="vm-card__count">
                     {count} scheduled match{count === 1 ? '' : 'es'}
                   </div>
+                  <div className={`vm-card__loc${hasLocation(v) ? ' vm-card__loc--set' : ''}`}>
+                    {hasLocation(v) ? 'Location set' : 'No location yet'}
+                  </div>
 
                   <div className="vm-card__actions" onClick={e => e.stopPropagation()}>
+                    <button className="vm-icon-location" title="Location (map pin, photo, directions)" onClick={() => setLocationVenue(v)}>
+                      <FaMapMarkedAlt />
+                    </button>
                     <button className="msf-icon-edit" title="Rename" onClick={() => startRename(v)}>
                       <FaEdit />
                     </button>
@@ -224,6 +280,22 @@ export default function VenuesManager() {
           </div>
         )}
       </div>
+
+      {/* ── Venue location editor ── */}
+      {locationVenue && (
+        <VenueLocationEditor
+          venue={locationVenue}
+          mapImage={campusMap}
+          onClose={() => setLocationVenue(null)}
+          onSave={async (location) => {
+            const next = venues.map(v => (v.id === locationVenue.id ? { ...v, ...location } : v));
+            await saveVenues(next, userProfile?.role);
+            setVenues(next);
+            setLocationVenue(null);
+            setToast({ text: `Location saved for ${locationVenue.name}.` });
+          }}
+        />
+      )}
 
       {/* ── Venue's booked schedules ── */}
       {scheduleModalVenue && (() => {

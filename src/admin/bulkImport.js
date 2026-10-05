@@ -13,6 +13,10 @@
 
 import { resizeImageToDataUrl, LOGO_OPTIONS } from '../shared/utils/resizeImage';
 
+// Embedded logo pictures smaller than this (longest side) get a "will look
+// blurry" import note — logos are stored at LOGO_OPTIONS.maxWidth (192 px).
+const LOW_RES_LOGO_PX = 160;
+
 export const FORMAT_OPTIONS = [
   { id: 'single-time',  label: '1 vs 1 (Time Basis)' },
   { id: 'single-solo',  label: '1 vs 1 (Point Basis)' },
@@ -59,7 +63,9 @@ function rowsToObjects(matrix, spec, logosByRow = {}) {
   return matrix.slice(1)
     .map(({ n, cells }) => ({
       ...Object.fromEntries(Object.keys(map).map(f => [f, String(cells[map[f]] ?? '').trim()])),
-      logo: logosByRow[n] || null,
+      logo: logosByRow[n]?.logo || null,
+      // Pixel size of the picture as stored in the workbook (see LOW_RES_LOGO_PX).
+      logoSize: logosByRow[n]?.size || null,
     }))
     .filter(r => Object.values(r).some(Boolean));
 }
@@ -135,7 +141,14 @@ export function parseTeams(rows) {
     if (!name) { warnings.push(`Teams row ${idx + 2}: no team name — skipped.`); return; }
     const k = norm(name);
     if (!byTeam.has(k)) byTeam.set(k, { name, sports: [], logo: null });
-    if (r.logo && !byTeam.get(k).logo) byTeam.get(k).logo = r.logo;
+    if (r.logo && !byTeam.get(k).logo) {
+      byTeam.get(k).logo = r.logo;
+      const size = r.logoSize;
+      if (size && Math.max(size.width, size.height) < LOW_RES_LOGO_PX) {
+        warnings.push(`Team "${name}": the logo picture is only ${size.width}×${size.height} px, so it will look blurry. `
+          + "Re-upload it from the team's logo button, or see the note on the Teams sheet about Excel image compression.");
+      }
+    }
     splitList(r.sports).forEach(sp => byTeam.get(k).sports.push(sp));
   });
   return { teams: [...byTeam.values()], warnings };
@@ -233,10 +246,22 @@ function sheetMatrix(ws) {
   return out;
 }
 
-/* Same navy-backed logo the manual upload produces (see LOGO_OPTIONS) */
+/* Same navy-backed logo the manual upload produces (see LOGO_OPTIONS), plus
+   the picture's own pixel size. Excel, by default, downsamples every picture
+   to the size it's drawn on the sheet when the file is saved — a logo shrunk
+   to fit a small Logo cell is stored at ~100 px, so it has to be stretched up
+   to the 192 px logo size and comes out blurry, while a manual upload starts
+   from the original file. The size lets the import warn about those. */
 async function imageToLogo(buffer, extension) {
   const mime = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', gif: 'image/gif' }[extension] || 'image/png';
-  return resizeImageToDataUrl(new Blob([buffer], { type: mime }), LOGO_OPTIONS);
+  const blob = new Blob([buffer], { type: mime });
+  let size = null;
+  try {
+    const bmp = await createImageBitmap(blob);
+    size = { width: bmp.width, height: bmp.height };
+    bmp.close();
+  } catch { /* size unknown — just skip the low-resolution check */ }
+  return { logo: await resizeImageToDataUrl(blob, LOGO_OPTIONS), size };
 }
 
 /* Pictures pasted into the sheet's Logo column, keyed by Excel row number */
@@ -384,12 +409,14 @@ export async function downloadBulkTemplate(scope = 'both') {
     '3. Type ALL to put the team in every sport.',
     '4. Sports must be on the Sports tab or already saved.',
     '5. Logo: optional — Insert > Pictures, placed inside the Logo cell.',
+    "   For sharp logos, first turn off Excel's picture shrinking: File > Options >",
+    '   Advanced > Image Size and Quality > tick "Do not compress images in file".',
     'EXAMPLE — for looking only:',
     'Red Dragons  |  Basketball, Swimming',
     'Blue Eagles  |  ALL',
   ]);
   teams.getColumn(5).width = 60;
-  teams.getCell('E7').font = { bold: true, italic: true };
+  teams.getCell('E9').font = { bold: true, italic: true };
 
   if (scope === 'sports') wb.removeWorksheet(teams.id);
   if (scope === 'teams') wb.removeWorksheet(sports.id);

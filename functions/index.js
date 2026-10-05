@@ -118,7 +118,18 @@ async function resolveCallerRole(request) {
   const claimedRole = request.auth.token.role;
   const claimedCollection = STAFF_ROLE_COLLECTIONS[claimedRole];
   if (claimedCollection) {
-    const snap = await db.collection(claimedCollection).doc(email).get();
+    // A lower claim (admin/moderator) never short-circuits past a
+    // superadmins doc: an account listed as BOTH (e.g. made Super Admin by
+    // hand in the Console while still holding an admin doc + admin claim)
+    // must resolve as superadmin, like AuthContext and firestore.rules'
+    // isSuperAdmin() do — otherwise it was treated as a level-scoped admin.
+    const [snap, superSnap] = await Promise.all([
+      db.collection(claimedCollection).doc(email).get(),
+      claimedRole === "superadmin" ? null : db.collection("superadmins").doc(email).get(),
+    ]);
+    if (superSnap?.exists) {
+      return { email, role: "superadmin", level: null, uid: request.auth.uid, name: request.auth.token.name || "" };
+    }
     if (snap.exists) {
       return { email, role: claimedRole, level: levelForRole(claimedRole, snap.data()), uid: request.auth.uid, name: request.auth.token.name || "" };
     }
@@ -308,6 +319,175 @@ exports.createStaffAccount = onCall({ enforceAppCheck: true }, async (request) =
   logger.info(`Staff account ${created ? "created" : "updated"} for ${email} as ${role} by ${actor.email}`);
 
   return { uid: userRecord.uid, email, role, level: typeof levelFields.level === "string" ? levelFields.level : null, created, tempPassword };
+});
+
+/**
+ * Makes sure a coach's email has a real Firebase Auth login. Called by the
+ * Admin console's Coaches tab right before it saves coaches/{email}: an
+ * admin can list a coach whose email never signed up, and without this
+ * that coach would have coach access on paper but no account or password
+ * to log in with. Creates the account (already verified, like
+ * createStaffAccount) with either the password the admin typed or a
+ * random temporary one, and returns it so the admin can hand it over.
+ * An existing account is left untouched — its password is never reset.
+ *
+ * Unlike createStaffAccount this is open to an Admin of the coach's level,
+ * not just a Super Admin — the same people firestore.rules lets write
+ * coaches/{email}. The coach doc itself is still written by the client.
+ */
+exports.ensureCoachAccount = onCall({ enforceAppCheck: true }, async (request) => {
+  const data = request.data || {};
+  const level = data.level;
+  requireLevel(level);
+  const actor = await resolveCallerRole(request);
+  if (actor.role !== "superadmin" && !(actor.role === "admin" && actor.level === level)) {
+    throw new HttpsError("permission-denied", "Only an Admin of this school level or a Super Admin can add coaches.");
+  }
+
+  const email = (data.email || "").trim().toLowerCase();
+  const name = (data.name || "").trim().slice(0, 100);
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    throw new HttpsError("invalid-argument", "A valid email is required.");
+  }
+  const chosenPassword = typeof data.password === "string" ? data.password : "";
+  if (chosenPassword && !(chosenPassword.length >= 8 && /[a-z]/.test(chosenPassword) && /[A-Z]/.test(chosenPassword) && /\d/.test(chosenPassword))) {
+    throw new HttpsError("invalid-argument", "Password needs at least 8 characters with an uppercase letter, a lowercase letter and a number.");
+  }
+
+  const auth = getAuth();
+  try {
+    const existing = await auth.getUserByEmail(email);
+    return { uid: existing.uid, email, created: false };
+  } catch (error) {
+    if (error.code !== "auth/user-not-found") throw error;
+  }
+
+  const password = chosenPassword || randomPassword();
+  const userRecord = await auth.createUser({
+    email,
+    password,
+    emailVerified: true,
+    displayName: name || undefined,
+  });
+
+  // Same profile shape signup() writes. role stays 'student' — the coach
+  // role is resolved from coaches/{email}, never stored on the profile.
+  await db.collection("users").doc(userRecord.uid).set(
+    { name, email, role: "student", isAdmin: false, createdAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+  // Claim the normalized address too, so a later self-signup with a Gmail
+  // dot/plus variant of it is rejected like any other duplicate.
+  await db.collection("emailIndex").doc(normalizeEmailForDuplicateCheck(email)).set(
+    { email, reservedAt: FieldValue.serverTimestamp() },
+    { merge: true }
+  );
+
+  await logActivity({
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    actorName: actor.name,
+    actorRole: actor.role,
+    type: "Coach Account Created",
+    details: `Created a login account for coach ${name || email}`,
+    targetType: "user",
+    targetId: userRecord.uid,
+    targetLabel: email,
+  });
+
+  return {
+    uid: userRecord.uid,
+    email,
+    created: true,
+    // Only echoed back when generated — the admin already knows one they typed.
+    tempPassword: chosenPassword ? null : password,
+  };
+});
+
+/**
+ * Removes a coach AND deletes their login (the Coaches tab's "Remove coach
+ * and delete their account"). Removing only coach access is a plain client
+ * delete of coaches/{email}; that leaves the Auth account able to sign in,
+ * which is what this is for. Same gate as ensureCoachAccount: an Admin of
+ * the coach's level or a Super Admin.
+ *
+ * The coach doc is always removed. The login itself is only deleted when it
+ * is purely a coach account — never a staff account (admins/moderators/
+ * superadmins) and never one with a player registration, since deleting
+ * those would wipe out a real player/staff member too. In that case it
+ * returns accountDeleted: false with the reason, and only access is gone.
+ */
+exports.removeCoach = onCall({ enforceAppCheck: true }, async (request) => {
+  const email = (request.data?.email || "").trim().toLowerCase();
+  if (!email) throw new HttpsError("invalid-argument", "The coach's email is required.");
+
+  const coachRef = db.collection("coaches").doc(email);
+  const coachSnap = await coachRef.get();
+  if (!coachSnap.exists) throw new HttpsError("not-found", "This coach no longer exists.");
+  const level = coachSnap.data().level;
+
+  const actor = await resolveCallerRole(request);
+  if (actor.role !== "superadmin" && !(actor.role === "admin" && actor.level === level)) {
+    throw new HttpsError("permission-denied", "Only an Admin of this school level or a Super Admin can remove this coach.");
+  }
+  if (email === actor.email) {
+    throw new HttpsError("failed-precondition", "You can't delete your own account here.");
+  }
+
+  await coachRef.delete();
+  const label = coachSnap.data().name || email;
+
+  let userRecord = null;
+  try {
+    userRecord = await getAuth().getUserByEmail(email);
+  } catch (error) {
+    if (error.code !== "auth/user-not-found") throw error;
+  }
+
+  let accountDeleted = false;
+  let keptReason = null;
+  if (request.data?.deleteAccount) {
+    if (!userRecord) {
+      keptReason = "no-account";
+    } else {
+      const [superSnap, adminSnap, modSnap, regsSnap] = await Promise.all([
+        db.collection("superadmins").doc(email).get(),
+        db.collection("admins").doc(email).get(),
+        db.collection("moderators").doc(email).get(),
+        db.collection("registrations").where("uid", "==", userRecord.uid).limit(1).get(),
+      ]);
+      if (superSnap.exists || adminSnap.exists || modSnap.exists) {
+        keptReason = "staff";
+      } else if (!regsSnap.empty) {
+        keptReason = "player";
+      } else {
+        await db.collection("users").doc(userRecord.uid).delete();
+        await db.collection("emailIndex").doc(normalizeEmailForDuplicateCheck(email)).delete();
+        try {
+          await getAuth().deleteUser(userRecord.uid);
+        } catch (error) {
+          if (error.code !== "auth/user-not-found") throw error;
+        }
+        accountDeleted = true;
+      }
+    }
+  }
+
+  await logActivity({
+    actorUid: actor.uid,
+    actorEmail: actor.email,
+    actorName: actor.name,
+    actorRole: actor.role,
+    type: accountDeleted ? "Coach Account Deleted" : "Coach Removed",
+    details: accountDeleted
+      ? `Removed coach ${label} and deleted their login account`
+      : `Removed coach ${label}${keptReason === "staff" ? " (login kept: staff account)" : keptReason === "player" ? " (login kept: also a registered player)" : ""}`,
+    targetType: "coach",
+    targetId: email,
+    targetLabel: label,
+  });
+
+  return { email, accountDeleted, keptReason };
 });
 
 /**
