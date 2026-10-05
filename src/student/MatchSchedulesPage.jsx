@@ -1036,26 +1036,49 @@ export default function MatchSchedulesPage() {
   }, [levelMatches, sportsByLevel, levelKey]);
   const partsOf = useCallback((m) => partsById.get(m.id) || matchParts(m, []), [partsById]);
 
-  const sportOptions = useMemo(() => uniqueValues(levelMatches.map((m) => partsOf(m).sport)), [levelMatches, partsOf]);
+  /* Every sport → category → division the selector offers: the ones with
+     fixtures first (so the page opens on a sport that has a bracket), then
+     every other sport/category/division set up in Sports & Teams for this
+     level, so the list shows all sports — not just those already scheduled.
+     Picking one with no fixtures shows the "No bracket … yet" note. */
+  const allParts = useMemo(() => {
+    const fromMatches = levelMatches.map(partsOf);
+    const fromConfig = (sportsByLevel[levelKey] || []).flatMap((sp) => {
+      const sport = (sp.name || '').trim();
+      if (!sport) return [];
+      const groups = (sp.categoryGroups || []).filter((g) => (g.label || '').trim());
+      if (!groups.length) return [{ sport, group: '', division: '' }];
+      return groups.flatMap((g) => {
+        const group = displayCategory(g.label.trim());
+        const named = (g.divisions || [])
+          .map((d) => (d.name || '').trim())
+          .filter((name) => name && norm(name) !== norm(group));
+        return named.length ? named.map((division) => ({ sport, group, division })) : [{ sport, group, division: '' }];
+      });
+    });
+    return [...fromMatches, ...fromConfig];
+  }, [levelMatches, partsOf, sportsByLevel, levelKey]);
+
+  const sportOptions = useMemo(() => uniqueValues(allParts.map((p) => p.sport)), [allParts]);
   const selSport = sportOptions.find((s) => norm(s) === norm(pick.sport)) ?? sportOptions[0] ?? null;
 
   const groupOptions = useMemo(() => uniqueValues(
-    levelMatches.map(partsOf).filter((p) => norm(p.sport) === norm(selSport)).map((p) => p.group),
-  ), [levelMatches, partsOf, selSport]);
+    allParts.filter((p) => norm(p.sport) === norm(selSport)).map((p) => p.group),
+  ), [allParts, selSport]);
   const selGroup = groupOptions.find((g) => norm(g) === norm(pick.group)) ?? groupOptions[0] ?? '';
 
   const divisionOptions = useMemo(() => uniqueValues(
-    levelMatches.map(partsOf)
+    allParts
       .filter((p) => norm(p.sport) === norm(selSport) && norm(p.group) === norm(selGroup))
       .map((p) => p.division),
-  ), [levelMatches, partsOf, selSport, selGroup]);
+  ), [allParts, selSport, selGroup]);
   const selDivision = divisionOptions.find((d) => norm(d) === norm(pick.division)) ?? divisionOptions[0] ?? '';
 
   const setTitle = [selSport, selGroup].filter(Boolean).join(' ') + (selDivision ? ` · ${selDivision}` : '');
 
-  // Every sport → category → division that has fixtures, for the one dropdown.
+  // Every sport → category → division (see allParts), for the one dropdown.
   const selectorTree = useMemo(() => sportOptions.map((sport) => {
-    const inSport = levelMatches.map(partsOf).filter((p) => norm(p.sport) === norm(sport));
+    const inSport = allParts.filter((p) => norm(p.sport) === norm(sport));
     return {
       sport,
       groups: uniqueValues(inSport.map((p) => p.group)).map((group) => ({
@@ -1063,7 +1086,7 @@ export default function MatchSchedulesPage() {
         divisions: uniqueValues(inSport.filter((p) => norm(p.group) === norm(group)).map((p) => p.division)),
       })),
     };
-  }), [sportOptions, levelMatches, partsOf]);
+  }), [sportOptions, allParts]);
 
   // One set = one sport + category + division: its own bracket/rounds.
   const categoryMatches = useMemo(() => {

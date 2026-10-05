@@ -83,6 +83,10 @@ export const THEMES = [
     // Explicit originals — the default must render exactly as before.
     colors: { ...BASE, gold: '#fcbf19', 'gold-2': '#f5a623' },
   },
+  // Deep maroon backgrounds with the same Santa Rita gold accents (white
+  // text/cards as in every theme). Slightly desaturated so it reads as
+  // maroon rather than a bright red/crimson.
+  { key: 'maroon-gold', name: 'Maroon & Gold', tagline: 'Maroon, Gold & White', ...wrap({ hue: 345, satMul: 0.85, accent: '#fcbf19', accent2: '#f5a623' }) },
   { key: 'cobalt-ember', name: 'Cobalt & Ember', tagline: 'Blue & Orange', ...wrap({ hue: 222, accent: '#ff8c42', accent2: '#f26a1b' }) },
   { key: 'ocean-coral', name: 'Ocean & Coral', tagline: 'Teal & Coral', ...wrap({ hue: 190, accent: '#ff8a65', accent2: '#ff7043' }) },
   { key: 'forest-amber', name: 'Forest & Amber', tagline: 'Emerald & Amber', ...wrap({ hue: 150, accent: '#ffc145', accent2: '#f59e0b' }) },

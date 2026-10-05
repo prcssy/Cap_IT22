@@ -1,10 +1,11 @@
-import React, { useState, useMemo, useEffect, useRef, useContext } from 'react';
+import React, { useState, useMemo, useEffect, useContext } from 'react';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import './RankingPage.css';
-import { FaSearch, FaCrown, FaMedal, FaChevronDown, FaInfo, FaTimes } from 'react-icons/fa';
+import { FaSearch, FaCrown, FaMedal, FaInfo, FaTimes } from 'react-icons/fa';
 import Contact from '../public/Landing/Contact/Contact';
 import LevelTabs from '../shared/components/LevelTabs';
+import SetPicker from '../shared/components/SetPicker/SetPicker';
 import { useLockedLevel } from '../shared/utils/schoolLevel';
 import {
   subscribeSportsTeamsConfig, subscribeTeamRankings, subscribeMatchRecords, subscribeMatchSchedules,
@@ -117,6 +118,37 @@ function combineDivision(category, divisionName, divisionOptions = []) {
   return opt?.single ? category : `${category} (${divisionName})`;
 }
 
+/* Sport → Category → Division list for the shared SetPicker (the same
+   one-button selector as Game Schedules and Home), built from the same
+   helpers the old three dropdowns used. "All …" entries keep every
+   show-everything option; All Sports has nothing under it. */
+function rankingPickerTree(availableSports, sports) {
+  return availableSports.map((sport) => {
+    const cats = sport === 'All Sports' ? [] : categoryOptionsFor(sports, sport);
+    if (!cats.length) return { sport, groups: [] };
+    return {
+      sport,
+      groups: [
+        { group: 'All Categories', divisions: [] },
+        ...cats.map((c) => {
+          const divs = divisionNamesFor(sports, sport, c.label).map((d) => d.label);
+          return { group: c.label, divisions: divs.length ? ['All Divisions', ...divs] : [] };
+        }),
+      ],
+    };
+  });
+}
+
+/* The SetPicker `value` for a section's state — "All …" picks are left
+   blank so the button shows just what's actually narrowed down. */
+function pickerValue(sport, category, divName) {
+  return {
+    sport,
+    group: category === 'All Categories' ? '' : category,
+    division: divName === 'All Divisions' ? '' : divName,
+  };
+}
+
 /* "MEN (Senior)" → "MEN" — the plain category that records/tie-breakers use. */
 function baseDivision(label) {
   return (label || '').replace(/\s*\([^)]*\)\s*$/, '').trim();
@@ -209,95 +241,33 @@ function TeamLogo({ team, color, logo }) {
   );
 }
 
-/* ── Sport dropdown, reused by both tables ──
-   Was a row of individual tab buttons (one per sport), which grew wider
-   than the page as more sports got added. Rebuilt as a dropdown using
-   the exact same classes as DivisionSelect below, so it reads as the
-   same control, just for "Sport" instead of "Division". */
-function SportSelect({ value, onChange, sports }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onClickOutside = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, [open]);
-
-  return (
-    <div className="rk-division-dropdown" ref={wrapRef}>
-      <button
-        type="button"
-        className="rk-division-btn"
-        onClick={() => setOpen(prev => !prev)}
-      >
-        {value}
-        <FaChevronDown className={`rk-division-chevron ${open ? 'rk-division-chevron--open' : ''}`} />
-      </button>
-      <ul className={`rk-division-menu ${open ? 'rk-division-menu--open' : ''}`}>
-        {sports.map(label => (
-          <li
-            key={label}
-            className={`rk-division-item ${value === label ? 'rk-division-item--active' : ''}`}
-            onClick={() => { onChange(label); setOpen(false); }}
-          >
-            {label}
-          </li>
-        ))}
-      </ul>
+/* ── Top-3 podium (phones only — RankingPage.css shows .rk-podium at
+   ≤640px and hides the matching table rows there). 2nd | 1st | 3rd, with
+   1st raised in the middle, so the phone view reads as an actual ranking.
+   `statOf(team)` is the number shown under each name (rating / medals). ── */
+function Podium({ teams, statLabel, statOf, onInfo }) {
+  const [first, second, third] = teams;
+  const spot = (t, place) => (
+    <div className={`rk-podium__spot rk-podium__spot--${place}${t ? '' : ' rk-podium__spot--empty'}`} key={place}>
+      {t && (
+        <>
+          {place === 1 && <FaCrown className="rk-podium__crown" aria-hidden="true" />}
+          <span className="rk-podium__logo"><TeamLogo team={t.team} color={t.color} logo={t.logo} /></span>
+          <span className="rk-podium__name">{t.team}</span>
+          <span className="rk-podium__stat">
+            {statOf(t)} <small>{statLabel}</small>
+            {onInfo && (
+              <button type="button" className="rk-info-btn" onClick={() => onInfo(t)} aria-label={`Where ${t.team}'s ${statLabel.toLowerCase()} comes from`}>
+                <FaInfo />
+              </button>
+            )}
+          </span>
+        </>
+      )}
+      <div className="rk-podium__block" aria-label={`Rank ${place}`}><span>{place}</span></div>
     </div>
   );
-}
-
-
-/* ── Division dropdown, reused by both tables ──
-   A native <select>'s closed pill can be themed, but its open option
-   list is rendered by the OS/browser and ignores almost all CSS — it
-   showed up as a plain white/gray box no matter what was set on
-   `option`. Built as a custom button + list instead (same pattern as
-   the landing page's Levels dropdown), so the open menu can actually
-   match the site's dark navy / gold theme. */
-function DivisionSelect({ value, onChange, options, allLabel = 'All Divisions' }) {
-  const [open, setOpen] = useState(false);
-  const wrapRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-    const onClickOutside = (e) => {
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener('mousedown', onClickOutside);
-    return () => document.removeEventListener('mousedown', onClickOutside);
-  }, [open]);
-
-  const allLabels = [allLabel, ...options.map(d => d.label)];
-
-  return (
-    <div className="rk-division-dropdown" ref={wrapRef}>
-      <button
-        type="button"
-        className="rk-division-btn"
-        onClick={() => setOpen(prev => !prev)}
-      >
-        {value}
-        <FaChevronDown className={`rk-division-chevron ${open ? 'rk-division-chevron--open' : ''}`} />
-      </button>
-      <ul className={`rk-division-menu ${open ? 'rk-division-menu--open' : ''}`}>
-        {allLabels.map(label => (
-          <li
-            key={label}
-            className={`rk-division-item ${value === label ? 'rk-division-item--active' : ''}`}
-            onClick={() => { onChange(label); setOpen(false); }}
-          >
-            {label}
-          </li>
-        ))}
-      </ul>
-    </div>
-  );
+  return <div className="rk-podium">{[spot(second, 2), spot(first, 1), spot(third, 3)]}</div>;
 }
 
 /* ── Potential Champion table ── */
@@ -453,7 +423,15 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
     );
   }
 
+  // The phone podium replaces rows 1-3 — only while not searching, so a
+  // search still lists every match as a row with its real rank.
+  const showPodium = !norm(search);
+
   return (
+    <>
+    {showPodium && (
+      <Podium teams={ranked.slice(0, 3)} statLabel="Rating" statOf={(t) => t.rating} onInfo={setExplain} />
+    )}
     <div className="rk-table-wrap" role="table">
       <div className="rk-row rk-row--head" role="row">
         <div className="rk-cell rk-cell-rank" role="columnheader">RANK</div>
@@ -465,8 +443,9 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
       {visible.map((t) => {
         const rank = t.rank;
         const rankClass = rank <= 3 ? `rk-row--rank-${rank}` : '';
+        const podiumClass = showPodium && rank <= 3 ? ' rk-row--podium' : '';
         return (
-          <div className={`rk-row ${rankClass}`} role="row" key={t.id}>
+          <div className={`rk-row ${rankClass}${podiumClass}`} role="row" key={t.id}>
             <div className="rk-cell rk-cell-rank" role="cell">
               {rank === 1 ? <FaCrown className="rk-crown" /> : rank}
             </div>
@@ -480,12 +459,13 @@ function ChampionTable({ data, search, records, sportFilter, divisionFilter }) {
                 </button>
               </span>
             </div>
-            <div className="rk-cell rk-cell-num" role="cell" data-label="Win-Loss">{t.wins}-{t.losses}</div>
+            <div className="rk-cell rk-cell-num" role="cell" data-label="W-L">{t.wins}-{t.losses}</div>
           </div>
         );
       })}
       {explain && <RatingBreakdown team={explain} onClose={() => setExplain(null)} />}
     </div>
+    </>
   );
 }
 
@@ -517,7 +497,13 @@ function MedalTable({ data, search, records, sportFilter, divisionFilter }) {
     return <div className="rk-table-empty">No teams found for this sport/level yet.</div>;
   }
 
+  const showPodium = !norm(search);
+
   return (
+    <>
+    {showPodium && (
+      <Podium teams={ranked.slice(0, 3)} statLabel="Medals" statOf={(t) => t.total} onInfo={setExplain} />
+    )}
     <div className="rk-table-wrap" role="table">
       <div className="rk-row rk-row--head rk-row--medal" role="row">
         <div className="rk-cell rk-cell-rank" role="columnheader">RANK</div>
@@ -532,7 +518,7 @@ function MedalTable({ data, search, records, sportFilter, divisionFilter }) {
         const rank = t.rank;
         const rankClass = rank <= 3 ? `rk-row--rank-${rank}` : '';
         return (
-          <div className={`rk-row rk-row--medal ${rankClass}`} role="row" key={t.id}>
+          <div className={`rk-row rk-row--medal ${rankClass}${showPodium && rank <= 3 ? ' rk-row--podium' : ''}`} role="row" key={t.id}>
             <div className="rk-cell rk-cell-rank" role="cell">{rank}</div>
             <div className="rk-cell rk-cell-logo" role="cell"><TeamLogo team={t.team} color={t.color} logo={t.logo} /></div>
             <div className="rk-cell rk-cell-team" role="cell">{t.team}</div>
@@ -552,6 +538,7 @@ function MedalTable({ data, search, records, sportFilter, divisionFilter }) {
       })}
       {explain && <MedalBreakdown team={explain} onClose={() => setExplain(null)} />}
     </div>
+    </>
   );
 }
 
@@ -632,12 +619,10 @@ export default function RankingPage() {
      within one specific sport. Resets to "All Divisions" whenever the
      sport changes, so you're never stuck on a division that doesn't
      exist for the newly selected sport. */
-  const championCategoryOptions = useMemo(() => categoryOptionsFor(sports, championSport), [sports, championSport]);
   const championDivisionOptions = useMemo(
     () => divisionNamesFor(sports, championSport, championCategory),
     [sports, championSport, championCategory],
   );
-  const medalCategoryOptions = useMemo(() => categoryOptionsFor(sports, medalSport), [sports, medalSport]);
   const medalDivisionOptions = useMemo(
     () => divisionNamesFor(sports, medalSport, medalCategory),
     [sports, medalSport, medalCategory],
@@ -645,11 +630,6 @@ export default function RankingPage() {
   const championDivision = combineDivision(championCategory, championDivName, championDivisionOptions);
   const medalDivision = combineDivision(medalCategory, medalDivName, medalDivisionOptions);
 
-  // Changing a parent filter clears the ones under it.
-  const pickChampionSport = (v) => { setChampionSport(v); setChampionCategory('All Categories'); setChampionDivName('All Divisions'); };
-  const pickChampionCategory = (v) => { setChampionCategory(v); setChampionDivName('All Divisions'); };
-  const pickMedalSport = (v) => { setMedalSport(v); setMedalCategory('All Categories'); setMedalDivName('All Divisions'); };
-  const pickMedalCategory = (v) => { setMedalCategory(v); setMedalDivName('All Divisions'); };
 
   /* TeamAndSportsPage displays team.sportIds. Use that same source for the
      ranking filters, deduplicated case-insensitively while preserving the
@@ -669,6 +649,19 @@ export default function RankingPage() {
     });
     return ['All Sports', ...byName.values()];
   }, [teams, sports]);
+
+  // One SetPicker pick → the section's sport / category / division state.
+  const pickerTree = useMemo(() => rankingPickerTree(availableSports, sports), [availableSports, sports]);
+  const onChampionPick = ({ sport, group, division }) => {
+    setChampionSport(sport);
+    setChampionCategory(group || 'All Categories');
+    setChampionDivName(division || 'All Divisions');
+  };
+  const onMedalPick = ({ sport, group, division }) => {
+    setMedalSport(sport);
+    setMedalCategory(group || 'All Categories');
+    setMedalDivName(division || 'All Divisions');
+  };
 
   useEffect(() => {
     if (!availableSports.includes(championSport)) setChampionSport('All Sports');
@@ -1132,27 +1125,12 @@ export default function RankingPage() {
               instead of stranding "Division" on one line and its dropdown
               alone on the next. */}
           <div className="rk-division-row">
-            <div className="rk-division-group">
-              <label className="rk-division-label">Sport</label>
-              <SportSelect sports={availableSports} value={championSport} onChange={pickChampionSport} />
-            </div>
-            <div className="rk-division-group">
-              <label className="rk-division-label">Category</label>
-              <DivisionSelect
-                value={championCategory}
-                onChange={pickChampionCategory}
-                options={championCategoryOptions}
-                allLabel="All Categories"
-              />
-            </div>
-            <div className="rk-division-group">
-              <label className="rk-division-label">Division</label>
-              <DivisionSelect
-                value={championDivName}
-                onChange={setChampionDivName}
-                options={championDivisionOptions}
-              />
-            </div>
+            <SetPicker
+              tree={pickerTree}
+              value={pickerValue(championSport, championCategory, championDivName)}
+              onChange={onChampionPick}
+              showPath
+            />
           </div>
           <div className="rk-card">
             {loading ? (
@@ -1176,27 +1154,12 @@ export default function RankingPage() {
             <p className="rk-section-subtitle">Win and Loss</p>
           </div>
           <div className="rk-division-row">
-            <div className="rk-division-group">
-              <label className="rk-division-label">Sport</label>
-              <SportSelect sports={availableSports} value={medalSport} onChange={pickMedalSport} />
-            </div>
-            <div className="rk-division-group">
-              <label className="rk-division-label">Category</label>
-              <DivisionSelect
-                value={medalCategory}
-                onChange={pickMedalCategory}
-                options={medalCategoryOptions}
-                allLabel="All Categories"
-              />
-            </div>
-            <div className="rk-division-group">
-              <label className="rk-division-label">Division</label>
-              <DivisionSelect
-                value={medalDivName}
-                onChange={setMedalDivName}
-                options={medalDivisionOptions}
-              />
-            </div>
+            <SetPicker
+              tree={pickerTree}
+              value={pickerValue(medalSport, medalCategory, medalDivName)}
+              onChange={onMedalPick}
+              showPath
+            />
           </div>
           <div className="rk-card rk-card--light">
             <MedalTable

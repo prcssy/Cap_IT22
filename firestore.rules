@@ -108,7 +108,9 @@ service cloud.firestore {
         && optionalString(data, 'contactNumber', 20)
         && optionalString(data, 'bio', 500)
         // base64 data URL of a resized photo
-        && optionalString(data, 'photoURL', 200000);
+        && optionalString(data, 'photoURL', 200000)
+        // Messenger group chat link per team: [{ team, url }]
+        && (!('chats' in data) || (data.chats is list && data.chats.size() <= 20));
     }
 
     // True if the signed-in user is a coach whose teams (and sports, when
@@ -216,7 +218,7 @@ service cloud.firestore {
                       (isAdminOfLevel(resource.data.level) && isAdminOfLevel(request.resource.data.level))
                       || (signedIn() && email == staffEmail()
                           && request.resource.data.diff(resource.data).affectedKeys()
-                               .hasOnly(['name', 'contactNumber', 'photoURL', 'bio', 'updatedAt']))
+                               .hasOnly(['name', 'contactNumber', 'photoURL', 'bio', 'chats', 'updatedAt']))
                     );
       allow delete: if isAdminOfLevel(resource.data.level);
     }

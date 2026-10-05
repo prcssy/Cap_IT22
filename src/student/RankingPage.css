@@ -476,9 +476,12 @@
   /* Search bar kept its full desktop padding/font/icon size here, so
      next to the now much-smaller level tabs it read as oversized/
      "chubby" — sized down to match. */
-  .rk-search-input,
-  .rk-search-input:focus {
-    width: 100%;
+  /* Compact fixed width (it used to fill the whole row, which spanned the
+     full screen on accounts locked to one level — no level tabs beside it).
+     Still shrinks if the level tabs leave less room. */
+  .rk-search-input {
+    width: 150px;
+    max-width: 100%;
     padding: 5px 8px 5px 24px;
     font-size: 10px;
     border-radius: 14px;
@@ -492,8 +495,13 @@
   /* Was flex: 1 1 100%, which forced the search bar onto its own full
      width row — now it shares .rk-controls-row with the level tabs
      instead, so it only needs to fill whatever space is left over. */
+  .rk-search-input:focus {
+    width: 170px;
+    max-width: 100%;
+  }
+
   .rk-search-wrap {
-    flex: 1 1 auto;
+    flex: 0 1 auto;
     min-width: 0;
   }
 
@@ -601,31 +609,159 @@
 }
 
 /* ══════════════════════════════════════════
-   RANKING TABLES → STACKED CARDS ON MOBILE
-   .rk-row is a 5-7 column CSS grid (rank/logo/team/rating/win-loss, or
-   rank/logo/team/gold/silver/bronze/total for the medal tally) — the
-   existing 560px query only compressed those columns further, which
-   stayed cramped. Below this width each row becomes a card instead:
-   rank + logo + team name form one header line, and every stat cell
-   (.rk-cell-num, now carrying a data-label — see RankingPage.jsx) drops
-   onto its own full-width label/value line underneath.
+   RANKING TABLES ON PHONES → PODIUM + LEADERBOARD
+   The 5-7 column grid doesn't fit a phone, and the old fallback (one tall
+   card per team with every stat on its own line) didn't read as a ranking.
+   Below this width: the top 3 stand on a podium (2nd | 1st | 3rd, see
+   Podium in RankingPage.jsx) and every other team is one slim leaderboard
+   line — rank badge, logo, name, then each stat as a small value-over-
+   label column. Rows already on the podium (.rk-row--podium) are hidden;
+   while searching there's no podium, so every match shows as a row.
    ══════════════════════════════════════════ */
+.rk-podium {
+  display: none;
+}
+
 @media (max-width: 640px) {
-  .rk-row {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    gap: 4px 10px;
-    background: #fff;
-    border-radius: 12px;
-    padding: 12px 14px;
-    margin-bottom: 10px;
-    box-shadow: 0 2px 10px rgba(0, 10, 30, 0.18);
+  /* Rows float on the page's dark background instead of one white box. */
+  .rk-card {
+    background: transparent;
+    box-shadow: none;
+    overflow: visible;
+    border-radius: 0;
   }
 
-  /* Declared after .rk-row so its display: none wins the tie (both are
-     single-class selectors of equal specificity, and the head row
-     carries both classes) instead of being overridden back to flex. */
+  .rk-row--podium {
+    display: none !important;
+  }
+
+  /* ── Podium ── */
+  .rk-podium {
+    display: grid;
+    grid-template-columns: 1fr 1.15fr 1fr;
+    align-items: end;
+    gap: 6px;
+    margin: 6px 0 14px;
+  }
+
+  .rk-podium__spot {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    min-width: 0;
+  }
+
+  .rk-podium__crown {
+    color: var(--c-gold, #fcbf19);
+    font-size: 22px;
+    margin-bottom: 2px;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+  }
+
+  .rk-podium__logo .rk-team-logo {
+    width: 46px;
+    height: 46px;
+    font-size: 13px;
+    border: 2px solid #c7cdd6;
+    box-sizing: border-box;
+  }
+
+  .rk-podium__spot--1 .rk-podium__logo .rk-team-logo {
+    width: 58px;
+    height: 58px;
+    font-size: 15px;
+    border-color: var(--c-gold, #fcbf19);
+    box-shadow: 0 0 0 3px rgba(var(--c-gold-rgb, 252, 191, 25), 0.25);
+  }
+
+  .rk-podium__spot--3 .rk-podium__logo .rk-team-logo {
+    border-color: #d8a06a;
+  }
+
+  .rk-podium__name {
+    margin-top: 6px;
+    max-width: 100%;
+    font-family: "Inter", sans-serif;
+    font-size: 11px;
+    font-weight: 800;
+    line-height: 1.2;
+    color: #fff;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+    overflow-wrap: anywhere;
+  }
+
+  .rk-podium__stat {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    margin: 3px 0 6px;
+    font-family: "Inter", sans-serif;
+    font-size: 12px;
+    font-weight: 900;
+    color: var(--c-gold, #fcbf19);
+  }
+
+  .rk-podium__stat small {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .rk-podium__block {
+    width: 100%;
+    border-radius: 10px 10px 0 0;
+    display: flex;
+    justify-content: center;
+    padding-top: 8px;
+    font-family: "Inter", sans-serif;
+    font-size: 22px;
+    font-weight: 900;
+    color: var(--c-dark, #001529);
+    box-shadow: inset 0 -6px 12px rgba(0, 0, 0, 0.12);
+  }
+
+  .rk-podium__spot--1 .rk-podium__block {
+    height: 86px;
+    font-size: 28px;
+    background: linear-gradient(180deg, var(--c-gold, #fcbf19), var(--c-gold-2, #f5a623));
+  }
+
+  .rk-podium__spot--2 .rk-podium__block {
+    height: 64px;
+    background: linear-gradient(180deg, #eef1f6, #b9c1cd);
+  }
+
+  .rk-podium__spot--3 .rk-podium__block {
+    height: 48px;
+    background: linear-gradient(180deg, #ecc29a, #c98a52);
+  }
+
+  /* A podium spot with no team (fewer than 3 teams) keeps its block faded. */
+  .rk-podium__spot--empty .rk-podium__block {
+    opacity: 0.25;
+  }
+
+  /* ── Leaderboard rows ── */
+  .rk-row,
+  .rk-row--medal {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 8px;
+    background: #fff;
+    border-radius: 10px;
+    padding: 8px 10px;
+    margin-bottom: 6px;
+    box-shadow: 0 2px 8px rgba(0, 10, 30, 0.18);
+  }
+
+  /* After .rk-row so display: none wins (the head row carries both). */
   .rk-row--head {
     display: none;
   }
@@ -638,63 +774,69 @@
     padding: 0;
   }
 
-  /* Plain rank numbers (4+) had no visual weight next to rank 1's crown
-     icon — a small circular chip gives every rank the same "badge"
-     treatment instead of #1 standing alone as the only styled one. */
   .rk-cell-rank {
-    order: 1;
-    min-width: 22px;
-    height: 22px;
+    flex-shrink: 0;
+    width: 24px;
+    height: 24px;
     display: flex;
     align-items: center;
     justify-content: center;
     border-radius: 50%;
-    background: rgba(var(--c-dark-2-rgb, 0, 25, 63), 0.06);
-    font-size: 12px;
+    background: rgba(var(--c-dark-2-rgb, 0, 25, 63), 0.08);
+    font-size: 11px;
   }
 
+  /* Top-3 rows only show while searching (no podium then) — keep their
+     medal tint, with a lighter badge on top of it. */
   .rk-row--rank-1 .rk-cell-rank,
   .rk-row--rank-2 .rk-cell-rank,
   .rk-row--rank-3 .rk-cell-rank {
-    background: rgba(255, 255, 255, 0.55);
+    background: rgba(255, 255, 255, 0.6);
   }
 
   .rk-cell-logo {
-    order: 2;
-    justify-content: flex-start;
+    flex-shrink: 0;
   }
 
   .rk-cell-team {
-    order: 3;
     flex: 1;
     min-width: 0;
     text-align: left;
+    font-size: 12px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
+  /* Each stat: value on top, its tiny label underneath. */
   .rk-cell-num {
-    order: 4;
+    flex-shrink: 0;
+    min-width: 40px;
     display: flex;
+    flex-direction: column;
     align-items: center;
-    justify-content: space-between;
-    width: 100%;
-    padding-top: 8px;
-    margin-top: 6px;
-    /* A near-white #eef1f8 divider all but disappeared against the
-       gold/silver/bronze gradient on the top 3 rows (their background
-       starts as #fff and shades only lightly) — a translucent dark
-       tint instead stays visible on both the plain white rows and the
-       gradient ones. */
-    border-top: 1px solid rgba(var(--c-dark-2-rgb, 0, 25, 63), 0.15);
-    text-align: right;
+    font-size: 12px;
+    line-height: 1.1;
+    text-align: center;
   }
 
-  .rk-cell-num::before {
+  .rk-row--medal .rk-cell-num {
+    min-width: 30px;
+  }
+
+  .rk-cell-num::after {
     content: attr(data-label);
+    margin-top: 2px;
+    font-size: 7.5px;
     font-weight: 700;
-    font-size: 10px;
-    letter-spacing: 0.05em;
+    letter-spacing: 0.04em;
     text-transform: uppercase;
-    color: rgba(var(--c-dark-2-rgb, 0, 25, 63), 0.6);
+    color: rgba(var(--c-dark-2-rgb, 0, 25, 63), 0.55);
+  }
+
+  /* The rating's ⓘ button sits beside its number. */
+  .rk-cell-num .rk-num-with-info {
+    gap: 3px;
   }
 }
 

@@ -6,11 +6,12 @@ function norm(value) {
   return (value || '').trim().toLowerCase();
 }
 
-/* ONE dropdown for Sport → Category → Division, as a hover menu: hovering a
-   sport shows its categories beside it, hovering a category shows its
-   divisions beside that, and clicking a division selects that set and
-   closes. On touch screens (no hover) tapping a sport/category opens the
-   next column instead. A level with nothing named to choose is skipped — a
+/* ONE dropdown for Sport → Category → Division, step by step: it opens on
+   the Sport list only; clicking a sport shows its categories beside it,
+   clicking a category shows its divisions beside that, and clicking a
+   division selects that set and closes. Nothing expands on hover, so the
+   next column only appears once the previous step is clicked (same on
+   touch and mouse). A level with nothing named to choose is skipped — a
    sport or category with nothing further under it is selected by clicking
    it. Columns sit side by side inside one panel (no nested flyouts that
    could run off-screen). A custom button + list (not a native <select>) so
@@ -49,15 +50,16 @@ export default function SetPicker({ tree, value, onChange, showPath = false }) {
     setOpen(false);
   };
   const toggle = () => {
-    // Open on the current selection's path, so its columns are already showing.
-    setHover({ sport: value.sport, group: namedGroups(value.sport).length ? value.group : '' });
+    // Always start from the Sport list alone; categories/divisions appear
+    // only after a sport/category is clicked.
+    setHover({ sport: null, group: null });
     setOpen((o) => !o);
   };
 
   const showSport = (sport) => setHover({ sport, group: namedGroups(sport).length ? null : '' });
   const clickSport = (sport) => {
     if (!sportHasMore(sport)) commit(sport, groupsOf(sport)[0]?.group || '', '');
-    else showSport(sport); // touch: tap opens the next column
+    else showSport(sport); // opens the next column
   };
   const clickGroup = (group) => {
     if (named(divisionsOf(hover.sport, group)).length === 0) commit(hover.sport, group, '');
@@ -74,15 +76,13 @@ export default function SetPicker({ tree, value, onChange, showPath = false }) {
 
   const current = [value.sport, value.group, value.division].filter(Boolean);
 
-  const item = ({ key, label, active, path, more, onEnter, onClick }) => (
+  const item = ({ key, label, active, path, more, onClick }) => (
     <button
       key={key}
       type="button"
       role="option"
       aria-selected={active}
       className={`ms-select__option${active ? ' ms-select__option--active' : ''}${path ? ' ms-select__option--path' : ''}`}
-      onMouseEnter={onEnter}
-      onFocus={onEnter}
       onClick={onClick}
     >
       <span>{label}</span>
@@ -126,7 +126,6 @@ export default function SetPicker({ tree, value, onChange, showPath = false }) {
                 active: isCurrent(n.sport),
                 path: norm(n.sport) === norm(hs),
                 more: sportHasMore(n.sport),
-                onEnter: () => showSport(n.sport),
                 onClick: () => clickSport(n.sport),
               }))}
             </div>
@@ -139,7 +138,6 @@ export default function SetPicker({ tree, value, onChange, showPath = false }) {
                   active: isCurrent(hs, g.group),
                   path: norm(g.group) === norm(hover.group),
                   more: named(g.divisions).length > 0,
-                  onEnter: () => setHover((h) => ({ ...h, group: g.group })),
                   onClick: () => clickGroup(g.group),
                 }))}
               </div>
@@ -153,7 +151,6 @@ export default function SetPicker({ tree, value, onChange, showPath = false }) {
                   active: isCurrent(hs, hover.group, d),
                   path: false,
                   more: false,
-                  onEnter: undefined,
                   onClick: () => commit(hs, hover.group, d),
                 }))}
               </div>

@@ -3,6 +3,7 @@ import {
   FaUserTie, FaPhoneAlt, FaEnvelope, FaUsers, FaCamera, FaEdit, FaTimes, FaSearch,
   FaCheckCircle, FaHourglassHalf, FaSync, FaFirstAid, FaMapMarkerAlt,
 } from 'react-icons/fa';
+import { FaFacebookMessenger } from 'react-icons/fa6';
 import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
@@ -10,6 +11,7 @@ import { getCoachRoster, updateMyCoachProfile } from '../shared/services/firesto
 import { resizeImageToDataUrl } from '../shared/utils/resizeImage';
 import { getSchoolLevel } from '../shared/utils/schoolLevel';
 import { categoryDivisionLabel } from '../shared/utils/sportCategory';
+import { isMessengerUrl, normalizeMessengerUrl } from '../shared/utils/messengerLink';
 import './CoachPage.css';
 
 const MAX_PHOTO_SOURCE_BYTES = 5 * 1024 * 1024;
@@ -162,6 +164,82 @@ function CoachProfileCard({ coach, email, levelLabel }) {
   );
 }
 
+/* ── Messenger group chat link per team the coach handles. Every student
+   sees these on their Profile ("Sports Group Chats") and can join. ── */
+function GroupChatsCard({ coach, email }) {
+  const teams = coach.teams || [];
+  const saved = Object.fromEntries((coach.chats || []).map((c) => [c.team, c.url]));
+  const [draft, setDraft] = useState(saved);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState(null);
+
+  const dirty = teams.some((t) => (draft[t] || '').trim() !== (saved[t] || ''));
+
+  const save = async (e) => {
+    e.preventDefault();
+    const chats = [];
+    for (const team of teams) {
+      const url = normalizeMessengerUrl(draft[team]);
+      if (!url) continue;
+      if (!isMessengerUrl(url)) {
+        setMsg({ tone: 'error', text: `The link for ${team} must be a Messenger or Facebook link (m.me, messenger.com or facebook.com).` });
+        return;
+      }
+      chats.push({ team, url });
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      await updateMyCoachProfile(email, { chats });
+      setDraft(Object.fromEntries(chats.map((c) => [c.team, c.url])));
+      setMsg({ tone: 'success', text: 'Group chat links saved — students can now see them on their Profile.' });
+    } catch (err) {
+      console.error('Failed to save group chat links:', err);
+      setMsg({ tone: 'error', text: 'Could not save the links — check your connection and try again.' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (teams.length === 0) return null;
+
+  return (
+    <form className="cp-card cp-chats" onSubmit={save}>
+      <div className="cp-roster-head">
+        <h3><FaFacebookMessenger className="cp-chats__icon" /> Group Chats</h3>
+      </div>
+      <p className="cp-chats__hint">
+        Paste your team&apos;s Messenger group chat link (e.g. https://m.me/j/…). Every student sees it on their
+        Profile under &ldquo;Sports Group Chats&rdquo; and can tap to join. Leave a box empty to hide that team&apos;s chat.
+      </p>
+      <div className="cp-chats__list">
+        {teams.map((team) => (
+          <label key={team} className="cp-chats__row">
+            <span className="cp-chip cp-chip--team">{team}</span>
+            <input
+              type="url"
+              inputMode="url"
+              placeholder="https://m.me/j/…"
+              value={draft[team] || ''}
+              onChange={(e) => { setDraft((d) => ({ ...d, [team]: e.target.value })); setMsg(null); }}
+            />
+          </label>
+        ))}
+      </div>
+      <div className="cp-profile__form-actions">
+        <button type="submit" className="cp-btn-primary" disabled={busy || !dirty}>
+          {busy && <FaSync className="cp-spin" />} Save links
+        </button>
+      </div>
+      {msg && (
+        <p className={`cp-msg cp-msg--${msg.tone} cp-chats__notice`} role="status">
+          {msg.tone === 'success' && <FaCheckCircle />} {msg.text}
+        </p>
+      )}
+    </form>
+  );
+}
+
 /* ── One player's full registration details ── */
 function PlayerModal({ player, onClose }) {
   useEffect(() => {
@@ -307,6 +385,7 @@ export default function CoachPage() {
 
       <div className="cp-body">
         <CoachProfileCard coach={coachProfile} email={email} levelLabel={levelLabel} />
+        <GroupChatsCard coach={coachProfile} email={email} />
 
         <div className="cp-stats">
           <div className="cp-stat"><FaUsers /><strong>{counts.total}</strong><span>Players</span></div>

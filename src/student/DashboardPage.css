@@ -2716,15 +2716,19 @@
 
   /* Shares a line with the level tabs: cap it and let a long
      "BASKETBALL › MEN › 5 V 5" cut off with … instead of overflowing. */
+  /* Own padding + min-height so it still looks right when there are no
+     level tabs beside it to stretch to (accounts locked to one level);
+     with the tabs, it stretches to their height as before. */
   .dash-filters-row .ms-select__trigger {
     align-items: center;
-    max-width: 38vw;
-    padding: 0 9px;
+    min-height: 26px;
+    max-width: 45vw;
+    padding: 5px 11px;
     gap: 5px;
     border-width: 1.5px;
     border-radius: 12px;
-    font-size: clamp(8px, calc(5.73px + 0.71vw), 10px); /* same as the level tabs */
-    line-height: 1;
+    font-size: 9px;
+    line-height: 1.2;
   }
 
   .dash-filters-row .ms-select__value {
@@ -2741,11 +2745,12 @@
     font-size: 7px;
   }
 
-  /* The open menu, centered on the screen under the filters. Anchoring it
-     to the trigger (which sits at the right end of the row) ran the Sport
-     column off the left edge of a phone. The trigger's wrapper is made
-     static so the menu positions against the whole filters row instead,
-     then centers itself within it. */
+  /* The open menu, lined up with the LEFT edge of the filters row.
+     Anchoring it to the trigger (at the right end of the row when the level
+     tabs are shown) ran the Sport column off the left edge of a phone, and
+     centering it left it floating mid-screen when the trigger is on the
+     left (accounts locked to one level, no tabs). The trigger's wrapper is
+     made static so the menu positions against the whole filters row. */
   .dash-filters-row {
     position: relative;
   }
@@ -2755,9 +2760,8 @@
   }
 
   .dash-filters-row .ms-select__panel {
-    left: 50%;
+    left: 0;
     right: auto;
-    transform: translateX(-50%);
     min-width: 0;
     max-width: 100%;
   }

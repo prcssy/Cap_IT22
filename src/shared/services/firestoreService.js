@@ -2321,7 +2321,10 @@ export async function updateLandingPageConfig(fields, actorEmail, actorRole = 's
    Shape: { email, name, contactNumber, photoURL, bio, level,
             teams: [teamName], sports: [sportName] }
 ───────────────────────────────────────────── */
-export const COACH_PROFILE_FIELDS = ['name', 'contactNumber', 'photoURL', 'bio'];
+// `chats`: [{ team, url }] — the coach's Messenger group chat link per team
+// they handle (see src/shared/utils/messengerLink.js); shown to every
+// student on their Profile.
+export const COACH_PROFILE_FIELDS = ['name', 'contactNumber', 'photoURL', 'bio', 'chats'];
 
 export function normalizeCoachEmail(email) {
   return String(email || '').trim().toLowerCase();
