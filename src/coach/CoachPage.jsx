@@ -10,6 +10,7 @@ import { getCoachRoster, updateMyCoachProfile } from '../shared/services/firesto
 import { resizeImageToDataUrl } from '../shared/utils/resizeImage';
 import { getSchoolLevel } from '../shared/utils/schoolLevel';
 import { categoryDivisionLabel } from '../shared/utils/sportCategory';
+import { coachHandles } from '../shared/utils/coachScope';
 import { isMessengerUrl, normalizeMessengerUrl } from '../shared/utils/messengerLink';
 import './CoachPage.css';
 import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
@@ -313,7 +314,7 @@ export default function CoachPage() {
   const level = coachProfile?.level || null;
   // Re-query only when the assignment itself changes, not on every
   // profile edit (name/photo) that also re-emits the coach doc.
-  const assignmentKey = JSON.stringify([coachProfile?.teams || [], coachProfile?.sports || []]);
+  const assignmentKey = JSON.stringify([coachProfile?.teams || [], coachProfile?.sports || [], coachProfile?.divisions || []]);
   const requestKey = `${assignmentKey}|${level}|${reloadKey}`;
   const loading = result.key !== requestKey;
   const { roster, error } = result;
@@ -331,7 +332,8 @@ export default function CoachPage() {
           error: '',
           roster: regs.filter((r) => {
             const regLevel = getSchoolLevel(r.gradeLevel);
-            return !level || !regLevel || regLevel === level;
+            // Also narrowed to the categories/divisions this coach handles.
+            return (!level || !regLevel || regLevel === level) && coachHandles(coachProfile, r);
           }),
         });
       })

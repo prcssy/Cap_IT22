@@ -15,6 +15,7 @@ import { AuthContext } from '../shared/context/AuthContext';
 import { getMyRegistrations, subscribeCoaches, updateMyProfilePhoto } from '../shared/services/firestoreService';
 import { resizeImageToDataUrl } from '../shared/utils/resizeImage';
 import { getSchoolLevel } from '../shared/utils/schoolLevel';
+import { coachHandles } from '../shared/utils/coachScope';
 import { isMessengerUrl } from '../shared/utils/messengerLink';
 import { FaFacebookMessenger } from 'react-icons/fa6';
 import HeaderBrand from '../shared/components/HeaderBrand/HeaderBrand';
@@ -220,8 +221,7 @@ export default function ProfilePage() {
   // Team names repeat across levels, so the player's level must match too.
   const coachesFor = (reg) => {
     const regLevel = getSchoolLevel(reg.gradeLevel);
-    return coaches.filter((c) => (c.teams || []).includes(reg.teamName)
-      && (!(c.sports || []).length || c.sports.includes(reg.sport))
+    return coaches.filter((c) => coachHandles(c, reg)
       && (!regLevel || !c.level || c.level === regLevel));
   };
   const coachGroups = approvedRegs.map((reg) => ({ reg, coaches: coachesFor(reg) }));

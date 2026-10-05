@@ -261,3 +261,16 @@
   align-items: center;
   gap: 6px;
 }
+
+/* ── Categories & divisions picker (one block per ticked sport) ── */
+.cm-divgroup + .cm-divgroup {
+  margin-top: 10px;
+}
+
+.cm-divgroup__sport {
+  display: block;
+  margin-bottom: 5px;
+  font-size: 12px;
+  font-weight: 800;
+  color: var(--c-dark, #001529);
+}

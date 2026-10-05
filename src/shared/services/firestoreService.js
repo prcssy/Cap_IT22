@@ -2386,6 +2386,8 @@ export async function saveCoach(coach, actorRole, { isNew = false } = {}) {
     level: coach.level,
     teams: [...new Set((coach.teams || []).filter(Boolean))],
     sports: [...new Set((coach.sports || []).filter(Boolean))],
+    // Categories/divisions of those sports (see src/shared/utils/coachScope.js); [] = all.
+    divisions: [...new Set((coach.divisions || []).filter(Boolean))],
     updatedAt: serverTimestamp(),
   };
   if (isNew) data.addedAt = serverTimestamp();

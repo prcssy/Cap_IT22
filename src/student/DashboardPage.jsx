@@ -778,8 +778,14 @@ function scheduleDivisionOf(schedule, sports) {
   return (schedule.category || '').trim().toUpperCase();
 }
 
+// Coach/staff accounts can still open and submit the form (e.g. to try it),
+// but get a warning that it's for players and won't count — the admin
+// registration tables and counts only include player (student) accounts.
+const NON_PLAYER_ROLES = ['coach', 'moderator', 'admin', 'superadmin'];
+
 function HomeView({ onOpenRegistration }) {
   const levelLabels = useContext(LevelLabelsContext);
+
   const contactFooterRef = useRef(null);
 
   const LEVELS = useMemo(() => [
@@ -1286,6 +1292,8 @@ function PlayerRegistration({ onBack }) {
   const existingReg = regForEvent(form.event);
   // Registered for every event → nothing left to register for.
   const allEventsTaken = events.length > 0 && events.every((ev) => regForEvent(ev.label));
+  // Coach/staff accounts: warned, not blocked (see NON_PLAYER_ROLES).
+  const notAPlayer = NON_PLAYER_ROLES.includes(userProfile?.role);
   const formLocked = !!existingReg || allEventsTaken;
   const excelInputRef = useRef(null);
 
@@ -2175,7 +2183,19 @@ function PlayerRegistration({ onBack }) {
             <h2 className="reg-card__title">Player Registration</h2>
           </div>
 
-          {myRegs.length > 0 && (
+          {notAPlayer && (
+            <div className="reg-notice" role="alert">
+              <svg className="reg-notice__icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 2 1 21h22L12 2zm0 5.5 6.9 12H5.1L12 7.5zM11 10v5h2v-5h-2zm0 6.5V18h2v-1.5h-2z"/>
+              </svg>
+              <span>
+                <strong>For player registration only.</strong> You&apos;re signed in with a coach/staff account — if you
+                register here, it <strong>will not count</strong>: it won&apos;t appear in the admin&apos;s registration list or the player counts.
+              </span>
+            </div>
+          )}
+
+          {!notAPlayer && myRegs.length > 0 && (
             <div className={`reg-notice${allEventsTaken ? '' : ' reg-notice--ok'}`} role="status">
               <svg className="reg-notice__icon" width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 2 1 21h22L12 2zm0 5.5 6.9 12H5.1L12 7.5zM11 10v5h2v-5h-2zm0 6.5V18h2v-1.5h-2z"/>

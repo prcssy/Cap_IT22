@@ -7,9 +7,11 @@ import {
   ensureCoachAccount,
 } from '../shared/services/firestoreService';
 import { validatePassword } from '../shared/utils/validation';
+import { coachDivisionOptions, coachHandles } from '../shared/utils/coachScope';
 import './CoachesManager.css';
 
-const EMPTY_FORM = { email: '', name: '', contactNumber: '', bio: '', teams: [], sports: [], password: '' };
+const EMPTY_FORM = { email: '', name: '', contactNumber: '', bio: '', teams: [], sports: [], divisions: [], password: '' };
+const normName = (v) => String(v || '').trim().toLowerCase();
 const toggle = (list, value) => (list.includes(value) ? list.filter((v) => v !== value) : [...list, value]);
 
 function friendlyCoachError(err) {
@@ -30,6 +32,7 @@ export default function CoachesManager({ level, levelLabel }) {
   const { userProfile } = useContext(AuthContext);
   const [coaches, setCoaches] = useState([]);
   const [teams, setTeams] = useState([]);
+  const [sportsCfg, setSportsCfg] = useState([]);
   const [registrations, setRegistrations] = useState([]);
   // Which level's coach list has arrived — loading until it matches `level`.
   const [loadedLevel, setLoadedLevel] = useState(null);
@@ -49,6 +52,7 @@ export default function CoachesManager({ level, levelLabel }) {
     const unsubCoaches = subscribeCoaches(level, (list) => { setCoaches(list); setLoadedLevel(level); });
     const unsubTeams = subscribeSportsTeamsConfig(level, (cfg) => {
       setTeams((cfg.teams || []).filter((t) => t?.name?.trim()).sort((a, b) => a.name.localeCompare(b.name)));
+      setSportsCfg(cfg.sports || []);
     });
     return () => { unsubCoaches(); unsubTeams(); };
   }, [level]);
@@ -65,6 +69,31 @@ export default function CoachesManager({ level, levelLabel }) {
 
   const teamNames = useMemo(() => new Set(teams.map((t) => t.name)), [teams]);
 
+  // Category/division checkboxes per sport (from Sports & Teams).
+  const divisionOptionsBySport = useMemo(() => {
+    const map = new Map();
+    sportsCfg.forEach((sp) => map.set(normName(sp.name), coachDivisionOptions(sp)));
+    return map;
+  }, [sportsCfg]);
+  const divisionOptionsFor = (sportName) => divisionOptionsBySport.get(normName(sportName)) || [];
+  const divisionLabelByKey = useMemo(() => {
+    const map = new Map();
+    divisionOptionsBySport.forEach((opts) => opts.forEach((o) => map.set(o.key, o.label)));
+    return map;
+  }, [divisionOptionsBySport]);
+  const allDivisionKeys = (sportNames) => sportNames.flatMap((sp) => divisionOptionsFor(sp).map((o) => o.key));
+
+  // Ticking a sport ticks all its categories/divisions; unticking clears them.
+  const toggleSport = (sport) => setForm((f) => {
+    const on = !f.sports.includes(sport);
+    const keys = divisionOptionsFor(sport).map((o) => o.key);
+    return {
+      ...f,
+      sports: toggle(f.sports, sport),
+      divisions: on ? [...new Set([...f.divisions, ...keys])] : f.divisions.filter((k) => !keys.includes(k)),
+    };
+  });
+
   // Sports offered in the form = every sport played by the selected teams.
   const sportChoices = useMemo(() => {
     const picked = teams.filter((t) => form.teams.includes(t.name));
@@ -72,9 +101,7 @@ export default function CoachesManager({ level, levelLabel }) {
   }, [teams, form.teams]);
 
   const playerCount = (coach) => registrations.filter((r) => (
-    (coach.teams || []).includes(r.teamName)
-    && (!(coach.sports || []).length || coach.sports.includes(r.sport))
-    && r.status !== 'rejected'
+    coachHandles(coach, r) && r.status !== 'rejected'
   )).length;
 
   const openNew = () => {
@@ -91,6 +118,8 @@ export default function CoachesManager({ level, levelLabel }) {
       bio: coach.bio || '',
       teams: coach.teams || [],
       sports: coach.sports || [],
+      // No saved divisions = the whole of each sport → show them all ticked.
+      divisions: (coach.divisions || []).length ? coach.divisions : allDivisionKeys(coach.sports || []),
       password: '',
     });
     setFormError('');
@@ -117,6 +146,13 @@ export default function CoachesManager({ level, levelLabel }) {
       setFormError('Enter a valid contact number (digits, spaces, + or -).');
       return;
     }
+    const sportMissingDivision = form.sports.find((sp) => sportChoices.includes(sp)
+      && divisionOptionsFor(sp).length > 0
+      && !divisionOptionsFor(sp).some((o) => form.divisions.includes(o.key)));
+    if (sportMissingDivision) {
+      setFormError(`Pick at least one category/division for ${sportMissingDivision}, or untick the sport.`);
+      return;
+    }
     const passwordError = form.password ? validatePassword(form.password) : null;
     if (passwordError) {
       setFormError(passwordError);
@@ -127,11 +163,16 @@ export default function CoachesManager({ level, levelLabel }) {
     try {
       // Drop sports no selected team plays (e.g. after unticking a team).
       const sports = form.sports.filter((s) => sportChoices.includes(s));
+      // Keep only the picked sports' divisions; everything ticked = save []
+      // ("all"), so divisions added to those sports later are included too.
+      const validKeys = allDivisionKeys(sports);
+      const picked = form.divisions.filter((k) => validKeys.includes(k));
+      const divisions = picked.length === validKeys.length ? [] : picked;
       // Make sure the coach can actually log in BEFORE granting coach
       // access — runs on edits too, so a coach saved before this check
       // existed (with no account behind the email) gets one on next save.
       const account = await ensureCoachAccount({ email, name: form.name.trim(), level, password: form.password });
-      await saveCoach({ ...form, email, sports, level }, userProfile?.role, { isNew });
+      await saveCoach({ ...form, email, sports, divisions, level }, userProfile?.role, { isNew });
       setEditing(null);
       if (account.created) {
         setCopied(false);
@@ -226,7 +267,13 @@ export default function CoachesManager({ level, levelLabel }) {
                     </span>
                   ))}
                   {(c.sports || []).length
-                    ? c.sports.map((s) => <span key={s} className="cm-chip">{s}</span>)
+                    ? c.sports.flatMap((s) => {
+                        // Narrowed to some divisions → one chip each ("Archery · Women · 30 Meters").
+                        const keys = (c.divisions || []).filter((k) => k.startsWith(`${normName(s)}::`));
+                        return keys.length
+                          ? keys.map((k) => <span key={k} className="cm-chip">{s} · {divisionLabelByKey.get(k) || '(removed)'}</span>)
+                          : [<span key={s} className="cm-chip">{s}</span>];
+                      })
                     : <span className="cm-chip">All sports</span>}
                 </div>
                 <div className="cm-card__count">{playerCount(c)} player{playerCount(c) === 1 ? '' : 's'}</div>
@@ -290,11 +337,39 @@ export default function CoachesManager({ level, levelLabel }) {
                   <div className="cm-pickgrid">
                     {sportChoices.map((s) => (
                       <label key={s} className="msf-checkbox">
-                        <input type="checkbox" checked={form.sports.includes(s)} onChange={() => setForm({ ...form, sports: toggle(form.sports, s) })} />
+                        <input type="checkbox" checked={form.sports.includes(s)} onChange={() => toggleSport(s)} />
                         {s}
                       </label>
                     ))}
                   </div>
+                </div>
+              )}
+
+              {form.sports.filter((s) => sportChoices.includes(s) && divisionOptionsFor(s).length > 0).length > 0 && (
+                <div className="msf-form-group">
+                  <label>Categories &amp; divisions</label>
+                  <p className="cm-hint">Which categories/divisions of each sport this coach handles.</p>
+                  {form.sports.filter((s) => sportChoices.includes(s)).map((s) => {
+                    const opts = divisionOptionsFor(s);
+                    if (!opts.length) return null;
+                    return (
+                      <div key={s} className="cm-divgroup">
+                        <span className="cm-divgroup__sport">{s}</span>
+                        <div className="cm-pickgrid">
+                          {opts.map((o) => (
+                            <label key={o.key} className="msf-checkbox">
+                              <input
+                                type="checkbox"
+                                checked={form.divisions.includes(o.key)}
+                                onChange={() => setForm((f) => ({ ...f, divisions: toggle(f.divisions, o.key) }))}
+                              />
+                              {o.label}
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               )}
 

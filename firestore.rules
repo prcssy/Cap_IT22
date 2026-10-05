@@ -106,6 +106,7 @@ service cloud.firestore {
         && data.level in ['elementary', 'highSchool', 'college']
         && data.teams is list && data.teams.size() <= 20
         && data.sports is list && data.sports.size() <= 30
+        && (!('divisions' in data) || (data.divisions is list && data.divisions.size() <= 200))
         && optionalString(data, 'name', 100)
         && optionalString(data, 'contactNumber', 20)
         && optionalString(data, 'bio', 500)
