@@ -19,6 +19,11 @@
   align-items: start;
 }
 
+/* Sections tab: one card per grade/year, as many per row as fit. */
+.ws-grid--sections {
+  grid-template-columns: repeat(auto-fill, minmax(min(280px, 100%), 1fr));
+}
+
 .ws-col {
   display: flex;
   flex-direction: column;

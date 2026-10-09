@@ -5,7 +5,10 @@ import { BrandingContext } from '../../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../../shared/context/LevelLabelsContext';
 import { FaTimes, FaEye, FaEyeSlash, FaArrowLeft, FaCheck } from 'react-icons/fa';
 import { friendlyAuthError } from '../../shared/utils/authErrors';
-import { LIMITS, NAME_FORMAT_HINT, PASSWORD_RULES, validatePassword, validatePersonName, validateSection } from '../../shared/utils/validation';
+import { LIMITS, NAME_FORMAT_HINT, PASSWORD_RULES, validatePassword, validatePersonName } from '../../shared/utils/validation';
+import { GRADES_BY_LEVEL } from '../../shared/utils/schoolLevel';
+import SectionSelect from '../../shared/components/SectionSelect';
+import { useSectionOptions, validateSectionField } from '../../shared/utils/sections';
 import './LoginModal.css';
 
 function FormError({ message }) {
@@ -169,19 +172,11 @@ function LoginScreen({ onSwitchScreen, onLogin, onSuccess, onResendVerification 
 function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
   const { logo } = useContext(BrandingContext);
   const levelLabels = useContext(LevelLabelsContext);
+  const { byGrade: sectionsByGrade } = useSectionOptions();
   const GRADE_LEVEL_GROUPS = [
-    {
-      label: levelLabels.elementary,
-      options: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'],
-    },
-    {
-      label: levelLabels.highSchool,
-      options: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'],
-    },
-    {
-      label: levelLabels.college,
-      options: ['1st Year', '2nd Year', '3rd Year', '4th Year'],
-    },
+    { label: levelLabels.elementary, options: GRADES_BY_LEVEL.elementary },
+    { label: levelLabels.highSchool, options: GRADES_BY_LEVEL.highSchool },
+    { label: levelLabels.college, options: GRADES_BY_LEVEL.college },
   ];
   const [formData, setFormData] = useState({
     name: '',
@@ -206,7 +201,7 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
 
   const validateSignUp = () => (
     validatePersonName(formData.name, 'Full name', { lastNameFirst: true })
-    || validateSection(formData.section)
+    || validateSectionField(sectionsByGrade, formData.gradeLevel, formData.section)
     || validatePassword(formData.password)
     || (formData.password !== formData.confirmPassword ? 'Passwords do not match' : null)
   );
@@ -346,15 +341,14 @@ function SignUpScreen({ onSwitchScreen, onSignUp, onSuccess }) {
 
               <div className="form-group">
                 <label htmlFor="section">Section</label>
-                <input
-                  type="text"
+                <SectionSelect
+                  byGrade={sectionsByGrade}
+                  gradeLevel={formData.gradeLevel}
                   id="section"
                   name="section"
                   placeholder="Enter your section"
                   value={formData.section}
                   onChange={handleChange}
-                  maxLength={LIMITS.section}
-                  required
                 />
               </div>
             </div>

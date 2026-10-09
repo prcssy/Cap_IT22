@@ -2228,6 +2228,70 @@ export async function updateLevelLabels(labels, actorEmail, actorRole = 'superad
 }
 
 /* ─────────────────────────────────────────────
+   Class Sections — one doc (siteConfig/sections) holds the list of sections
+   a student can pick from for each grade/year level, as
+   `byGrade: { 'Grade 7': ['St. Luke', ...], '1st Year': [...] }`. Edited
+   from Super Admin → Web Customization → Sections; read by the sign-up
+   form and the player registration form (via useSectionOptions in
+   src/shared/components/SectionSelect.jsx). Same public-read/superadmin-
+   write rule as the other siteConfig docs — the sign-up form is shown to
+   signed-out visitors, so this has to stay publicly readable.
+
+   A grade with no sections configured falls back to free-text entry on
+   those forms, so registration never gets blocked before a Super Admin
+   has set anything up.
+───────────────────────────────────────────── */
+export function subscribeSectionOptions(callback) {
+  if (!db) {
+    callback({});
+    return () => {};
+  }
+  return onSnapshot(
+    doc(db, 'siteConfig', 'sections'),
+    (snap) => {
+      const byGrade = snap.exists() ? snap.data().byGrade : null;
+      callback(byGrade && typeof byGrade === 'object' ? byGrade : {});
+    },
+    (error) => {
+      console.warn('Section options listener failed:', error);
+      callback({});
+    },
+  );
+}
+
+// Always writes every grade key the caller passes (an empty array for a
+// grade whose sections were all removed), so the merge below can't leave a
+// deleted grade's old list behind.
+export async function updateSectionOptions(byGrade, actorEmail, actorRole = 'superadmin') {
+  if (!db) throw new Error('Firestore not initialized.');
+  const clean = {};
+  Object.entries(byGrade || {}).forEach(([grade, list]) => {
+    const seen = new Set();
+    clean[grade] = (list || [])
+      .map((s) => String(s || '').trim().replace(/\s+/g, ' '))
+      .filter((s) => {
+        const k = s.toLowerCase();
+        if (!s || seen.has(k)) return false;
+        seen.add(k);
+        return true;
+      });
+  });
+  await setDoc(
+    doc(db, 'siteConfig', 'sections'),
+    { byGrade: clean, updatedAt: serverTimestamp(), updatedBy: actorEmail || '' },
+    { merge: true },
+  );
+  const total = Object.values(clean).reduce((n, list) => n + list.length, 0);
+  logActivity({
+    actorRole,
+    type: 'Sections Updated',
+    details: `Updated class sections (${total} section${total === 1 ? '' : 's'} across all grade/year levels)`,
+    targetType: 'sections',
+    targetId: 'siteConfig/sections',
+  });
+}
+
+/* ─────────────────────────────────────────────
    Landing Page CMS — one document (siteConfig/landingPage) is the single
    source of truth for the public homepage's editable content: the hero
    subtitle/background, the 3 feature cards, the 3 "How to Join as a

@@ -3196,6 +3196,9 @@
 
 .msf-form-actions button {
   flex: 1;
+  /* .msf-btn-primary is inline-flex, so stretching it with flex: 1 left its
+     label hugging the left edge — center it like the ghost button's text. */
+  justify-content: center;
   text-transform: uppercase;
   letter-spacing: 0.4px;
 }

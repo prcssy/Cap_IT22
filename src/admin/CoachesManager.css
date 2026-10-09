@@ -169,11 +169,40 @@
 .cm-pickgrid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-  gap: 8px;
-  padding: 10px;
+  gap: 6px 16px;
+  padding: 12px 14px;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
+}
+
+/* `.msf-form-group label` / `input` (text-field styles) outrank the plain
+   `.msf-checkbox` rules, turning each option into a block label with a
+   padded, bordered 100%-wide input — so the box sat glued to its text.
+   Re-assert the checkbox/radio row layout with enough specificity. */
+.cm-pickgrid label.msf-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  transition: background 0.15s;
+}
+
+.cm-pickgrid label.msf-checkbox:hover { background: #eef2f7; }
+
+.cm-pickgrid label.msf-checkbox input {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: none;
+  border-radius: 0;
 }
 
 .cm-hint {

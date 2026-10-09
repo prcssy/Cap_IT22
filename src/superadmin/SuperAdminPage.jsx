@@ -11,6 +11,7 @@ import StudentRegistrationDetails from './StudentRegistrationDetails';
 import BrandingSettings from './BrandingSettings';
 import LandingPageSettings from './LandingPageSettings';
 import LevelLabelsSettings from './LevelLabelsSettings';
+import SectionsSettings from './SectionsSettings';
 import '../admin/AdminSchedulePage.css';
 import './SuperAdminPage.css';
 import {
@@ -1168,6 +1169,7 @@ export default function SuperAdminPage() {
                   { key: 'branding', label: 'Branding' },
                   { key: 'landingPage', label: 'Landing Page' },
                   { key: 'levels', label: 'School Levels' },
+                  { key: 'sections', label: 'Sections' },
                 ]}
                 value={webTab}
                 onChange={setWebTab}
@@ -1179,6 +1181,8 @@ export default function SuperAdminPage() {
                 ? <LandingPageSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
                 : webTab === 'levels'
                 ? <LevelLabelsSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
+                : webTab === 'sections'
+                ? <SectionsSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />
                 : <BrandingSettings actorEmail={userProfile?.email} actorRole={userProfile?.role} />}
             </>
           ) : (

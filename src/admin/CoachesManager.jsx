@@ -138,8 +138,10 @@ export default function CoachesManager({ level, levelLabel }) {
       setFormError('This email is already a coach — edit the existing entry instead.');
       return;
     }
-    if (form.teams.length === 0) {
-      setFormError('Pick at least one team this coach handles.');
+    // One team per coach. `teams` stays an array (rules, coachHandles and the
+    // roster query all expect one) — it just never holds more than one name.
+    if (form.teams.length !== 1) {
+      setFormError(form.teams.length ? 'A coach can only handle one team — pick one.' : 'Pick the team this coach handles.');
       return;
     }
     if (form.contactNumber && !/^[+0-9 ()-]{7,20}$/.test(form.contactNumber.trim())) {
@@ -276,6 +278,9 @@ export default function CoachesManager({ level, levelLabel }) {
                       })
                     : <span className="cm-chip">All sports</span>}
                 </div>
+                {(c.teams || []).length > 1 && (
+                  <p className="cm-error">Handles {c.teams.length} teams — edit to keep only one.</p>
+                )}
                 <div className="cm-card__count">{playerCount(c)} player{playerCount(c) === 1 ? '' : 's'}</div>
               </div>
             ))}
@@ -315,14 +320,24 @@ export default function CoachesManager({ level, levelLabel }) {
               </div>
 
               <div className="msf-form-group">
-                <label>Teams handled</label>
+                <label>Team handled</label>
+                {form.teams.length > 1 && (
+                  <p className="cm-error">
+                    This coach was saved with {form.teams.length} teams ({form.teams.join(', ')}). A coach can now only handle one — pick it below.
+                  </p>
+                )}
                 {teams.length === 0 ? (
                   <p className="cm-hint">No teams for this level yet — add them in Sports &amp; Teams first.</p>
                 ) : (
                   <div className="cm-pickgrid">
                     {teams.map((t) => (
                       <label key={t.id || t.name} className="msf-checkbox">
-                        <input type="checkbox" checked={form.teams.includes(t.name)} onChange={() => setForm({ ...form, teams: toggle(form.teams, t.name) })} />
+                        <input
+                          type="radio"
+                          name="cm-team"
+                          checked={form.teams.length === 1 && form.teams[0] === t.name}
+                          onChange={() => setForm({ ...form, teams: [t.name] })}
+                        />
                         {t.name}
                       </label>
                     ))}
@@ -333,7 +348,7 @@ export default function CoachesManager({ level, levelLabel }) {
               {sportChoices.length > 0 && (
                 <div className="msf-form-group">
                   <label>Sports</label>
-                  <p className="cm-hint">Leave all unticked if this coach handles every sport of the selected team(s).</p>
+                  <p className="cm-hint">Leave all unticked if this coach handles every sport of the selected team.</p>
                   <div className="cm-pickgrid">
                     {sportChoices.map((s) => (
                       <label key={s} className="msf-checkbox">

@@ -21,9 +21,11 @@ import { AuthContext } from '../shared/context/AuthContext';
 import { BrandingContext } from '../shared/context/BrandingContext';
 import { LevelLabelsContext } from '../shared/context/LevelLabelsContext';
 import LevelTabs from '../shared/components/LevelTabs';
+import SectionSelect from '../shared/components/SectionSelect';
+import { useSectionOptions, sectionsForGrade, validateSectionField } from '../shared/utils/sections';
 import { useLockedLevel, getSchoolLevel } from '../shared/utils/schoolLevel';
 import { resizeImageToBlob } from '../shared/utils/resizeImage';
-import { LIMITS, validatePersonName, validateSection, validateMessage } from '../shared/utils/validation';
+import { LIMITS, validatePersonName, validateMessage } from '../shared/utils/validation';
 import { isRaceMatch, raceParticipants, raceStandingsFromRecord, recordCoversRace, ordinal } from '../shared/utils/raceFormat';
 import {
   resolveGrade,
@@ -1246,6 +1248,7 @@ function clearRegistrationDraft(uid) {
 }
 
 function PlayerRegistration({ onBack }) {
+  const { byGrade: sectionsByGrade } = useSectionOptions();
 
   const { currentUser, userProfile } = useContext(AuthContext);
   const { events } = useContext(BrandingContext);
@@ -1996,7 +1999,7 @@ function PlayerRegistration({ onBack }) {
       if (err) errs.emergencyContact = err;
     }
     if (!form.gradeLevel)             errs.gradeLevel       = 'Please select a grade / year level';
-    const sectionError = validateSection(form.section);
+    const sectionError = validateSectionField(sectionsByGrade, form.gradeLevel, form.section);
     if (sectionError)                 errs.section          = sectionError;
     const messageError = validateMessage(form.message);
     if (messageError)                 errs.message          = messageError;
@@ -2477,13 +2480,13 @@ function PlayerRegistration({ onBack }) {
                 </select>
               </Field>
               <Field label="Section" required error={errors.section}>
-                <input
-                  className="reg-input"
+                <SectionSelect
+                  byGrade={sectionsByGrade}
+                  gradeLevel={form.gradeLevel}
+                  className={sectionsForGrade(sectionsByGrade, form.gradeLevel).length ? 'reg-select' : 'reg-input'}
                   placeholder="e.g. Section A"
                   value={form.section}
                   onChange={set('section')}
-                  maxLength={LIMITS.section}
-                  required
                 />
               </Field>
             </div>

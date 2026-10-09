@@ -71,13 +71,15 @@ export function validatePersonName(value, label = 'Full name', { lastNameFirst =
   return null;
 }
 
-/* Class section: short, letters/digits/space/hyphen ("St. Luke", "A", "12-B"). */
-export function validateSection(value) {
+/* Class section: short, letters/digits/space/hyphen ("St. Luke", "A", "12-B").
+   `checkGibberish: false` skips the typo heuristic — used for sections a
+   Super Admin sets up, which are often vowel-less acronyms ("CBS", "CCS"). */
+export function validateSection(value, { checkGibberish = true } = {}) {
   const section = (value || '').trim();
   if (!section) return 'Please enter a section';
   if (section.length > LIMITS.section) return `Section must be ${LIMITS.section} characters or fewer`;
   if (!/^[\p{L}\d][\p{L}\d\s.'-]*$/u.test(section)) return 'Section can only contain letters, numbers, spaces, periods and hyphens';
-  if (looksLikeGibberish(section.replace(/\d/g, ' '))) return "Section doesn't look valid — please check the spelling";
+  if (checkGibberish && looksLikeGibberish(section.replace(/\d/g, ' '))) return "Section doesn't look valid — please check the spelling";
   return null;
 }
 

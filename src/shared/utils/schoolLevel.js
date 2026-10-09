@@ -1,9 +1,16 @@
 import { useContext } from 'react';
 import { AuthContext } from '../context/AuthContext';
 
-const ELEMENTARY_GRADES = new Set(['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6']);
-const HIGH_SCHOOL_GRADES = new Set(['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12']);
-const COLLEGE_GRADES = new Set(['1st Year', '2nd Year', '3rd Year', '4th Year']);
+// Every grade/year a student can pick, grouped by the school level it belongs to.
+export const GRADES_BY_LEVEL = {
+  elementary: ['Grade 1', 'Grade 2', 'Grade 3', 'Grade 4', 'Grade 5', 'Grade 6'],
+  highSchool: ['Grade 7', 'Grade 8', 'Grade 9', 'Grade 10', 'Grade 11', 'Grade 12'],
+  college: ['1st Year', '2nd Year', '3rd Year', '4th Year'],
+};
+
+const ELEMENTARY_GRADES = new Set(GRADES_BY_LEVEL.elementary);
+const HIGH_SCHOOL_GRADES = new Set(GRADES_BY_LEVEL.highSchool);
+const COLLEGE_GRADES = new Set(GRADES_BY_LEVEL.college);
 
 export function getSchoolLevel(gradeLevel) {
   if (!gradeLevel) return null;

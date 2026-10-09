@@ -55,6 +55,11 @@ describe('validatePersonName', () => {
 });
 
 describe('validateSection', () => {
+  it('accepts vowel-less acronyms when the gibberish check is off', () => {
+    expect(validateSection('CBS')).not.toBeNull();
+    expect(validateSection('CBS', { checkGibberish: false })).toBeNull();
+    expect(validateSection('C$S', { checkGibberish: false })).not.toBeNull();
+  });
   it.each(['A', 'St. Luke', '12-B', 'Section Rizal', 'BSIT 3A'])('accepts %s', (s) => {
     expect(validateSection(s)).toBeNull();
   });
