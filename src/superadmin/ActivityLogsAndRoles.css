@@ -150,13 +150,17 @@
   color: #475569;
 }
 
-/* Role badge for the plain "student" actor role (Login/Logout/
-   Registration Submitted) — every other role badge is already defined
-   in SuperAdminPage.css; this is the one addition, purely additive since
-   SuperAdminPage's own table never renders a literal "student" badge. */
-.sa-role--student {
+/* Role badges for a "student" actor, split into Player (approved
+   registration) and Student (none yet) — every other role badge is
+   already defined in SuperAdminPage.css. */
+.sa-role--player {
   background: #fff3d6;
   color: #92600b;
+}
+
+.sa-role--student {
+  background: #f1f5f9;
+  color: #475569;
 }
 
 /* ── Pagination ── */

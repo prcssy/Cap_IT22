@@ -1160,6 +1160,7 @@ export default function SuperAdminPage() {
                 onRefresh={fetchLogs}
                 onUserRoleChanged={fetchAnalytics}
                 actorRole={userProfile?.role}
+                playerUids={registeredUids}
               />
             </>
           ) : sectionTab === 'branding' ? (

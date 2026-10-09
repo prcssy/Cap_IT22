@@ -12,7 +12,26 @@ import './ActivityLogsAndRoles.css';
 
 const PAGE_SIZE = 10;
 
-const ROLE_FILTER_OPTIONS = ['All Roles', 'Player', 'Moderator', 'Admin', 'Super Admin'];
+const ROLE_FILTER_OPTIONS = [
+  { value: 'all', label: 'All Roles' },
+  { value: 'student', label: 'Student' },
+  { value: 'player', label: 'Player' },
+  { value: 'coach', label: 'Coach' },
+  { value: 'moderator', label: 'Moderator' },
+  { value: 'admin', label: 'Admin' },
+  { value: 'superadmin', label: 'Super Admin' },
+];
+
+/* A `student` actor counts as a Player only with an APPROVED registration
+   (same split as the Super Admin analytics tiles) — there's no separate
+   `player` role in the data, so it's derived from `playerUids`. */
+function logRoleKey(log, playerUids) {
+  const role = log.actorRole || 'student';
+  if (role !== 'student') return role;
+  return playerUids?.has(log.actorUid) ? 'player' : 'student';
+}
+
+const LOG_ROLE_LABELS = { student: 'Student', player: 'Player' };
 
 const ROLE_BUTTONS = [
   { role: 'admin', label: 'Add as Administrator', icon: FaUserTie },
@@ -67,12 +86,12 @@ function parseLocalDate(yyyyMmDd) {
  * `users`/`logs` are fetched once by SuperAdminPage.jsx and handed down as
  * props (no duplicate reads); `onRefresh` re-pulls a fresh batch of logs.
  */
-export default function ActivityLogsAndRoles({ users, logs, loading, error, onRefresh, onUserRoleChanged, actorRole }) {
+export default function ActivityLogsAndRoles({ users, logs, loading, error, onRefresh, onUserRoleChanged, actorRole, playerUids }) {
   const levelLabels = useContext(LevelLabelsContext);
   const levelLabel = (key) => levelLabels[key] || key;
   /* ── Filters — Activity Type/Role/Date and search all apply live, the
      moment they change; there's no separate Filter button to press. ── */
-  const [applied, setApplied] = useState({ type: 'All Types', role: 'All Roles', date: '' });
+  const [applied, setApplied] = useState({ type: 'All Types', role: 'all', date: '' });
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
@@ -89,7 +108,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
 
   const resetFilters = () => {
     setSearch('');
-    setApplied({ type: 'All Types', role: 'All Roles', date: '' });
+    setApplied({ type: 'All Types', role: 'all', date: '' });
     setPage(1);
   };
 
@@ -99,7 +118,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
 
     return logs.filter((log) => {
       if (applied.type !== 'All Types' && log.type !== applied.type) return false;
-      if (applied.role !== 'All Roles' && roleLabel(log.actorRole) !== applied.role) return false;
+      if (applied.role !== 'all' && logRoleKey(log, playerUids) !== applied.role) return false;
 
       if (filterDate) {
         const when = toDate(log.timestamp);
@@ -112,7 +131,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
       }
       return true;
     });
-  }, [logs, applied, search]);
+  }, [logs, applied, search, playerUids]);
 
   const totalPages = Math.max(1, Math.ceil(filteredLogs.length / PAGE_SIZE));
   const currentPage = Math.min(page, totalPages);
@@ -292,7 +311,7 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
           <div className="arl-field">
             <label>User Role</label>
             <select className="sa-select" value={applied.role} onChange={(e) => setFilter('role', e.target.value)}>
-              {ROLE_FILTER_OPTIONS.map((r) => <option key={r} value={r}>{r}</option>)}
+              {ROLE_FILTER_OPTIONS.map((r) => <option key={r.value} value={r.value}>{r.label}</option>)}
             </select>
           </div>
           <div className="arl-field">
@@ -360,7 +379,10 @@ export default function ActivityLogsAndRoles({ users, logs, loading, error, onRe
                     <td className="sa-td--date" data-label="Date & Time">{formatDateTime(toDate(log.timestamp))}</td>
                     <td className="sa-td--name" data-label="User">{log.actorName || log.actorEmail || 'Unknown'}</td>
                     <td data-label="Role">
-                      <span className={`sa-role sa-role--${log.actorRole || 'student'}`}>{roleLabel(log.actorRole)}</span>
+                      {(() => {
+                        const key = logRoleKey(log, playerUids);
+                        return <span className={`sa-role sa-role--${key}`}>{LOG_ROLE_LABELS[key] || roleLabel(key)}</span>;
+                      })()}
                     </td>
                     <td data-label="Activity/Action">{log.type}</td>
                     <td data-label="Details" className="arl-details">{log.details}</td>
