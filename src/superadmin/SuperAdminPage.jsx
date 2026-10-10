@@ -695,10 +695,16 @@ export default function SuperAdminPage() {
   // Keep the tiles and charts in step with the rest of the system: sports,
   // teams, schedules, match records, users and registrations are all read
   // once per fetch, so without this they only changed on a manual refresh
-  // (or a full reload). Re-read every 30s and whenever the tab regains focus.
+  // (or a full reload). Re-read every 2 min and whenever the tab regains
+  // focus — but never while the tab is hidden: each refresh re-reads EVERY
+  // users/registrations doc, so a forgotten background tab polling every
+  // 30s could burn through the project's daily Firestore read quota and
+  // take the whole site down for everyone.
   useEffect(() => {
-    const refresh = () => fetchAnalytics({ silent: true });
-    const timer = setInterval(refresh, 30000);
+    const refresh = () => {
+      if (document.visibilityState === 'visible') fetchAnalytics({ silent: true });
+    };
+    const timer = setInterval(refresh, 120000);
     const onVisible = () => { if (document.visibilityState === 'visible') refresh(); };
     document.addEventListener('visibilitychange', onVisible);
     return () => {
