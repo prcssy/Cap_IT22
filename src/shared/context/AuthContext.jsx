@@ -346,7 +346,19 @@ export function AuthProvider({ children }) {
       throw error;
     }
 
-    const resolvedRole = await resolveStaffRole(user.email);
+    let resolvedRole = await resolveStaffRole(user.email);
+    // Coaches aren't on any staff allowlist, so resolveStaffRole reports
+    // them as 'student' — check coaches/{email} too (same priority as the
+    // live role effect: staff first, then coach) so the Login entry in the
+    // activity log shows "Coach", matching the Logout entry.
+    if (resolvedRole === 'student' && db) {
+      try {
+        const coachSnap = await getDoc(doc(db, 'coaches', user.email.toLowerCase()));
+        if (coachSnap.exists()) resolvedRole = 'coach';
+      } catch (error) {
+        console.warn('Failed to check coaches status:', error);
+      }
+    }
     // Fire-and-forget, like every other logActivity call in the app
     // (logActivity already swallows its own errors) — the person shouldn't
     // wait an extra network round trip for an audit-log write before they
