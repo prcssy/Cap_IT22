@@ -114,6 +114,11 @@ async function resolveCallerRole(request) {
   if (!request.auth || !email) {
     throw new HttpsError("unauthenticated", "You must be signed in.");
   }
+  // An unverified account can carry ANY email (nobody checks ownership at
+  // sign-up), so an allowlisted email alone proves nothing until verified.
+  if (request.auth.token.email_verified !== true) {
+    throw new HttpsError("permission-denied", "Verify your email first.");
+  }
 
   const claimedRole = request.auth.token.role;
   const claimedCollection = STAFF_ROLE_COLLECTIONS[claimedRole];

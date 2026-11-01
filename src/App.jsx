@@ -27,6 +27,7 @@ const MatchSchedulesPage = lazy(() => import('./student/MatchSchedulesPage'));
 const RankingPage = lazy(() => import('./student/RankingPage'));
 const CoachPage = lazy(() => import('./coach/CoachPage'));
 const PrivacyPolicyPage = lazy(() => import('./public/PrivacyPolicy/PrivacyPolicyPage'));
+const AccessDeniedPage = lazy(() => import('./shared/AccessDeniedPage'));
 
 function App() {
   return (
@@ -38,6 +39,7 @@ function App() {
           <Routes>
             <Route path="/" element={<PublicLayout />} />
             <Route path="/privacy-policy" element={<PrivacyPolicyPage />} />
+            <Route path="/access-denied" element={<AccessDeniedPage />} />
 
             <Route
               element={

@@ -430,17 +430,24 @@ function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
   const [email, setEmail] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState('');
+  const [notice, setNotice] = useState('');
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     setSubmitting(true);
     setError('');
+    setNotice('');
     try {
       await onResetPassword(email.trim());
-      alert('Password reset email sent. Please check your inbox.');
-      onSwitchScreen('login');
+      // Same message whether or not the account exists, so this form can't
+      // be used to discover which emails are registered.
+      setNotice('If that email is registered, a password reset link has been sent. The link is single-use and expires soon.');
     } catch (err) {
-      setError(friendlyAuthError(err, 'Could not send reset email.'));
+      if (err?.code === 'auth/user-not-found' || err?.code === 'auth/invalid-email') {
+        setNotice('If that email is registered, a password reset link has been sent. The link is single-use and expires soon.');
+      } else {
+        setError(friendlyAuthError(err, 'Could not send reset email.'));
+      }
     } finally {
       setSubmitting(false);
     }
@@ -468,6 +475,7 @@ function ForgotPasswordScreen({ onSwitchScreen, onResetPassword }) {
         </div>
 
         <FormError message={error} />
+        {notice && <p className="auth-notice" role="status">{notice}</p>}
 
         <button type="submit" className="auth-btn auth-btn-primary" disabled={submitting}>
           {submitting ? 'Sending…' : 'Continue'}

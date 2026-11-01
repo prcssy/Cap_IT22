@@ -7,12 +7,20 @@ service cloud.firestore {
       return request.auth != null;
     }
 
+    // Signed in AND email proven. Anyone can create an Auth account for any
+    // address (e.g. a staff member's email that hasn't signed up yet) and get
+    // a token whose email claim equals it -- only email_verified shows they
+    // control the inbox. Every allowlist check below must require this.
+    function verifiedUser() {
+      return request.auth != null && request.auth.token.email_verified == true;
+    }
+
     function staffEmail() {
       return request.auth.token.email.lower();
     }
 
     function isStaff() {
-      return signedIn() && (
+      return verifiedUser() && (
         exists(/databases/$(database)/documents/admins/$(staffEmail())) ||
         exists(/databases/$(database)/documents/moderators/$(staffEmail())) ||
         exists(/databases/$(database)/documents/superadmins/$(staffEmail()))
@@ -20,7 +28,7 @@ service cloud.firestore {
     }
 
     function isSuperAdmin() {
-      return signedIn() && exists(/databases/$(database)/documents/superadmins/$(staffEmail()));
+      return verifiedUser() && exists(/databases/$(database)/documents/superadmins/$(staffEmail()));
     }
 
     // Admins/moderators are scoped to ONE school level (`level` on their
@@ -30,8 +38,8 @@ service cloud.firestore {
       let adminPath = /databases/$(database)/documents/admins/$(staffEmail());
       let modPath = /databases/$(database)/documents/moderators/$(staffEmail());
       return isSuperAdmin()
-        || (signedIn() && exists(adminPath) && get(adminPath).data.get('level', 'elementary') == level)
-        || (signedIn() && exists(modPath) && get(modPath).data.get('level', 'elementary') == level);
+        || (verifiedUser() && exists(adminPath) && get(adminPath).data.get('level', 'elementary') == level)
+        || (verifiedUser() && exists(modPath) && get(modPath).data.get('level', 'elementary') == level);
     }
 
     // True if `claimedRole` is a role the CALLER'S OWN email is actually
@@ -40,9 +48,9 @@ service cloud.firestore {
     // client-supplied, comes from the signed Firebase ID token).
     function ownEmailIsAllowedRole(claimedRole) {
       return claimedRole == 'student'
-        || (claimedRole == 'admin' && exists(/databases/$(database)/documents/admins/$(staffEmail())))
-        || (claimedRole == 'moderator' && exists(/databases/$(database)/documents/moderators/$(staffEmail())))
-        || (claimedRole == 'superadmin' && exists(/databases/$(database)/documents/superadmins/$(staffEmail())));
+        || (claimedRole == 'admin' && verifiedUser() && exists(/databases/$(database)/documents/admins/$(staffEmail())))
+        || (claimedRole == 'moderator' && verifiedUser() && exists(/databases/$(database)/documents/moderators/$(staffEmail())))
+        || (claimedRole == 'superadmin' && verifiedUser() && exists(/databases/$(database)/documents/superadmins/$(staffEmail())));
     }
 
     // ── Field-level schema checks ──────────────────────────────
@@ -98,7 +106,7 @@ service cloud.firestore {
     function isAdminOfLevel(level) {
       let adminPath = /databases/$(database)/documents/admins/$(staffEmail());
       return isSuperAdmin()
-        || (signedIn() && exists(adminPath) && get(adminPath).data.get('level', 'elementary') == level);
+        || (verifiedUser() && exists(adminPath) && get(adminPath).data.get('level', 'elementary') == level);
     }
 
     function validCoach(data) {
@@ -120,7 +128,7 @@ service cloud.firestore {
     // limited to some) cover this registration.
     function coachHandles(data) {
       let coachPath = /databases/$(database)/documents/coaches/$(staffEmail());
-      return signedIn() && exists(coachPath)
+      return verifiedUser() && exists(coachPath)
         && data.teamName in get(coachPath).data.teams
         && (get(coachPath).data.sports.size() == 0 || data.sport in get(coachPath).data.sports);
     }
@@ -178,9 +186,9 @@ service cloud.firestore {
     // used to be signedIn()-only, i.e. any email, which leaked existence
     // even though it never leaked the full roster). `list` stays narrowed
     // to isSuperAdmin() as before.
-    match /admins/{email}      { allow get: if signedIn() && (email == staffEmail() || isSuperAdmin()); allow list: if isSuperAdmin(); allow write: if false; }
-    match /moderators/{email}  { allow get: if signedIn() && (email == staffEmail() || isSuperAdmin()); allow list: if isSuperAdmin(); allow write: if false; }
-    match /superadmins/{email} { allow get: if signedIn() && (email == staffEmail() || isSuperAdmin()); allow list: if isSuperAdmin(); allow write: if false; }
+    match /admins/{email}      { allow get: if verifiedUser() && (email == staffEmail() || isSuperAdmin()); allow list: if isSuperAdmin(); allow write: if false; }
+    match /moderators/{email}  { allow get: if verifiedUser() && (email == staffEmail() || isSuperAdmin()); allow list: if isSuperAdmin(); allow write: if false; }
+    match /superadmins/{email} { allow get: if verifiedUser() && (email == staffEmail() || isSuperAdmin()); allow list: if isSuperAdmin(); allow write: if false; }
 
     // ── Player registrations ───────────────────────────────────
     // Students may create their own registration and read it back (their
@@ -219,7 +227,7 @@ service cloud.firestore {
                     && request.resource.data.email == email
                     && (
                       (isAdminOfLevel(resource.data.level) && isAdminOfLevel(request.resource.data.level))
-                      || (signedIn() && email == staffEmail()
+                      || (verifiedUser() && email == staffEmail()
                           && request.resource.data.diff(resource.data).affectedKeys()
                                .hasOnly(['name', 'contactNumber', 'photoURL', 'bio', 'chats', 'updatedAt']))
                     );
